@@ -1,0 +1,16 @@
+// OcamlC2Config.h
+// Automatically generated from OcamlC2Config.h.in by CMake
+// Do not edit directly
+
+#ifndef OCAMLC2_CONFIG_H
+#define OCAMLC2_CONFIG_H
+
+#define OCAMLC2_VERSION_MAJOR @OcamlC2_VERSION_MAJOR@
+#define OCAMLC2_VERSION_MINOR @OcamlC2_VERSION_MINOR@
+#define OCAMLC2_VERSION_PATCH @OcamlC2_VERSION_PATCH@
+#define OCAMLC2_VERSION "@OcamlC2_VERSION@"
+
+#define OCAML_COMPILER "@OCAML_COMPILER@"
+#define OCAML_VERSION "@OCAML_VERSION@"
+
+#endif // OCAMLC2_CONFIG_H 

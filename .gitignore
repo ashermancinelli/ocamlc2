@@ -1,0 +1,61 @@
+# Build directories
+build/
+install/
+_build/
+
+# OCaml specific
+*.annot
+*.cmo
+*.cma
+*.cmi
+*.a
+*.o
+*.cmx
+*.cmxs
+*.cmxa
+*.byte
+*.native
+
+# Binary files
+a.out
+*.exe
+
+# Local opam switch
+_opam/
+
+# Dune generated files
+.merlin
+*.install
+
+# Editor files
+*~
+\#*\#
+.\#*
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+*.cmake
+!cmake/*.cmake
+
+# Generated documentation
+doc/
+
+# Dependency directories
+_deps/
