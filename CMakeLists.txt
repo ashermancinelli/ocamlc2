@@ -25,7 +25,7 @@ if (NOT TREESITTER_OCAML_DIR)
 else()
     message(STATUS "Tree-sitter OCaml parser pre-built directory: ${TREESITTER_OCAML_DIR}")
     include_directories(${TREESITTER_OCAML_DIR}/include)
-    find_file(TREESITTER_OCAML_HEADER tree-sitter-ocaml.h HINTS ${TREESITTER_OCAML_DIR}/include)
+    find_file(TREESITTER_OCAML_HEADER tree-sitter-ocaml.h HINTS ${TREESITTER_OCAML_DIR}/include/tree_sitter)
     get_filename_component(TREESITTER_OCAML_HEADER_DIR ${TREESITTER_OCAML_HEADER} DIRECTORY)
     include_directories(${TREESITTER_OCAML_HEADER_DIR})
     message(STATUS "Tree-sitter OCaml header directory: ${TREESITTER_OCAML_HEADER_DIR}")
@@ -50,6 +50,8 @@ find_package(MLIR REQUIRED CONFIG)
 message(STATUS "Found MLIR ${MLIR_PACKAGE_VERSION}")
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
 
+message(STATUS "Using FileCheck: ${LLVM_TOOLS_DIR}/FileCheck")
+
 # Add MLIR includes and definitions
 include_directories(${MLIR_INCLUDE_DIRS})
 add_definitions(${MLIR_DEFINITIONS})
@@ -60,6 +62,7 @@ include_directories(include)
 # Add subdirectories
 add_subdirectory(lib)
 add_subdirectory(tools)
+add_subdirectory(runtime)
 
 # Print configuration information
 message(STATUS "OCaml compiler found: ${OCAML_COMPILER}")

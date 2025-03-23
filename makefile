@@ -25,9 +25,9 @@ config:
 	$(CMAKE) -B build -S . -G Ninja $(ARGS)
 
 build:
-	$(CMAKE) --build build
+	$(NINJA) -C build
 
 install: build
-	$(CMAKE) --install build
+	$(NINJA) -C build install
 
-all: config build install
+all: config build
