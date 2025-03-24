@@ -10,7 +10,7 @@ find_package(OCaml REQUIRED)
 set(CMAKE_GENERATOR Ninja)
 
 # Global build settings
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -34,6 +34,11 @@ else()
     find_library(TREESITTER_LIBRARY NAMES tree-sitter HINTS ${TREESITTER_OCAML_DIR}/lib /usr/include /usr/local/include)
     link_libraries(${TREESITTER_LIBRARY})
     message(STATUS "Tree-sitter OCaml libraries: ${TREESITTER_OCAML_LIBRARY} ${TREESITTER_LIBRARY}")
+endif()
+
+if(NOT MLIR_DIR AND NOT LLVM_DIR)
+    set(MLIR_DIR "/usr/local/lib/cmake/mlir" CACHE PATH "Path to MLIR install")
+    set(LLVM_DIR "/usr/local/lib/cmake/llvm" CACHE PATH "Path to LLVM install")
 endif()
 
 # Find LLVM and MLIR
