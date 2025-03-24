@@ -17,6 +17,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(TREESITTER_OCAML_DIR "/usr/local" CACHE PATH "Path to Tree-sitter OCaml parser install")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# enable warnings
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wunused-variable -Wunused-value -Wunused-function -Werror")
+
 include(ExternalProject)
 
 if (NOT TREESITTER_OCAML_DIR)
@@ -24,10 +27,10 @@ if (NOT TREESITTER_OCAML_DIR)
     include(AddTreeSitter)
 else()
     message(STATUS "Tree-sitter OCaml parser pre-built directory: ${TREESITTER_OCAML_DIR}")
-    include_directories(${TREESITTER_OCAML_DIR}/include)
+    include_directories(SYSTEM ${TREESITTER_OCAML_DIR}/include)
     find_file(TREESITTER_OCAML_HEADER tree-sitter-ocaml.h HINTS ${TREESITTER_OCAML_DIR}/include/tree_sitter)
     get_filename_component(TREESITTER_OCAML_HEADER_DIR ${TREESITTER_OCAML_HEADER} DIRECTORY)
-    include_directories(${TREESITTER_OCAML_HEADER_DIR})
+    include_directories(SYSTEM ${TREESITTER_OCAML_HEADER_DIR})
     message(STATUS "Tree-sitter OCaml header directory: ${TREESITTER_OCAML_HEADER_DIR}")
     find_library(TREESITTER_OCAML_LIBRARY NAMES tree-sitter-ocaml HINTS ${TREESITTER_OCAML_DIR}/lib /usr/include /usr/local/include)
     link_libraries(${TREESITTER_OCAML_LIBRARY})
@@ -47,7 +50,7 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 # Add LLVM includes and definitions
-include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 # Find MLIR
@@ -58,7 +61,7 @@ message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
 message(STATUS "Using FileCheck: ${LLVM_TOOLS_DIR}/FileCheck")
 
 # Add MLIR includes and definitions
-include_directories(${MLIR_INCLUDE_DIRS})
+include_directories(SYSTEM ${MLIR_INCLUDE_DIRS})
 add_definitions(${MLIR_DEFINITIONS})
 
 # Include directories

@@ -7,6 +7,7 @@ using llvm::succeeded;
 using llvm::failed;
 using llvm::success;
 using llvm::failure;
+using llvm::StringRef;
 
 template <typename T>
 inline T must(FailureOr<T> result, llvm::StringRef message) {

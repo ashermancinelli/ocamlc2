@@ -20,7 +20,6 @@ int main(int argc, char* argv[]) {
   assert(fs::exists(filepath) && "File does not exist");
   std::string source = must(slurpFile(filepath));
   TSTreeAdaptor tree(source);
-  TSNode root_node = ts_tree_root_node(tree);
   
   // Dump the syntax tree
   llvm::outs() << "Syntax tree for " << filepath << ":" << "\n" << tree << "\n";

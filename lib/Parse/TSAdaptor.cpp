@@ -49,6 +49,49 @@ void print_node(llvm::raw_ostream &os, TSNode node, std::string source, int inde
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               const TSTreeAdaptor &adaptor) {
+  auto walker = [&](TSNode node) {
+    const char *node_type = ts_node_type(node);
+    uint32_t start_byte = ts_node_start_byte(node);
+    uint32_t end_byte = ts_node_end_byte(node);
+    std::string text = adaptor.source.substr(start_byte, end_byte - start_byte);
+    os << node_type << ": \"" << text << "\"" << "\n";
+    return true;
+  };
+  (void)walker;
   print_node(os, ts_tree_root_node(adaptor.tree), adaptor.source);
   return os;
+}
+
+void TSTreeAdaptor::walk(Walker callback) const {
+  walk("", callback);
+}
+
+void TSTreeAdaptor::walk(StringRef node_type, Walker callback) const {
+  TSNode node = ts_tree_root_node(tree);
+  unsigned childcount = ts_node_child_count(node);
+  for (unsigned i = 0; i < childcount; ++i) {
+    TSNode child = ts_node_child(node, i);
+    if (node_type == "" or ts_node_type(child) == node_type) {
+      if (not callback(child)) {
+        return;
+      }
+    }
+    walkRecurse(child, node_type, callback);
+  }
+}
+
+bool TSTreeAdaptor::walkRecurse(TSNode node, StringRef node_type, Walker callback) const {
+  if (node_type == "" or ts_node_type(node) == node_type) {
+    if (not callback(node)) {
+      return false;
+    }
+  }
+  unsigned childcount = ts_node_child_count(node);
+  for (unsigned i = 0; i < childcount; ++i) {
+    TSNode child = ts_node_child(node, i);
+    if (not walkRecurse(child, node_type, callback)) {
+      return false;
+    }
+  }
+  return true;
 }
