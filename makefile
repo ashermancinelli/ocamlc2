@@ -1,12 +1,13 @@
-CMAKE    ?= cmake
-NINJA    ?= ninja
-CXX      ?= clang++
-CC       ?= clang
-CXXFLAGS += -fdiagnostics-color=always
-PREFIX   ?= $(shell pwd)/install
-ARCH      = $(shell uname -s)
-ARGS     += -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=$(PREFIX)
-ARGS     += -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_C_COMPILER=$(CC)
+CMAKE            ?= cmake
+NINJA            ?= ninja
+CXX              ?= clang++
+CC               ?= clang
+BUILD_TYPE       ?= Debug
+CXXFLAGS         += -fdiagnostics-color=always
+PREFIX           ?= $(shell pwd)/install
+ARCH              = $(shell uname -s)
+ARGS             += -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(PREFIX)
+ARGS             += -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_C_COMPILER=$(CC)
 
 ifeq ($(ARCH),Darwin)
 	CXXFLAGS += -mmacosx-version-min=15.1

@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
 
   // Create the IR builder
   mlir::OpBuilder builder(&context);
+  llvm::outs() << "OCaml source: " << source << "\n";
 
   MLIRGen gen(context, builder);
   auto maybeModule = gen.gen(std::move(tree));
@@ -61,7 +62,6 @@ int main(int argc, char **argv) {
   // mlir::ModuleOp module = mlir::ModuleOp::create(builder.getUnknownLoc());
   
   // Set the insertion point to the module body
-  builder.setInsertionPointToEnd(module->getBody());
   
   // Create a function signature: () -> i32
   mlir::Type returnType = builder.getI32Type();

@@ -9,25 +9,11 @@ using llvm::success;
 using llvm::failure;
 using llvm::StringRef;
 
-template <typename T>
-inline T must(FailureOr<T> result, llvm::StringRef message) {
+inline auto must(auto &&result, std::string message="Unexpected failure") -> decltype(auto) {
   if (failed(result)) {
-    llvm::report_fatal_error(message);
+    llvm::report_fatal_error(llvm::StringRef(message));
   }
-  return result.value();
+  return std::forward<decltype(result.value())>(result.value());
 }
-template <typename T>
-inline T must(FailureOr<T&&> result, llvm::StringRef message) {
-  if (failed(result)) {
-    llvm::report_fatal_error(message);
-  }
-  return std::move(result.value());
-}
-template <typename T>
-inline T must(FailureOr<T> result) {
-  return must(result, "");
-}
-template <typename T>
-inline T must(FailureOr<T&&> result) {
-  return must(std::move(result), "");
-}
+
+std::string getUniqueName(StringRef prefix);
