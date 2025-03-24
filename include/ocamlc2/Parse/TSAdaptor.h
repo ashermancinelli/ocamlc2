@@ -11,16 +11,17 @@ FailureOr<std::string> slurpFile(const std::string &path);
 using Walker = std::function<bool(TSNode)>;
 
 struct TSTreeAdaptor {
-  TSTreeAdaptor(const std::string &source) : source(source) {
-    tree = must(parseOCaml(source));
-  }
+  TSTreeAdaptor(std::string filename, const std::string &source);
+  StringRef getFilename() const { return filename; }
+  StringRef getSource() const { return source; }
   void walk(Walker callback) const;
   void walk(StringRef node_type, Walker callback) const;
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TSTreeAdaptor &adaptor);
-  operator TSTree*() const { return tree; }
-  ~TSTreeAdaptor() { ts_tree_delete(tree); }
+  operator TSTree*() const { return tree.get(); }
+  TSTreeAdaptor(TSTreeAdaptor &&other) noexcept;
 private:
   bool walkRecurse(TSNode node, StringRef node_type, Walker callback) const;
+  const std::string filename;
   const std::string &source;
-  TSTree *tree;
+  std::unique_ptr<TSTree, void(*)(TSTree*)> tree;
 };

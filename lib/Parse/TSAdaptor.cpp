@@ -1,6 +1,7 @@
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <tree_sitter/api.h>
 #include <tree_sitter/tree-sitter-ocaml.h>
@@ -58,7 +59,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
     return true;
   };
   (void)walker;
-  print_node(os, ts_tree_root_node(adaptor.tree), adaptor.source);
+  print_node(os, ts_tree_root_node(adaptor.tree.get()), adaptor.source);
   return os;
 }
 
@@ -67,7 +68,7 @@ void TSTreeAdaptor::walk(Walker callback) const {
 }
 
 void TSTreeAdaptor::walk(StringRef node_type, Walker callback) const {
-  TSNode node = ts_tree_root_node(tree);
+  TSNode node = ts_tree_root_node(tree.get());
   unsigned childcount = ts_node_child_count(node);
   for (unsigned i = 0; i < childcount; ++i) {
     TSNode child = ts_node_child(node, i);
@@ -95,3 +96,10 @@ bool TSTreeAdaptor::walkRecurse(TSNode node, StringRef node_type, Walker callbac
   }
   return true;
 }
+
+TSTreeAdaptor::TSTreeAdaptor(std::string filename, const std::string &source)
+    : filename(filename), source(source), tree(must(parseOCaml(source)), ts_tree_delete) {}
+
+TSTreeAdaptor::TSTreeAdaptor(TSTreeAdaptor &&other) noexcept
+    : filename(std::move(other.filename)), source(std::move(other.source)),
+      tree(std::move(other.tree)) {}

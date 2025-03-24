@@ -14,12 +14,20 @@ inline T must(FailureOr<T> result, llvm::StringRef message) {
   if (failed(result)) {
     llvm::report_fatal_error(message);
   }
-  return result.get();
+  return result.value();
+}
+template <typename T>
+inline T must(FailureOr<T&&> result, llvm::StringRef message) {
+  if (failed(result)) {
+    llvm::report_fatal_error(message);
+  }
+  return std::move(result.value());
 }
 template <typename T>
 inline T must(FailureOr<T> result) {
-  if (failed(result)) {
-    llvm::report_fatal_error("Failed to execute operation");
-  }
-  return result.value();
+  return must(result, "");
+}
+template <typename T>
+inline T must(FailureOr<T&&> result) {
+  return must(std::move(result), "");
 }

@@ -19,8 +19,24 @@
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "ocamlc2/Parse/TSAdaptor.h"
+#include "ocamlc2/Support/LLVMCommon.h"
+#include "ocamlc2/Parse/MLIRGen.h"
+#include <filesystem>
 
-int main() {
+namespace fs = std::filesystem;
+
+int main(int argc, char **argv) {
+  if (argc < 2) {
+    std::cerr << "Usage: " << argv[0] << " <ocaml-file>" << std::endl;
+    return 1;
+  }
+
+  fs::path filepath = argv[1];
+  assert(fs::exists(filepath) && "File does not exist");
+  std::string source = must(slurpFile(filepath));
+  TSTreeAdaptor tree(filepath.string(), source);
+
   // Create and configure an MLIRContext
   mlir::MLIRContext context;
   
@@ -32,12 +48,20 @@ int main() {
 
   // Create the IR builder
   mlir::OpBuilder builder(&context);
-  
+
+  MLIRGen gen(context, builder);
+  auto maybeModule = gen.gen(std::move(tree));
+  if (failed(maybeModule)) {
+    llvm::errs() << "Failed to generate MLIR\n";
+    return 1;
+  }
+  auto &module = *maybeModule;
+
   // Create the top-level module operation
-  mlir::ModuleOp module = mlir::ModuleOp::create(builder.getUnknownLoc());
+  // mlir::ModuleOp module = mlir::ModuleOp::create(builder.getUnknownLoc());
   
   // Set the insertion point to the module body
-  builder.setInsertionPointToEnd(module.getBody());
+  builder.setInsertionPointToEnd(module->getBody());
   
   // Create a function signature: () -> i32
   mlir::Type returnType = builder.getI32Type();
@@ -64,12 +88,12 @@ int main() {
   pm.addPass(mlir::createConvertFuncToLLVMPass());
   
   // Apply the passes
-  if (mlir::failed(pm.run(module))) {
+  if (mlir::failed(pm.run(module.get()))) {
     llvm::errs() << "Failed to apply passes\n";
     return 1;
   }
   
-  llvm::outs() << module << "\n";
+  llvm::outs() << *module << "\n";
   
   return 0;
 }

@@ -1,1 +1,1 @@
-add_library(Parse TSAdaptor.cpp)
+add_library(Parse TSAdaptor.cpp MLIRGen.cpp)
