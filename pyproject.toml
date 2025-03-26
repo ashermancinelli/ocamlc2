@@ -1,0 +1,33 @@
+[project]
+name = "pyocaml"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "black>=25.1.0",
+    "filecheck>=1.0.1",
+    "lit>=18.1.8",
+    "tree-sitter>=0.24.0",
+    "tree-sitter-ocaml>=0.24.0",
+    "xdsl>=0.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+pythonpath = ["."]
+
+[tool.pyright]
+include = ["fe.py", "cg.py", "lower.py", "opt.py", "main.py"]
+exclude = [".venv", "tests/test_data"]
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "warning"
+reportUnknownMemberType = "warning"
+pythonVersion = "3.13"
