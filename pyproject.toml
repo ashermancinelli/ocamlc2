@@ -8,8 +8,11 @@ dependencies = [
     "black>=25.1.0",
     "filecheck>=1.0.1",
     "lit>=18.1.8",
+    "pylint>=3.3.6",
+    "pyright>=1.1.398",
     "tree-sitter>=0.24.0",
     "tree-sitter-ocaml>=0.24.0",
+    "typing-extensions>=4.12.2",
     "xdsl>=0.31.0",
 ]
 
@@ -25,9 +28,11 @@ python_files = "test_*.py"
 pythonpath = ["."]
 
 [tool.pyright]
-include = ["fe.py", "cg.py", "lower.py", "opt.py", "main.py"]
 exclude = [".venv", "tests/test_data"]
 typeCheckingMode = "strict"
 reportMissingTypeStubs = "warning"
 reportUnknownMemberType = "warning"
 pythonVersion = "3.13"
+ignore = [
+    "reportWildcardImportFromLibrary",
+]
