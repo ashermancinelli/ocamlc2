@@ -18,11 +18,10 @@ public:
   MLIRGen(mlir::MLIRContext &context, mlir::OpBuilder &builder);
   FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen(TSTreeAdaptor &&adaptor);
   void genCompilationUnit(TSNode node);
-  FailureOr<mlir::Value> gen(Node node);
-  FailureOr<mlir::Value> gen(NodeIter &it);
+  FailureOr<mlir::Value> gen(NodeIter it);
   FailureOr<mlir::Value> gen(NodeList & nodes);
   FailureOr<mlir::Value> genLetBinding(TSNode node);
-  FailureOr<mlir::Value> genAssign(Node lhs, mlir::Value rhs);
+  FailureOr<mlir::Value> genAssign(StringRef lhs, mlir::Value rhs);
   mlir::Location loc(TSNode node);
 private:
   TSTreeAdaptor *adaptor;

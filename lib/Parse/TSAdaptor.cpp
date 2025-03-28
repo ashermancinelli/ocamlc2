@@ -8,6 +8,19 @@
 
 extern "C" const TSLanguage* tree_sitter_ocaml();
 
+namespace ANSIColors {
+  [[maybe_unused]] static constexpr std::string_view red = "\033[31m";
+  [[maybe_unused]] static constexpr std::string_view green = "\033[32m";
+  [[maybe_unused]] static constexpr std::string_view yellow = "\033[33m";
+  [[maybe_unused]] static constexpr std::string_view blue = "\033[34m";
+  [[maybe_unused]] static constexpr std::string_view reset = "\033[0m";
+  [[maybe_unused]] static constexpr std::string_view bold = "\033[1m";
+  [[maybe_unused]] static constexpr std::string_view italic = "\033[3m";
+  [[maybe_unused]] static constexpr std::string_view underline = "\033[4m";
+  [[maybe_unused]] static constexpr std::string_view reverse = "\033[7m";
+  [[maybe_unused]] static constexpr std::string_view strikethrough = "\033[9m";
+}
+
 FailureOr<TSTree *> parseOCaml(const std::string &source) {
   TSParser *parser = ts_parser_new();
   ts_parser_set_language(parser, tree_sitter_ocaml());
@@ -38,9 +51,15 @@ void print_node(llvm::raw_ostream &os, TSNode node, std::string source, int inde
   uint32_t start_byte = ts_node_start_byte(node);
   uint32_t end_byte = ts_node_end_byte(node);
   std::string text = source.substr(start_byte, end_byte - start_byte);
-  
-  os << indentation << node_type << ": \"" << text << "\"" << "\n";
-  
+
+  if (text.contains('\n')) {
+    text = "";
+  }
+
+  os << indentation << ANSIColors::blue << ANSIColors::bold << node_type
+     << ANSIColors::reset << ": " << ANSIColors::italic << text
+     << ANSIColors::reset << "\n";
+
   uint32_t child_count = ts_node_child_count(node);
   for (uint32_t i = 0; i < child_count; ++i) {
     TSNode child = ts_node_child(node, i);

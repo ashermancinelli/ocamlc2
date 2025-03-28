@@ -36,6 +36,7 @@ int main(int argc, char **argv) {
   assert(fs::exists(filepath) && "File does not exist");
   std::string source = must(slurpFile(filepath));
   TSTreeAdaptor tree(filepath.string(), source);
+  llvm::errs() << "OCaml parsed:\n" << tree << "\n";
 
   // Create and configure an MLIRContext
   mlir::MLIRContext context;
@@ -48,7 +49,7 @@ int main(int argc, char **argv) {
 
   // Create the IR builder
   mlir::OpBuilder builder(&context);
-  llvm::outs() << "OCaml source: " << source << "\n";
+  llvm::errs() << "OCaml source:\n" << source << "\n";
 
   MLIRGen gen(context, builder);
   auto maybeModule = gen.gen(std::move(tree));
@@ -57,12 +58,20 @@ int main(int argc, char **argv) {
     return 1;
   }
   auto &module = *maybeModule;
+  llvm::errs() << "MLIR generated:\n";
+  module->print(llvm::outs());
+  llvm::errs() << "\n";
+  if (mlir::failed(module->verify())) {
+    llvm::errs() << "Failed to verify MLIR\n";
+    return 1;
+  }
 
   // Create the top-level module operation
   // mlir::ModuleOp module = mlir::ModuleOp::create(builder.getUnknownLoc());
   
   // Set the insertion point to the module body
   
+  #if 0
   // Create a function signature: () -> i32
   mlir::Type returnType = builder.getI32Type();
   mlir::FunctionType funcType = builder.getFunctionType({}, returnType);
@@ -94,6 +103,7 @@ int main(int argc, char **argv) {
   }
   
   llvm::outs() << *module << "\n";
+  #endif
   
   return 0;
 }
