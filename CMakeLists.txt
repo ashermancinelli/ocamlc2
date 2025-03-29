@@ -80,7 +80,7 @@ include(HandleLLVMOptions)
 # Include directories
 include_directories(include)
 
-# Add subdirectories
+add_subdirectory(tpl)
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(tools)

@@ -22,8 +22,10 @@
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Parse/MLIRGen.h"
+#include "ocamlc2/Dialect/OcamlDialect.h"
 #include <filesystem>
-
+#include <spdlog/spdlog.h>
+#include <spdlog/cfg/env.h>
 namespace fs = std::filesystem;
 
 int main(int argc, char **argv) {
@@ -32,6 +34,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  spdlog::cfg::load_env_levels();
   fs::path filepath = argv[1];
   assert(fs::exists(filepath) && "File does not exist");
   std::string source = must(slurpFile(filepath));
@@ -46,6 +49,7 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::func::FuncDialect>();
   context.getOrLoadDialect<mlir::arith::ArithDialect>();
   context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
+  context.getOrLoadDialect<mlir::ocaml::OcamlDialect>();
 
   // Create the IR builder
   mlir::OpBuilder builder(&context);
