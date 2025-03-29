@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 project(OcamlC2 VERSION 0.1.0 LANGUAGES C CXX)
+cmake_policy(SET CMP0116 NEW)
 
 # Add our custom cmake modules path
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
@@ -51,7 +52,11 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 # Add LLVM includes and definitions
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+include_directories(${PROJECT_BINARY_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
+
+# Disable RTTI
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 
 # Find MLIR
 find_package(MLIR REQUIRED CONFIG)
@@ -64,10 +69,19 @@ message(STATUS "Using FileCheck: ${LLVM_TOOLS_DIR}/FileCheck")
 include_directories(SYSTEM ${MLIR_INCLUDE_DIRS})
 add_definitions(${MLIR_DEFINITIONS})
 
+list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+
+include(TableGen)
+include(AddLLVM)
+include(AddMLIR)
+include(HandleLLVMOptions)
+
 # Include directories
 include_directories(include)
 
 # Add subdirectories
+add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(tools)
 add_subdirectory(runtime)

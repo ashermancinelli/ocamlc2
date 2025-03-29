@@ -13,7 +13,7 @@ struct TSTreeAdaptor {
   TSTreeAdaptor(std::string filename, const std::string &source);
   StringRef getFilename() const { return filename; }
   StringRef getSource() const { return source; }
-  std::string text(TSNode node) const;
+  std::string text(TSNode *node) const;
   void walk(Walker callback) const;
   void walk(StringRef node_type, Walker callback) const;
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TSTreeAdaptor &adaptor);

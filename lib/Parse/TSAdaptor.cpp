@@ -67,9 +67,9 @@ void print_node(llvm::raw_ostream &os, TSNode node, std::string source, int inde
   }
 }
 
-std::string TSTreeAdaptor::text(TSNode node) const {
-  uint32_t start_byte = ts_node_start_byte(node);
-  uint32_t end_byte = ts_node_end_byte(node);
+std::string TSTreeAdaptor::text(TSNode *node) const {
+  uint32_t start_byte = ts_node_start_byte(*node);
+  uint32_t end_byte = ts_node_end_byte(*node);
   return source.substr(start_byte, end_byte - start_byte);
 }
 

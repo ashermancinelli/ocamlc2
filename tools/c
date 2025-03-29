@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+import sys
+import os
+import subprocess
+import tempfile
+import shutil
+import argparse
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("source", help="OCaml source file")
+    parser.add_argument("--cc", help="CC", default="cc")
+    parser.add_argument("--llvm-dir", help="LLVM directory", default="")
+    parser.add_argument("--output", help="Output file", default="a.out")
+    args = parser.parse_args()
+
+    mlir_opt = os.path.join(args.llvm_dir, "bin", "mlir-opt") if args.llvm_dir else "mlir-opt"
+    mlir_translate = os.path.join(args.llvm_dir, "bin", "mlir-translate") if args.llvm_dir else "mlir-translate"
+    bindir = os.path.dirname(os.path.abspath(__file__))
+    source = os.path.abspath(args.source)
+    srcbase = source.replace(".ml", "")
+    compiler = os.path.join(bindir, "ocamlc2-tomlir")
+    conversions = [
+        "--convert-scf-to-cf",
+        "--convert-cf-to-llvm",
+        "--convert-arith-to-llvm",
+        "--convert-func-to-llvm",
+    ]
+
+    def run(cmd):
+        sys.stderr.write('+ ' + cmd + "\n")
+        os.system(cmd)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        mlir0 = os.path.join(temp_dir, f"{srcbase}.0.mlir")
+        mlir1 = os.path.join(temp_dir, f"{srcbase}.1.mlir")
+        llvm_ir = os.path.join(temp_dir, f"{srcbase}.ll")
+        run(f"{compiler} {source} 2>/dev/null > {mlir0}")
+        run(f"{mlir_opt} {' '.join(conversions)} {mlir0} > {mlir1}")
+        run(f"{mlir_translate} --mlir-to-llvmir {mlir1} > {llvm_ir}")
+        run(f"{args.cc} {llvm_ir} -o {args.output}")
+
+if __name__ == "__main__":
+    main()
