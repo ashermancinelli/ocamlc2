@@ -15,30 +15,6 @@ using Node = std::pair<StringRef, TSNode>;
 using NodeList = std::vector<Node>;
 using NodeIter = NodeList::iterator;
 
-class MLIRGen;
-struct RuntimeFunction {
-  RuntimeFunction(
-      llvm::StringRef name,
-      std::function<void(MLIRGen *, mlir::ModuleOp)> genDeclareFunc,
-      std::function<mlir::Value(MLIRGen *, TSNode *, mlir::Location, mlir::ValueRange)>
-          genCallFunc)
-      : name(name), genDeclareFunc(genDeclareFunc), genCallFunc(genCallFunc) {}
-  llvm::StringRef name;
-  std::function<void(MLIRGen *, mlir::ModuleOp)> genDeclareFunc;
-  std::function<mlir::Value(MLIRGen *, TSNode *, mlir::Location, mlir::ValueRange)> genCallFunc;
-  void genDeclare(MLIRGen *gen, mlir::ModuleOp module) const {
-    if (not declared) {
-      genDeclareFunc(gen, module);
-      declared = true;
-    }
-  }
-  mlir::Value genCall(MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) const {
-    return genCallFunc(gen, node, loc, args);
-  }
-private:
-  mutable bool declared = false;
-};
-
 class MLIRGen {
 public:
   MLIRGen(mlir::MLIRContext &context, mlir::OpBuilder &builder);
@@ -60,6 +36,7 @@ public:
   std::string mangleIdentifier(llvm::StringRef name);
   std::string sanitizeParsedString(TSNode *node);
   mlir::Location loc(TSNode node);
+  inline mlir::ModuleOp getModule() const { return *module; }
   inline mlir::MLIRContext &getContext() const { return context; }
   inline mlir::OpBuilder &getBuilder() const { return builder; }
 private:

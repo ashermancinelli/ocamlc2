@@ -9,6 +9,16 @@ FailureOr<TSTree *> parseOCaml(const std::string &source);
 FailureOr<std::string> slurpFile(const std::string &path);
 using Walker = std::function<bool(TSNode)>;
 
+inline std::vector<std::pair<StringRef, TSNode>> childrenNodes(TSNode node) {
+  unsigned child_count = ts_node_child_count(node);
+  std::vector<std::pair<StringRef, TSNode>> children;
+  for (unsigned i = 0; i < child_count; ++i) {
+    TSNode child = ts_node_child(node, i);
+    children.emplace_back(ts_node_type(child), child);
+  }
+  return children;
+}
+
 struct TSTreeAdaptor {
   TSTreeAdaptor(std::string filename, const std::string &source);
   StringRef getFilename() const { return filename; }

@@ -1,6 +1,3 @@
-#include <iostream>
-#include <cstdint>
-
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -19,13 +16,22 @@
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/IR/Diagnostics.h"
+
+#include "llvm/Support/SourceMgr.h"
+
+#include <spdlog/spdlog.h>
+#include <spdlog/cfg/env.h>
+
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Parse/MLIRGen.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+
 #include <filesystem>
-#include <spdlog/spdlog.h>
-#include <spdlog/cfg/env.h>
+#include <iostream>
+#include <cstdint>
+
 namespace fs = std::filesystem;
 
 int main(int argc, char **argv) {
@@ -43,8 +49,11 @@ int main(int argc, char **argv) {
 
   // Create and configure an MLIRContext
   mlir::MLIRContext context;
-  
-  // Register the dialects we need
+  llvm::SourceMgr sourceMgr;
+  mlir::SourceMgrDiagnosticHandler sourceManagerHandler(sourceMgr, &context);
+
+  context.printOpOnDiagnostic(true);
+  context.allowUnregisteredDialects();
   context.getOrLoadDialect<mlir::scf::SCFDialect>();
   context.getOrLoadDialect<mlir::func::FuncDialect>();
   context.getOrLoadDialect<mlir::arith::ArithDialect>();

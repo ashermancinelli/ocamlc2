@@ -19,15 +19,31 @@ class Ocaml_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-def Ocaml_BoxType : Ocaml_Type<"box", "box"> {
+def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
   let summary = "OCaml box";
   let description = "OCaml box";
-  let parameters = (ins Optional<AnyType>:$elementType);
-  let assemblyFormat = "(`<` type($elementType) `>` $elementType^)?";
+  let parameters = (ins OptionalParameter<"mlir::Type">:$elementType);
+  let assemblyFormat = "`box` (`<` $elementType^ `>`)?";
 }
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
+
+def Ocaml_EmboxOp : Ocaml_Op<"embox"> {
+  let summary = "OCaml embox";
+  let description = "OCaml embox";
+  let arguments = (ins AnyType:$input);
+  let results = (outs Ocaml_BoxType:$result);
+  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
+}
+
+def Ocaml_UnboxOp : Ocaml_Op<"unbox"> {
+  let summary = "OCaml unbox";
+  let description = "OCaml unbox";
+  let arguments = (ins Ocaml_BoxType:$input);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
+}
 
 def Ocaml_CastOp : Ocaml_Op<"cast"> {
   let summary = "OCaml cast";

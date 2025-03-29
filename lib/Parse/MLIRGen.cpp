@@ -18,16 +18,7 @@
 #include <mlir/IR/Value.h>
 #include <string_view>
 #include <spdlog/spdlog.h>
-
-static std::vector<std::pair<StringRef, TSNode>> childrenNodes(TSNode node) {
-  unsigned child_count = ts_node_child_count(node);
-  std::vector<std::pair<StringRef, TSNode>> children;
-  for (unsigned i = 0; i < child_count; ++i) {
-    TSNode child = ts_node_child(node, i);
-    children.emplace_back(ts_node_type(child), child);
-  }
-  return children;
-}
+#include <ocamlc2/Parse/Runtime.h>
 
 FailureOr<std::vector<mlir::Type>> MLIRGen::getPrintfTypeHints(mlir::ValueRange args, TSNode *stringContentNode) {
   auto children = childrenNodes(*stringContentNode);
@@ -37,6 +28,8 @@ FailureOr<std::vector<mlir::Type>> MLIRGen::getPrintfTypeHints(mlir::ValueRange 
       auto text = adaptor->text(&child);
       if (text == "%d") {
         typeHints.push_back(builder.getI32Type());
+      } else if (text == "%f") {
+        typeHints.push_back(builder.getF64Type());
       } else if (text == "%s") {
         typeHints.push_back(mlir::LLVM::LLVMPointerType::get(builder.getContext()));
       } else {
@@ -45,55 +38,6 @@ FailureOr<std::vector<mlir::Type>> MLIRGen::getPrintfTypeHints(mlir::ValueRange 
     }
   }
   return typeHints;
-}
-
-[[maybe_unused]] static const RuntimeFunction runtimeFunctions[] = {
-  {
-    "Printf.printf",
-    [](MLIRGen *gen, mlir::ModuleOp module) {
-      if (module.lookupSymbol("printf")) {
-        return;
-      }
-      auto &builder = gen->getBuilder();
-      mlir::OpBuilder::InsertionGuard guard(builder);
-      builder.setInsertionPointToStart(module.getBody(0));
-      auto ptrType = mlir::LLVM::LLVMPointerType::get(builder.getContext());
-      auto printfFuncType = mlir::LLVM::LLVMFunctionType::get(
-          builder.getI32Type(), {ptrType}, true);
-      auto printfFunc = builder.create<mlir::LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "printf", printfFuncType);
-      (void)printfFunc;
-    },
-    [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) {
-      auto &builder = gen->getBuilder();
-      auto argTypes = llvm::to_vector<4>(llvm::map_range(args, [](mlir::Value arg) {
-        return arg.getType();
-      }));
-      std::vector<mlir::Type> argTypesInto;
-      argTypesInto.push_back(mlir::LLVM::LLVMPointerType::get(builder.getContext()));
-      auto children = childrenNodes(*node);
-      assert(children[0].first == "value_path");
-      assert(children[1].first == "string" && "only accepting printf with string literal format argument");
-      auto stringContentNode = childrenNodes(children[1].second)[1].second;
-      auto typeHints = must(gen->getPrintfTypeHints(args, &stringContentNode));
-      llvm::copy(typeHints, std::back_inserter(argTypesInto));
-      auto convertedArgs = llvm::to_vector(llvm::map_range(llvm::zip(args, argTypesInto), [&] (auto argAndType) {
-        auto [arg, type] = argAndType;
-        if (arg.getType() == type) {
-          return arg;
-        }
-        auto cast = builder.create<mlir::ocaml::CastOp>(loc, type, arg);
-        return cast.getResult();
-      }));
-      auto printfFuncType = mlir::LLVM::LLVMFunctionType::get(
-          builder.getI32Type(), argTypesInto, true);
-      auto printfCall = builder.create<mlir::LLVM::CallOp>(loc, printfFuncType, "printf", convertedArgs);
-      return printfCall.getResult();
-    }
-  }
-};
-
-ArrayRef<RuntimeFunction> getRuntimeFunctions() {
-  return runtimeFunctions;
 }
 
 MLIRGen::MLIRGen(mlir::MLIRContext &context, mlir::OpBuilder &builder)
@@ -132,15 +76,14 @@ FailureOr<mlir::Value> MLIRGen::lookupValue(llvm::StringRef name, std::optional<
 }
 
 FailureOr<mlir::Value> MLIRGen::genRuntimeCall(llvm::StringRef name, mlir::ValueRange args, mlir::Location loc, TSNode *node) {
-  auto runtimeFunctions = getRuntimeFunctions();
+  auto runtimeFunctions = RuntimeFunction::getRuntimeFunctions();
   auto it = llvm::find_if(runtimeFunctions, [&](const RuntimeFunction &func) {
     return mangleIdentifier(func.name) == name;
   });
   if (it == runtimeFunctions.end()) {
     return failure();
   }
-  it->genDeclare(this, module.get());
-  return it->genCall(this, node, loc, args);
+  return it->call(this, node, loc, args);
 }
 
 std::string MLIRGen::mangleIdentifier(llvm::StringRef name) {
@@ -258,6 +201,10 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     textRef.getAsInteger(10, result);
     auto op = builder.create<mlir::arith::ConstantIntOp>(loc(child), result, 64);
     return op.getResult();
+  } else if (childType == "parenthesized_expression") {
+    auto children = childrenNodes(child);
+    assert(children.size() == 3);
+    return gen(children.begin() + 1);
   } else if (childType == "for_expression") {
     auto forChildren = childrenNodes(child);
     auto it = forChildren.begin();

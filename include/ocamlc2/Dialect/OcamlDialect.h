@@ -7,5 +7,8 @@
 
 #include "ocamlc2/Dialect/OcamlDialect.h.inc"
 
+#define GET_TYPEDEF_CLASSES
+#include "ocamlc2/Dialect/OcamlTypes.h.inc"
+
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.h.inc"
