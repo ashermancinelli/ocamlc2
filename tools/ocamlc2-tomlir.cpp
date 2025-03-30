@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <iostream>
 #include <cstdint>
+#include <unistd.h>
 
 #define DEBUG_TYPE "driver"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -45,17 +46,36 @@ static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::init("-"),
                                           cl::value_desc("filename"));
 
+static cl::opt<bool> runGdb("gdb",
+                           cl::desc("Run the program under gdb"),
+                           cl::init(false));
 
 int main(int argc, char **argv) {
-  if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <ocaml-file>" << std::endl;
-    return 1;
-  }
   mlir::registerAsmPrinterCLOptions();
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
 
   cl::ParseCommandLineOptions(argc, argv, "ocamlc2 Ocaml compiler\n");
+
+  if (runGdb) {
+    DBGS("Running under gdb\n");
+    std::vector<char*> newArgs;
+    const char *debugger = "lldb";
+    newArgs.push_back(const_cast<char*>(debugger));
+    newArgs.push_back(const_cast<char*>("--"));
+    newArgs.push_back(argv[0]);
+    for (int i = 1; i < argc; i++) {
+      std::string arg = argv[i];
+      if (arg == "-gdb" or arg == "--gdb") {
+        continue;
+      }
+      newArgs.push_back(argv[i]);
+    }
+    newArgs.push_back(nullptr);
+    execvp(debugger, newArgs.data());
+    std::cerr << "Failed to execute debugger: " << strerror(errno) << std::endl;
+    return 1;
+  }
 
   fs::path filepath = inputFilename.getValue();
   assert(fs::exists(filepath) && "File does not exist");
@@ -93,9 +113,6 @@ int main(int argc, char **argv) {
     return 1;
   }
   auto &module = *maybeModule;
-  // DBGS("MLIR generated:\n");
-  // DBG(module->print(llvm::outs()));
-  // DBGS("\n");
   if (mlir::failed(module->verify())) {
     llvm::errs() << "Failed to verify MLIR\n";
     return 1;

@@ -23,10 +23,11 @@ OpFoldResult ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {
   if (getFromType() == getToType()) {
     return input;
   }
-  auto def = input.getDefiningOp();
-  if (auto definingConvert = mlir::dyn_cast<mlir::ocaml::ConvertOp>(def)) {
-    if (definingConvert.getFromType() == getToType()) {
-      return definingConvert.getInput();
+  if (auto def = input.getDefiningOp()) {
+    if (auto definingConvert = mlir::dyn_cast<mlir::ocaml::ConvertOp>(def)) {
+      if (definingConvert.getFromType() == getToType()) {
+        return definingConvert.getInput();
+      }
     }
   }
   return nullptr;
