@@ -15,6 +15,10 @@ struct Value {
     void *p;
   };
 };
+#define RT_PREFIX "_ocamlrt."
+#define DECLARE_RT(NAME, RT, ...) \
+  void *ocamlrt_##NAME(RT) __asm__(RT_PREFIX #NAME);
+
 void *ocamlrt_alloc(int tag);
 void ocamlrt_printf(const char *format, ...);
 void *ocamlrt_print_float(void *p) __asm__("_ocamlrt.print_float");
