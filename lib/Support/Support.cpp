@@ -1,4 +1,5 @@
 #include "ocamlc2/Support/LLVMCommon.h"
+#include <memory>
 
 std::string getUniqueName(StringRef prefix) {
   static unsigned counter = 0;

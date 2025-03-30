@@ -17,106 +17,104 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/CommandLine.h"
 
-#include <spdlog/spdlog.h>
-#include <spdlog/cfg/env.h>
+#include "ocamlc2/Support/Logging.h"
 
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Parse/MLIRGen.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include "ocamlc2/Dialect/OcamlPasses.h"
 
 #include <filesystem>
 #include <iostream>
 #include <cstdint>
 
+#define DEBUG_TYPE "driver"
+#include "ocamlc2/Support/Debug.h.inc"
+
 namespace fs = std::filesystem;
+using namespace llvm;
+
+static cl::opt<std::string> inputFilename(cl::Positional,
+                                          cl::desc("<input ocaml file>"),
+                                          cl::init("-"),
+                                          cl::value_desc("filename"));
+
 
 int main(int argc, char **argv) {
   if (argc < 2) {
     std::cerr << "Usage: " << argv[0] << " <ocaml-file>" << std::endl;
     return 1;
   }
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
 
-  spdlog::cfg::load_env_levels();
-  fs::path filepath = argv[1];
+  cl::ParseCommandLineOptions(argc, argv, "ocamlc2 Ocaml compiler\n");
+
+  fs::path filepath = inputFilename.getValue();
   assert(fs::exists(filepath) && "File does not exist");
   std::string source = must(slurpFile(filepath));
   TSTreeAdaptor tree(filepath.string(), source);
-  llvm::errs() << "OCaml parsed:\n" << tree << "\n";
+  DBGS("OCaml parsed:\n" << tree << "\n");
 
   // Create and configure an MLIRContext
   mlir::MLIRContext context;
   llvm::SourceMgr sourceMgr;
   mlir::SourceMgrDiagnosticHandler sourceManagerHandler(sourceMgr, &context);
 
+  mlir::ocaml::registerPasses();
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::scf::SCFDialect>();
+  registry.insert<mlir::func::FuncDialect>();
+  registry.insert<mlir::arith::ArithDialect>();
+  registry.insert<mlir::LLVM::LLVMDialect>();
+  registry.insert<mlir::ocaml::OcamlDialect>();
+  context.appendDialectRegistry(registry);
   context.printOpOnDiagnostic(true);
-  context.allowUnregisteredDialects();
-  context.getOrLoadDialect<mlir::scf::SCFDialect>();
-  context.getOrLoadDialect<mlir::func::FuncDialect>();
-  context.getOrLoadDialect<mlir::arith::ArithDialect>();
-  context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
   context.getOrLoadDialect<mlir::ocaml::OcamlDialect>();
+  context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
+  context.getOrLoadDialect<mlir::func::FuncDialect>();
+  context.getOrLoadDialect<mlir::scf::SCFDialect>();
+  context.getOrLoadDialect<mlir::arith::ArithDialect>();
 
   // Create the IR builder
-  mlir::OpBuilder builder(&context);
-  llvm::errs() << "OCaml source:\n" << source << "\n";
+  DBGS("OCaml source:\n" << source << "\n");
 
-  MLIRGen gen(context, builder);
+  MLIRGen gen(context);
   auto maybeModule = gen.gen(std::move(tree));
   if (failed(maybeModule)) {
-    llvm::errs() << "Failed to generate MLIR\n";
+    DBGS("Failed to generate MLIR\n");
     return 1;
   }
   auto &module = *maybeModule;
-  llvm::errs() << "MLIR generated:\n";
-  module->print(llvm::outs());
-  llvm::errs() << "\n";
+  DBGS("MLIR generated:\n");
+  DBG(module->print(llvm::outs()));
+  DBGS("\n");
   if (mlir::failed(module->verify())) {
     llvm::errs() << "Failed to verify MLIR\n";
     return 1;
   }
 
-  // Create the top-level module operation
-  // mlir::ModuleOp module = mlir::ModuleOp::create(builder.getUnknownLoc());
-  
-  // Set the insertion point to the module body
-  
-  #if 0
-  // Create a function signature: () -> i32
-  mlir::Type returnType = builder.getI32Type();
-  mlir::FunctionType funcType = builder.getFunctionType({}, returnType);
-  
-  // Create the function
-  mlir::func::FuncOp funcOp = builder.create<mlir::func::FuncOp>(
-      builder.getUnknownLoc(), "main", funcType);
-  
-  // Create the entry block
-  mlir::Block &entryBlock = funcOp.getBody().emplaceBlock();
-  builder.setInsertionPointToStart(&entryBlock);
-  
-  // Create constant 0
-  mlir::Value zero = builder.create<mlir::arith::ConstantIntOp>(
-      builder.getUnknownLoc(), 0, 32);
-  
-  // Return the zero value
-  builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc(), zero);
-  
-  // Create a pass manager
   mlir::PassManager pm(&context);
-  pm.addPass(mlir::createArithToLLVMConversionPass());
-  pm.addPass(mlir::createConvertFuncToLLVMPass());
-  
-  // Apply the passes
-  if (mlir::failed(pm.run(module.get()))) {
-    llvm::errs() << "Failed to apply passes\n";
+  if (mlir::failed(applyPassManagerCLOptions(pm))) {
+    llvm::errs() << "Failed to apply pass manager options\n";
     return 1;
   }
-  
-  llvm::outs() << *module << "\n";
-  #endif
-  
-  return 0;
+
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::ocaml::createBufferizeBoxes());
+  // pm.addPass(mlir::ocaml::createOcamlLowerToLLVM());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+
+  if (mlir::failed(pm.run(module.get()))) {
+    llvm::errs() << "Failed to run pass manager\n";
+    return 1;
+  }
 }

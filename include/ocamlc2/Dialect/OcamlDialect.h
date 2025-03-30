@@ -4,6 +4,7 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 
 #include "ocamlc2/Dialect/OcamlDialect.h.inc"
 

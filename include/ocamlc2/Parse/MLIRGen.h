@@ -9,6 +9,7 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include "ocamlc2/Dialect/OcamlOpBuilder.h"
 
 using Scope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::Value>;
 using Node = std::pair<StringRef, TSNode>;
@@ -17,7 +18,7 @@ using NodeIter = NodeList::iterator;
 
 class MLIRGen {
 public:
-  MLIRGen(mlir::MLIRContext &context, mlir::OpBuilder &builder);
+  MLIRGen(mlir::MLIRContext &context);
   FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen(TSTreeAdaptor &&adaptor);
   void genCompilationUnit(TSNode node);
   FailureOr<mlir::Value> gen(NodeIter it);
@@ -38,12 +39,12 @@ public:
   mlir::Location loc(TSNode node);
   inline mlir::ModuleOp getModule() const { return *module; }
   inline mlir::MLIRContext &getContext() const { return context; }
-  inline mlir::OpBuilder &getBuilder() const { return builder; }
+  inline mlir::ocaml::OcamlOpBuilder &getBuilder() { return builder; }
 private:
   TSTreeAdaptor *adaptor;
   llvm::ScopedHashTable<llvm::StringRef, mlir::Value> symbolTable;
   llvm::ScopedHashTable<llvm::StringRef, mlir::FunctionType> functionTable;
   mlir::MLIRContext &context;
-  mlir::OpBuilder &builder;
+  mlir::ocaml::OcamlOpBuilder builder;
   mlir::OwningOpRef<mlir::ModuleOp> module;
 };

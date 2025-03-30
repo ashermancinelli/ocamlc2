@@ -14,6 +14,8 @@ install(TARGETS ocamlc2-parse DESTINATION bin)
 add_executable(ocamlc2-tomlir ocamlc2-tomlir.cpp)
 target_link_libraries(ocamlc2-tomlir PRIVATE
     ${TREESITTER_OCAML_LIBRARY}
+    MLIRIR
+    MLIRAsmParser
     MLIRParser
     MLIRSCFDialect
     MLIRTransforms

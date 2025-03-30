@@ -1,7 +1,8 @@
 CMAKE            ?= cmake
 NINJA            ?= ninja
-CXX              ?= clang++
-CC               ?= clang
+CBIN             ?= /usr/local/bin
+CXX              ?= $(CBIN)/clang++
+CC               ?= $(CBIN)/clang
 BUILD_TYPE       ?= Debug
 CXXFLAGS         += -fdiagnostics-color=always
 PREFIX           ?= $(shell pwd)/install

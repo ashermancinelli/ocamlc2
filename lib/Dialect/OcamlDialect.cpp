@@ -18,8 +18,12 @@ using namespace mlir;
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
 
 void OcamlDialect::initialize() {
-      addOperations<
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "ocamlc2/Dialect/OcamlTypes.cpp.inc"
+  >();
+  addOperations<
 #define GET_OP_LIST
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
-      >();
+  >();
 }
