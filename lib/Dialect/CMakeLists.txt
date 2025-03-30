@@ -4,6 +4,7 @@ add_mlir_dialect_library(MLIROcaml
     OcamlDialect.cpp
     BufferizeBoxes.cpp
     OcamlLowerToLLVM.cpp
+    LowerOCamlRuntime.cpp
     DEPENDS
     OcamlIncGen
     OcamlPassesIncGen

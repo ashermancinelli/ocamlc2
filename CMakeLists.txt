@@ -14,6 +14,7 @@ set(CMAKE_GENERATOR Ninja)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(ENABLE_SANITIZERS ON CACHE BOOL "Enable sanitizers")
 
 set(TREESITTER_OCAML_DIR "/usr/local" CACHE PATH "Path to Tree-sitter OCaml parser install")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -22,6 +23,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wunused-variable -Wunused-value -Wunused-function -Werror")
 
 include(ExternalProject)
+
+if (ENABLE_SANITIZERS)
+    include(Sanitizers)
+endif()
 
 if (NOT TREESITTER_OCAML_DIR)
     message(STATUS "Building Tree-sitter OCaml parser")

@@ -93,9 +93,9 @@ int main(int argc, char **argv) {
     return 1;
   }
   auto &module = *maybeModule;
-  DBGS("MLIR generated:\n");
-  DBG(module->print(llvm::outs()));
-  DBGS("\n");
+  // DBGS("MLIR generated:\n");
+  // DBG(module->print(llvm::outs()));
+  // DBGS("\n");
   if (mlir::failed(module->verify())) {
     llvm::errs() << "Failed to verify MLIR\n";
     return 1;
@@ -107,9 +107,9 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  pm.addPass(mlir::ocaml::createLowerOCamlRuntime());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::ocaml::createBufferizeBoxes());
-  // pm.addPass(mlir::ocaml::createOcamlLowerToLLVM());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
@@ -117,4 +117,6 @@ int main(int argc, char **argv) {
     llvm::errs() << "Failed to run pass manager\n";
     return 1;
   }
+
+  llvm::outs() << *module << "\n";
 }

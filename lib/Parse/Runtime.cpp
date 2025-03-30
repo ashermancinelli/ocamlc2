@@ -53,40 +53,24 @@ llvm::ArrayRef<RuntimeFunction> RuntimeFunction::getRuntimeFunctions() {
   if (rtfs.empty()) {
     rtfs.push_back({"Printf.printf", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      auto printfOp = builder.create<mlir::ocaml::PrintfOp>(loc, builder.getI32Type(), args);
-      return printfOp.getResult();
+      return builder.createCallIntrinsic(loc, "Printf.printf", args, builder.getUnitType());
+    }});
+    rtfs.push_back({"int", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
+      auto &builder = gen->getBuilder();
+      return builder.createConvert(loc, args[0], builder.emboxType(builder.getI32Type()));
     }});
     rtfs.push_back({"float", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      auto floatType = mlir::ocaml::BoxType::get(builder.getF64Type());
-      auto boxedFloat = builder.createConvert(loc, args[0], floatType);
-      return boxedFloat;
+      return builder.createConvert(loc, args[0], builder.emboxType(builder.getF64Type()));
     }});
     rtfs.push_back({"Obj.repr", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      auto reprOp = builder.create<mlir::ocaml::ObjReprOp>(loc, builder.getI32Type(), args[0]);
-      return reprOp.getResult();
+      auto reprOp = builder.createCallIntrinsic(loc, "Obj.repr", args);
+      return reprOp;
     }});
     rtfs.push_back({"print_float", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      auto module = gen->getModule();
-      auto oboxType = mlir::ocaml::OpaqueBoxType::get(builder.getContext());
-      auto llptrType = mlir::LLVM::LLVMPointerType::get(builder.getContext());
-      if (not module.lookupSymbol("print_float")) {
-        auto insertionGuard =
-            mlir::OpBuilder::InsertionGuard(gen->getBuilder());
-        builder.setInsertionPointToStart(module.getBody());
-        auto printFloatFuncType = mlir::FunctionType::get(builder.getContext(), {llptrType}, {llptrType});
-        auto func = builder.create<mlir::func::FuncOp>(loc, "print_float", printFloatFuncType);
-        func.setPrivate();
-      }
-      assert(args.size() == 1);
-      auto arg = builder.createConvert(loc, args[0], llptrType);
-      auto printFloatOp = builder.create<mlir::func::CallOp>(
-          loc, "print_float", mlir::TypeRange{llptrType},
-          mlir::ValueRange{arg});
-      auto result = builder.createConvert(loc, printFloatOp.getResult(0), oboxType);
-      return result;
+      return builder.createCallIntrinsic(loc, "print_float", args, builder.getUnitType());
     }});
   }
   return rtfs;

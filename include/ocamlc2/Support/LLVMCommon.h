@@ -6,6 +6,7 @@
 #include "mlir/IR/Value.h"
 #include <optional>
 #include <vector>
+#include <string_view>
 #include "llvm/ADT/ArrayRef.h"
 
 using llvm::ArrayRef;

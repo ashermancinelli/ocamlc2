@@ -9,6 +9,11 @@ def BufferizeBoxes : Pass<"bufferize-boxes", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
 }
 
+def LowerOCamlRuntime : Pass<"lower-ocaml-runtime", "mlir::ModuleOp"> {
+  let summary = "Lower OCaml runtime";
+  let dependentDialects = ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
+}
+
 def OcamlLowerToLLVM : Pass<"convert-ocaml-to-llvm", "mlir::ModuleOp"> {
   let summary = "Convert OCaml to LLVM";
   let dependentDialects = ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];

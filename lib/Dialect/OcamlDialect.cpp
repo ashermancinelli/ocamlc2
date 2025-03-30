@@ -4,6 +4,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <mlir/IR/OpDefinition.h>
 #include "mlir/IR/DialectImplementation.h"
 
 using namespace mlir::ocaml;
@@ -16,6 +17,20 @@ using namespace mlir;
 
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
+
+OpFoldResult ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {
+  auto input = getInput();
+  if (getFromType() == getToType()) {
+    return input;
+  }
+  auto def = input.getDefiningOp();
+  if (auto definingConvert = mlir::dyn_cast<mlir::ocaml::ConvertOp>(def)) {
+    if (definingConvert.getFromType() == getToType()) {
+      return definingConvert.getInput();
+    }
+  }
+  return nullptr;
+}
 
 void OcamlDialect::initialize() {
   addTypes<

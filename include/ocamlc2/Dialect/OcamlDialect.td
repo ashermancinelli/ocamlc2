@@ -40,17 +40,24 @@ def Ocaml_OpaqueBoxType : Ocaml_Type<"OpaqueBox", "obox"> {
   let assemblyFormat = "";
 }
 
-def AnyBoxType : TypeConstraint<CPred<"mlir::isa<mlir::ocaml::BoxType, mlir::ocaml::OpaqueBoxType>($_self)">>;
+def Ocaml_UnitType : Ocaml_Type<"Unit", "unit"> {
+  let summary = "OCaml unit";
+  let description = "OCaml unit";
+  let parameters = (ins);
+  let assemblyFormat = "";
+}
+
+def AnyBoxType : TypeConstraint<CPred<"mlir::isa<mlir::ocaml::BoxType, mlir::ocaml::OpaqueBoxType, mlir::ocaml::UnitType>($_self)">>;
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
 
-def Ocaml_IntrinsicOp : Ocaml_Op<"intrinsic"> {
+def Ocaml_IntrinsicOp : Ocaml_Op<"builtin"> {
   let summary = "OCaml intrinsic";
   let description = "OCaml intrinsic";
   let arguments = (ins StrAttr:$callee, Variadic<AnyType>:$args);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$callee attr-dict `(` $args `)` `:` type($args) `->` type($result)";
+  let assemblyFormat = "$callee `(` $args `)` attr-dict `:` type($args) `->` type($result)";
 }
 
 def Ocaml_ConvertOp : Ocaml_Op<"convert"> {
@@ -58,6 +65,15 @@ def Ocaml_ConvertOp : Ocaml_Op<"convert"> {
   let description = "OCaml convert";
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$result);
+  let extraClassDeclaration = [{
+    mlir::Type getFromType() {
+      return getInput().getType();
+    }
+    mlir::Type getToType() {
+      return getType();
+    }
+  }];
+  let hasFolder = 1;
   let assemblyFormat = "$input attr-dict `from` type($input) `to` type($result)";
 }
 
