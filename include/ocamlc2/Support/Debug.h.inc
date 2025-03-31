@@ -8,3 +8,4 @@
 #else
 #error "DEBUG_TYPE is not defined"
 #endif
+#define TRACE() DBGS("\n")

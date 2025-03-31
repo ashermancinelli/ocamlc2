@@ -40,6 +40,13 @@ def Ocaml_OpaqueBoxType : Ocaml_Type<"OpaqueBox", "obox"> {
   let assemblyFormat = "";
 }
 
+def Ocaml_StringType : Ocaml_Type<"String", "sbox"> {
+  let summary = "OCaml string";
+  let description = "OCaml string";
+  let parameters = (ins);
+  let assemblyFormat = "";
+}
+
 def Ocaml_UnitType : Ocaml_Type<"Unit", "unit"> {
   let summary = "OCaml unit";
   let description = "OCaml unit";

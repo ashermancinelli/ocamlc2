@@ -53,6 +53,7 @@ mlir::Location MLIRGen::loc(TSNode node) {
 }
 
 LogicalResult MLIRGen::declareValue(llvm::StringRef name, mlir::Value value) {
+  DBGS("declaring " << name << " as " << value << "\n");
   symbolTable.insert(name, value);
   return mlir::success();
 }
@@ -130,24 +131,32 @@ std::string MLIRGen::getUniqueName(std::string_view prefix) {
 }
 
 FailureOr<std::vector<Argument>> MLIRGen::getFunctionArguments(NodeIter it) {
+  TRACE();
   std::vector<Argument> arguments;
   assert(it->first == "parameter");
   while (it->first == "parameter") {
     auto parameterChildren = childrenNodes(it++->second);
     Argument argument;
     if (parameterChildren[0].first == "value_pattern") {
-      argument.first = adaptor->text(&parameterChildren[0].second);
+      auto node = parameterChildren[0].second;
+      auto text = adaptor->text(&node);
+      DBGS("value pattern: " << text << "\n");
+      argument.first = text;
     } else if (parameterChildren[0].first == "typed_pattern") {
-      auto children = childrenNodes(parameterChildren[0].second);
+      auto node = parameterChildren[0].second;
+      auto text = adaptor->text(&node);
+      auto children = childrenNodes(node);
       auto valuePattern = children[1].second;
       auto typeCtorPath = children[3].second;
       argument.first = adaptor->text(&valuePattern);
       argument.second = valuePathToIdentifier(&typeCtorPath);
+      DBGS("typed pattern: " << argument.first << " " << argument.second << "\n");
     } else {
       return emitError(loc(parameterChildren[0].second)) << "Unhandled parameter pattern";
     }
     arguments.push_back(argument);
   }
+  DBGS("got " << arguments.size() << " function arguments\n");
   return arguments;
 }
 
@@ -161,7 +170,7 @@ FailureOr<mlir::func::FuncOp> MLIRGen::lookupFunction(llvm::StringRef name) {
 FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
   auto [childType, child] = *it;
   auto text = adaptor->text(&child);
-  DBGS("gen: " << childType << " " << (text.contains("\n") ? "" : text) << "\n");
+  DBGS(childType << " " << (text.contains("\n") ? "" : text) << "\n");
   if (childType == "comment" or childType == ";;") {
     return mlir::Value();
   } else if (childType == "value_path") {
@@ -195,21 +204,53 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
           loc(child), arrayType, /*isConstant=*/true, linkage, name, textAttr);
     }
     auto addrOfOp = builder.create<mlir::LLVM::AddressOfOp>(loc(child), globalOp);
-    return addrOfOp.getResult();
+    auto intrinsicName = builder.getStringAttr("embox_string");
+    auto emboxed = builder.create<mlir::ocaml::IntrinsicOp>(
+        loc(child), mlir::ocaml::StringType::get(builder.getContext()), intrinsicName,
+        mlir::ValueRange{addrOfOp.getResult()});
+    return emboxed.getResult();
   } else if (childType == "let_binding") {
     auto letChildren = childrenNodes(child);
     if (letChildren.size() == 3) {
+      DBGS("value declaration\n");
       auto rhs = must(gen(letChildren.begin() + 2));
       if (letChildren[0].first == "unit") {
         return rhs;
       }
       return must(genAssign(letChildren[0].first, rhs));
     } else {
+      DBGS("function definition\n");
       auto it = letChildren.begin();
       assert(it->first == "value_name");
       auto callee = adaptor->text(&it++->second);
       auto arguments = must(getFunctionArguments(it));
-      return emitError(loc(child)) << "unhandled let binding function call: " << callee;
+      it += arguments.size();
+      assert(it++->first == "=");
+      auto oboxType = builder.getOBoxType();
+      SmallVector<mlir::Type> argumentTypes(arguments.size(), oboxType);
+      {
+        mlir::OpBuilder::InsertionGuard guard(builder);
+        Scope scope(symbolTable);
+        builder.setInsertionPointToStart(module->getBody());
+        auto funcType = builder.getFunctionType(argumentTypes, oboxType);
+        auto func = builder.create<mlir::func::FuncOp>(loc(child), callee, funcType);
+        auto *entryBlock = func.addEntryBlock();
+        builder.setInsertionPointToStart(entryBlock);
+        assert(entryBlock->getArguments().size() == arguments.size());
+        for (auto [arg, argName] : llvm::zip(entryBlock->getArguments(), arguments)) {
+          if (failed(declareValue(argName.first, arg))) {
+            return emitError(loc(child)) << "Failed to declare value: " << argName.first;
+          }
+        }
+        mlir::Value lastValue;
+        while (it != letChildren.end()) {
+          lastValue = must(gen(it++));
+        }
+        auto *castedValue =
+            builder.createConvert(loc(child), lastValue, oboxType);
+        builder.create<mlir::func::ReturnOp>(loc(child), castedValue->getResult(0));
+      }
+      return mlir::Value();
     }
   } else if (childType == "value_definition") {
     auto children = childrenNodes(child);

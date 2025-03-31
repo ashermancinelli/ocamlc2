@@ -13,3 +13,9 @@
 
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.h.inc"
+
+namespace mlir::ocaml {
+  inline bool isa_box_type(mlir::Type type) {
+    return isa<BoxType, OpaqueBoxType, StringType, UnitType>(type);
+  }
+}
