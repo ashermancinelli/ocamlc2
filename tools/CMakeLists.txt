@@ -1,3 +1,7 @@
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+
 add_executable(ocamlc2-parse ocamlc2-parse.cpp)
 target_link_libraries(ocamlc2-parse PRIVATE
     ${TREESITTER_OCAML_LIBRARY}
@@ -14,10 +18,18 @@ install(TARGETS ocamlc2-parse DESTINATION bin)
 add_executable(ocamlc2-tomlir ocamlc2-tomlir.cpp)
 target_link_libraries(ocamlc2-tomlir PRIVATE
     ${TREESITTER_OCAML_LIBRARY}
+    ${dialect_libs}
+    ${conversion_libs}
+    ${extension_libs}
     MLIRIR
     MLIRAsmParser
     MLIRParser
     MLIRSCFDialect
+    MLIRFuncDialect
+    MLIRLLVMDialect
+    MLIRCallInterfaces
+    MLIRCastInterfaces
+    MLIRFunctionInterfaces
     MLIRTransforms
     MLIRArithToLLVM
     MLIRFuncToLLVM

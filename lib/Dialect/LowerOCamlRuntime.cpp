@@ -10,6 +10,7 @@
 #include "ocamlc2/Dialect/OcamlPasses.h"
 #include "ocamlc2/Dialect/OcamlOpBuilder.h"
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SetVector.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringRef.h>
@@ -69,6 +70,36 @@ public:
       }
       rewriter.replaceOp(op, newValue->getResult(0));
       return success();
+    } else if (callee == "embox_string") {
+      auto stringType = mlir::ocaml::StringType::get(rewriter.getContext());
+      SmallVector<mlir::Value> args{op.getArgs()};
+      if (args.size() != 1) {
+        return op.emitError("embox_string expects 1 argument, got ") << args.size();
+      }
+      args[0] = rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), llvmPointerType, args[0]);
+      auto newValue = createGenericRuntimeCall(rewriter, op, module, callee, llvmPointerType, args);
+      if (succeeded(newValue)) {
+        auto castedResult = rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), stringType, newValue->getResult(0));
+        rewriter.replaceOp(op, castedResult.getResult());
+        return success();
+      }
+      return op.emitError("Failed to create runtime call: ") << callee;
+    } else if (callee == "Printf.printf") {
+      auto stringType = mlir::ocaml::StringType::get(rewriter.getContext());
+      auto oboxType = mlir::ocaml::OpaqueBoxType::get(rewriter.getContext());
+      SmallVector<mlir::Value> argsFrom = op.getArgs();
+      SmallVector<mlir::Value> argsTo{rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), stringType, argsFrom[0])};
+      auto it = argsFrom.begin();
+      it++;
+      while (it != argsFrom.end()) {
+        argsTo.push_back(rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), oboxType, *it++));
+      }
+      auto newValue = createGenericRuntimeCall(rewriter, op, module, callee, oboxType, argsTo);
+      if (failed(newValue)) {
+        return op.emitError("Failed to create runtime call: ") << callee;
+      }
+      rewriter.replaceOp(op, newValue->getResult(0));
+      return success();
     } else if (callee == "embox_i64") {
       auto i64Type = rewriter.getI64Type();
       auto boxType = mlir::ocaml::BoxType::get(i64Type);
@@ -117,9 +148,10 @@ public:
     auto maybeFromBoxType = mlir::dyn_cast<mlir::ocaml::BoxType>(fromType);
     auto maybeToBoxType = mlir::dyn_cast<mlir::ocaml::BoxType>(toType);
 
-    if ((maybeFromBoxType && llvmPointerType == toType) || (maybeToBoxType && fromType == llvmPointerType)) {
+    if ((ocaml::isa_box_type(fromType) && llvmPointerType == toType) ||
+        (ocaml::isa_box_type(toType) && fromType == llvmPointerType)) {
       DBGS("bitcast box to/from pointer, leave alone for now\n");
-      return success();
+      return failure();
     }
 
     if (maybeFromBoxType && maybeToBoxType) {
@@ -164,19 +196,31 @@ public:
         rewriter.replaceOp(op, step2Convert);
         return success();
       }
-    } else if (maybeFromBoxType) {
-      DBGS("unbox\n");
-      assert(false && "TODO: runtime unbox");
     } else {
-      DBGS("neither are boxed\n");
-      if (toType == llvmPointerType) {
-        DBGS("to pointer\n");
-        auto emboxOp = rewriter.create<ConvertOp>(op.getLoc(), BoxType::get(fromType), op.getInput());
-        rewriter.replaceOpWithNewOp<ConvertOp>(op, llvmPointerType, emboxOp);
-      } else {
-        DBGS("to non-pointer\n");
-        assert(false && "TODO: to non-pointer? is this an unbox?");
+      DBGS("neither are concrete boxes\n");
+      llvm::SmallSetVector<mlir::Type, 2> types;
+      types.insert(fromType);
+      types.insert(toType);
+      auto *context = rewriter.getContext();
+      SmallVector<llvm::SmallSetVector<mlir::Type, 2>, 4> compatibleBoxTypes;
+      auto oboxType = mlir::ocaml::BoxType::get(fromType);
+      auto unitType = mlir::ocaml::UnitType::get(context);
+      auto strType = mlir::ocaml::StringType::get(context);
+      compatibleBoxTypes.emplace_back();
+      compatibleBoxTypes.back().insert(unitType);
+      compatibleBoxTypes.back().insert(oboxType);
+      compatibleBoxTypes.emplace_back();
+      compatibleBoxTypes.back().insert(strType);
+      compatibleBoxTypes.back().insert(oboxType);
+      compatibleBoxTypes.emplace_back();
+      compatibleBoxTypes.back().insert(oboxType);
+      for (auto set : compatibleBoxTypes) {
+        if (set.set_union(types)) {
+          // we found a compatible box type
+          return failure();
+        }
       }
+      return op.emitError("Unsupported type for conversion: ") << fromType << " to " << toType;
     }
 
     return failure();

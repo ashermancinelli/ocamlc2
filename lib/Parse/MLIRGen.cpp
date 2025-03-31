@@ -278,7 +278,14 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
         succeeded(runtimeCall)) {
       return runtimeCall;
     } else if (auto func = lookupFunction(callee); succeeded(func)) {
-      auto call = builder.create<mlir::func::CallOp>(loc(child), *func, args);
+      DBGS("calling function " << callee << " " << func->getFunctionType() << "\n");
+      auto argTypes = func->getArgumentTypes();
+      assert(args.size() == argTypes.size());
+      auto convertedArgs = llvm::to_vector(llvm::map_range(llvm::enumerate(args), [&](auto arg) {
+        DBGS("converting arg type: " << arg.value().getType() << " to " << argTypes[arg.index()] << "\n");
+        return builder.create<mlir::ocaml::ConvertOp>(loc(child), argTypes[arg.index()], arg.value()).getResult();
+      }));
+      auto call = builder.create<mlir::func::CallOp>(loc(child), *func, convertedArgs);
       return call.getResult(0);
     } else {
       return emitError(loc(child)) << "Function not found: " << callee;

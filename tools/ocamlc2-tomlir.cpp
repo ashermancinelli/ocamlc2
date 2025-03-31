@@ -5,8 +5,10 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/IR/AsmState.h"
@@ -90,6 +92,9 @@ int main(int argc, char **argv) {
 
   mlir::ocaml::registerPasses();
   mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  mlir::LLVM::registerInlinerInterface(registry);
+
   registry.insert<mlir::scf::SCFDialect>();
   registry.insert<mlir::func::FuncDialect>();
   registry.insert<mlir::arith::ArithDialect>();
@@ -124,8 +129,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  pm.addPass(mlir::ocaml::createLowerOCamlRuntime());
   pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::ocaml::createLowerOCamlRuntime());
   pm.addPass(mlir::ocaml::createBufferizeBoxes());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
