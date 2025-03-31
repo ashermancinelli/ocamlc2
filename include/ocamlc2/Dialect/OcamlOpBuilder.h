@@ -11,20 +11,20 @@ class OcamlOpBuilder : public mlir::OpBuilder {
   using OpBuilder::OpBuilder;
 
 public:
-  mlir::Value createConvert(mlir::Location loc, mlir::Value input, mlir::Type resultType) {
-    return create<mlir::ocaml::ConvertOp>(loc, resultType, input).getResult();
+  mlir::Operation *createConvert(mlir::Location loc, mlir::Value input, mlir::Type resultType) {
+    return create<mlir::ocaml::ConvertOp>(loc, resultType, input);
   }
 
-  mlir::Value createEmbox(mlir::Location loc, mlir::Value input) {
+  mlir::Operation *createEmbox(mlir::Location loc, mlir::Value input) {
     return createConvert(loc, input, emboxType(input.getType()));
   }
 
-  mlir::Value createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {
-    return create<mlir::ocaml::IntrinsicOp>(loc, getOBoxType(), getStringAttr(callee), args).getResult();
+  mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {
+    return create<mlir::ocaml::IntrinsicOp>(loc, getOBoxType(), getStringAttr(callee), args);
   }
 
-  mlir::Value createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args, mlir::Type resultType) {
-    return create<mlir::ocaml::IntrinsicOp>(loc, resultType, getStringAttr(callee), args).getResult();
+  mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args, mlir::Type resultType) {
+    return create<mlir::ocaml::IntrinsicOp>(loc, resultType, getStringAttr(callee), args);
   }
 
   inline mlir::Type emboxType(mlir::Type elementType) {

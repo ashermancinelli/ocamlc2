@@ -57,11 +57,6 @@ LogicalResult MLIRGen::declareValue(llvm::StringRef name, mlir::Value value) {
   return mlir::success();
 }
 
-LogicalResult MLIRGen::declareFunction(llvm::StringRef name, mlir::FunctionType type) {
-  functionTable.insert(name, type);
-  return mlir::success();
-}
-
 FailureOr<mlir::Value> MLIRGen::lookupValuePath(TSNode *node) {
   if (auto ident = valuePathToIdentifier(node); succeeded(ident)) {
     return lookupValue(ident.value());
@@ -90,11 +85,6 @@ FailureOr<mlir::Value> MLIRGen::genRuntimeCall(llvm::StringRef name, mlir::Value
 }
 
 std::string MLIRGen::mangleIdentifier(llvm::StringRef name) {
-  // std::stringstream ss;
-  // for (char c : name) {
-  //   ss << (c == '.' ? "NS" : std::string(1, c));
-  // }
-  // return ss.str();
   return std::string(name);
 }
 
@@ -139,6 +129,35 @@ std::string MLIRGen::getUniqueName(std::string_view prefix) {
       .str();
 }
 
+FailureOr<std::vector<Argument>> MLIRGen::getFunctionArguments(NodeIter it) {
+  std::vector<Argument> arguments;
+  assert(it->first == "parameter");
+  while (it->first == "parameter") {
+    auto parameterChildren = childrenNodes(it++->second);
+    Argument argument;
+    if (parameterChildren[0].first == "value_pattern") {
+      argument.first = adaptor->text(&parameterChildren[0].second);
+    } else if (parameterChildren[0].first == "typed_pattern") {
+      auto children = childrenNodes(parameterChildren[0].second);
+      auto valuePattern = children[1].second;
+      auto typeCtorPath = children[3].second;
+      argument.first = adaptor->text(&valuePattern);
+      argument.second = valuePathToIdentifier(&typeCtorPath);
+    } else {
+      return emitError(loc(parameterChildren[0].second)) << "Unhandled parameter pattern";
+    }
+    arguments.push_back(argument);
+  }
+  return arguments;
+}
+
+FailureOr<mlir::func::FuncOp> MLIRGen::lookupFunction(llvm::StringRef name) {
+  if (auto func = module->lookupSymbol<mlir::func::FuncOp>(name)) {
+    return func;
+  }
+  return failure();
+}
+
 FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
   auto [childType, child] = *it;
   auto text = adaptor->text(&child);
@@ -160,7 +179,7 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
         succeeded(runtimeCall)) {
       return runtimeCall;
     } else {
-      return emitError(loc(child)) << "Runtime call failed";
+      return emitError(loc(child)) << "type constructor failed";
     }
   } else if (childType == "string") {
     auto sanitizedText = sanitizeParsedString(&child);
@@ -179,13 +198,19 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     return addrOfOp.getResult();
   } else if (childType == "let_binding") {
     auto letChildren = childrenNodes(child);
-    assert(letChildren.size() == 3);
-    auto rhs = must(gen(letChildren.begin() + 2));
-    if (letChildren[0].first == "unit") {
-      return rhs;
+    if (letChildren.size() == 3) {
+      auto rhs = must(gen(letChildren.begin() + 2));
+      if (letChildren[0].first == "unit") {
+        return rhs;
+      }
+      return must(genAssign(letChildren[0].first, rhs));
+    } else {
+      auto it = letChildren.begin();
+      assert(it->first == "value_name");
+      auto callee = adaptor->text(&it++->second);
+      auto arguments = must(getFunctionArguments(it));
+      return emitError(loc(child)) << "unhandled let binding function call: " << callee;
     }
-    mlir::Value lhsValue = must(genAssign(letChildren[0].first, rhs));
-    return lhsValue;
   } else if (childType == "value_definition") {
     auto children = childrenNodes(child);
     auto it = children.begin();
@@ -211,9 +236,9 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     if (auto runtimeCall = genRuntimeCall(callee, args, loc(child), &child);
         succeeded(runtimeCall)) {
       return runtimeCall;
-    // } else if (auto funcType = lookupFunction(callee); succeeded(funcType)) {
-    //   auto call = builder.create<mlir::func::CallOp>(loc(child), callee, args);
-    //   return call.getResult(0);
+    } else if (auto func = lookupFunction(callee); succeeded(func)) {
+      auto call = builder.create<mlir::func::CallOp>(loc(child), *func, args);
+      return call.getResult(0);
     } else {
       return emitError(loc(child)) << "Function not found: " << callee;
     }
@@ -223,7 +248,7 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     int result;
     textRef.getAsInteger(10, result);
     auto op = builder.create<mlir::arith::ConstantIntOp>(loc(child), result, 64);
-    auto box = builder.createEmbox(loc(child), op.getResult());
+    auto box = builder.createEmbox(loc(child), op.getResult())->getResult(0);
     return box;
   } else if (childType == "parenthesized_expression") {
     auto children = childrenNodes(child);
@@ -240,13 +265,15 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     }
     auto iterVar = maybeIterVar.value();
     assert(it++->first == "=");
-    assert(it->first == "number");
-    auto lowerBound = builder.create<mlir::arith::ConstantIntOp>(
-        loc(child), std::stoll(adaptor->text(&it++->second)), 64);
+    auto lowerBound = must(gen(it++));
+    lowerBound =
+        builder.createConvert(loc(child), lowerBound, builder.getI64Type())
+            ->getResult(0);
     assert(it++->first == "to");
-    assert(it->first == "number");
-    auto upperBound = builder.create<mlir::arith::ConstantIntOp>(
-        loc(child), std::stoll(adaptor->text(&it++->second)), 64);
+    auto upperBound = must(gen(it++));
+    upperBound =
+        builder.createConvert(loc(child), upperBound, builder.getI64Type())
+            ->getResult(0);
     mlir::Value step = builder.create<mlir::arith::ConstantIntOp>(loc(child), 1, 64);
     auto loop = builder.create<mlir::scf::ForOp>(loc(child), lowerBound, upperBound, step);
     {
