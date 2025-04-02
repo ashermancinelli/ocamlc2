@@ -41,3 +41,17 @@ Value embox_f64(double f64) {
     v.p = p;
     return v;
 }
+
+Value embox_string(const char *str) {
+    Value v;
+    v.p = (void *)str;
+    return v;
+}
+
+Value ocaml_printf(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    // vprintf(format, args);
+    puts("Called printf\n");
+    return unit();
+}

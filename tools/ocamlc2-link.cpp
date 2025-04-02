@@ -131,7 +131,6 @@ llvm::Error linkWithClang(const std::string& clangPath, const fs::path& runtimeL
   
   // Print command in verbose mode
   if (Verbose) {
-    llvm::outs() << "Executing: ";
     for (const auto& arg : args) {
       // Quote arguments containing spaces
       if (arg.find(' ') != std::string::npos)

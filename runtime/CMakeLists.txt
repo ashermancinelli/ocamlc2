@@ -18,5 +18,6 @@ set_target_properties(ocamlrt_static ocamlrt_static_thinlto
 
 add_library(ocamlrt INTERFACE)
 add_dependencies(ocamlrt ocamlrt_static ocamlrt_static_thinlto)
+add_custom_target(runtimes DEPENDS ocamlrt)
 
 install(TARGETS ocamlrt_static ocamlrt_static_thinlto DESTINATION lib)
