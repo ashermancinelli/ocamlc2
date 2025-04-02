@@ -2,6 +2,15 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
 
+add_executable(ocamlc2-link ocamlc2-link.cpp)
+target_link_libraries(ocamlc2-link PRIVATE
+    LLVMSupport
+    Support
+)
+set_target_properties(ocamlc2-link PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 add_executable(ocamlc2-parse ocamlc2-parse.cpp)
 target_link_libraries(ocamlc2-parse PRIVATE
     ${TREESITTER_OCAML_LIBRARY}
@@ -13,7 +22,6 @@ target_link_libraries(ocamlc2-parse PRIVATE
 set_target_properties(ocamlc2-parse PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
-install(TARGETS ocamlc2-parse DESTINATION bin)
 
 add_executable(ocamlc2-tomlir ocamlc2-tomlir.cpp)
 target_link_libraries(ocamlc2-tomlir PRIVATE
@@ -41,7 +49,6 @@ target_link_libraries(ocamlc2-tomlir PRIVATE
 set_target_properties(ocamlc2-tomlir PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
-install(TARGETS ocamlc2-tomlir DESTINATION bin)
 
 # Copy the 'c' script to binary directory
 add_custom_command(
@@ -62,3 +69,5 @@ install(
                 GROUP_READ GROUP_EXECUTE
                 WORLD_READ WORLD_EXECUTE
 )
+
+install(TARGETS ocamlc2-link ocamlc2-parse ocamlc2-tomlir DESTINATION bin)

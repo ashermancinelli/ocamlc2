@@ -35,6 +35,8 @@
 #include <filesystem>
 #include <iostream>
 #include <cstdint>
+#include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
+#include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
 #include <unistd.h>
 
 #define DEBUG_TYPE "driver"
@@ -129,11 +131,23 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mlir::ocaml::createLowerOCamlRuntime());
-  pm.addPass(mlir::ocaml::createBufferizeBoxes());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  // Optimization
+  {
+    pm.addPass(mlir::createInlinerPass());
+    pm.addPass(mlir::ocaml::createLowerOCamlRuntime());
+    pm.addPass(mlir::ocaml::createBufferizeBoxes());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+  }
+
+  // Code generation
+  {
+    pm.addPass(mlir::ocaml::createConvertOCamlToLLVM());
+    pm.addPass(mlir::createArithToLLVMConversionPass());
+    pm.addPass(mlir::createSCFToControlFlowPass());
+    pm.addPass(mlir::createConvertControlFlowToLLVMPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
+  }
 
   if (mlir::failed(pm.run(module.get()))) {
     llvm::errs() << "Failed to run pass manager\n";

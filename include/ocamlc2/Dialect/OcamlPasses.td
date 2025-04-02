@@ -14,7 +14,7 @@ def LowerOCamlRuntime : Pass<"lower-ocaml-runtime", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
 }
 
-def OcamlLowerToLLVM : Pass<"convert-ocaml-to-llvm", "mlir::ModuleOp"> {
+def ConvertOCamlToLLVM : Pass<"convert-ocaml-to-llvm", "mlir::ModuleOp"> {
   let summary = "Convert OCaml to LLVM";
   let dependentDialects = ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
 }

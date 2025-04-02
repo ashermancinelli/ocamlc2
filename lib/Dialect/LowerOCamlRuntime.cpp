@@ -85,16 +85,14 @@ public:
       }
       return op.emitError("Failed to create runtime call: ") << callee;
     } else if (callee == "Printf.printf") {
-      auto stringType = mlir::ocaml::StringType::get(rewriter.getContext());
-      auto oboxType = mlir::ocaml::OpaqueBoxType::get(rewriter.getContext());
       SmallVector<mlir::Value> argsFrom = op.getArgs();
-      SmallVector<mlir::Value> argsTo{rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), stringType, argsFrom[0])};
+      SmallVector<mlir::Value> argsTo{rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), llvmPointerType, argsFrom[0])};
       auto it = argsFrom.begin();
       it++;
       while (it != argsFrom.end()) {
-        argsTo.push_back(rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), oboxType, *it++));
+        argsTo.push_back(rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), llvmPointerType, *it++));
       }
-      auto newValue = createGenericRuntimeCall(rewriter, op, module, callee, oboxType, argsTo);
+      auto newValue = createGenericRuntimeCall(rewriter, op, module, callee, llvmPointerType, argsTo);
       if (failed(newValue)) {
         return op.emitError("Failed to create runtime call: ") << callee;
       }

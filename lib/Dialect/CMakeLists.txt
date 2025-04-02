@@ -3,7 +3,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 add_mlir_dialect_library(MLIROcaml
     OcamlDialect.cpp
     BufferizeBoxes.cpp
-    OcamlLowerToLLVM.cpp
+    ConvertOCamlToLLVM.cpp
     LowerOCamlRuntime.cpp
     DEPENDS
     OcamlIncGen
