@@ -234,6 +234,7 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
         builder.setInsertionPointToStart(module->getBody());
         auto funcType = builder.getFunctionType(argumentTypes, oboxType);
         auto func = builder.create<mlir::func::FuncOp>(loc(child), callee, funcType);
+        func.setPrivate();
         auto *entryBlock = func.addEntryBlock();
         builder.setInsertionPointToStart(entryBlock);
         assert(entryBlock->getArguments().size() == arguments.size());
