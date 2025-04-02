@@ -196,27 +196,9 @@ public:
       }
     } else {
       DBGS("neither are concrete boxes\n");
-      llvm::SmallSetVector<mlir::Type, 2> types;
-      types.insert(fromType);
-      types.insert(toType);
-      auto *context = rewriter.getContext();
-      SmallVector<llvm::SmallSetVector<mlir::Type, 2>, 4> compatibleBoxTypes;
-      auto oboxType = mlir::ocaml::BoxType::get(fromType);
-      auto unitType = mlir::ocaml::UnitType::get(context);
-      auto strType = mlir::ocaml::StringType::get(context);
-      compatibleBoxTypes.emplace_back();
-      compatibleBoxTypes.back().insert(unitType);
-      compatibleBoxTypes.back().insert(oboxType);
-      compatibleBoxTypes.emplace_back();
-      compatibleBoxTypes.back().insert(strType);
-      compatibleBoxTypes.back().insert(oboxType);
-      compatibleBoxTypes.emplace_back();
-      compatibleBoxTypes.back().insert(oboxType);
-      for (auto set : compatibleBoxTypes) {
-        if (set.set_union(types)) {
-          // we found a compatible box type
-          return failure();
-        }
+      if (ocaml::isa_box_type(fromType) && ocaml::isa_box_type(toType)) {
+        // this is generally ok
+        return failure();
       }
       return op.emitError("Unsupported type for conversion: ") << fromType << " to " << toType;
     }

@@ -227,7 +227,19 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
       it += arguments.size();
       assert(it++->first == "=");
       auto oboxType = builder.getOBoxType();
-      SmallVector<mlir::Type> argumentTypes(arguments.size(), oboxType);
+      SmallVector<mlir::Type> argumentTypes;
+      for (auto [identifier, maybeTypeCtor] : arguments) {
+        if (maybeTypeCtor) {
+          if (typeConstructors.count(maybeTypeCtor.value())) {
+            argumentTypes.push_back(typeConstructors.lookup(maybeTypeCtor.value()).constructor(*this));
+          } else {
+            return emitError(loc(child)) << "Type constructor not found: " << maybeTypeCtor.value();
+          }
+        } else {
+          argumentTypes.push_back(oboxType);
+        }
+      }
+
       {
         mlir::OpBuilder::InsertionGuard guard(builder);
         Scope scope(symbolTable);
@@ -281,7 +293,11 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     } else if (auto func = lookupFunction(callee); succeeded(func)) {
       DBGS("calling function " << callee << " " << func->getFunctionType() << "\n");
       auto argTypes = func->getArgumentTypes();
-      assert(args.size() == argTypes.size());
+      if (args.size() != argTypes.size()) {
+        return emitError(loc(child))
+               << "Function " << callee << " expects " << argTypes.size()
+               << " arguments, but got " << args.size();
+      }
       auto convertedArgs = llvm::to_vector(llvm::map_range(llvm::enumerate(args), [&](auto arg) {
         DBGS("converting arg type: " << arg.value().getType() << " to " << argTypes[arg.index()] << "\n");
         return builder.create<mlir::ocaml::ConvertOp>(loc(child), argTypes[arg.index()], arg.value()).getResult();
@@ -364,8 +380,26 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeList & nodes) {
   return result;
 }
 
+void MLIRGen::insertBuiltinTypeConstructors() {
+  auto *ctx = &getContext();
+  typeConstructors.insert("int", TypeConstructor{
+    .constructor = [](MLIRGen &gen) { return mlir::ocaml::BoxType::get(gen.builder.getI64Type()); },
+  });
+  typeConstructors.insert("float", TypeConstructor{
+    .constructor = [](MLIRGen &gen) { return mlir::ocaml::BoxType::get(gen.builder.getF64Type()); },
+  });
+  typeConstructors.insert("string", TypeConstructor{
+    .constructor = [ctx](MLIRGen &gen) { return mlir::ocaml::StringType::get(ctx); },
+  });
+  typeConstructors.insert("unit", TypeConstructor{
+    .constructor = [ctx](MLIRGen &gen) { return mlir::ocaml::UnitType::get(ctx); },
+  });
+}
+
 void MLIRGen::genCompilationUnit(TSNode node) {
   Scope scope(symbolTable);
+  TypeConstructorScope typeConstructorScope(typeConstructors);
+  insertBuiltinTypeConstructors();
   StringRef nodeType = ts_node_type(node);
   assert(nodeType == "compilation_unit");
   auto children = childrenNodes(node);

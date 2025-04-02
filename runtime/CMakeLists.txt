@@ -5,6 +5,11 @@ set(RUNTIME_SOURCES
 add_library(ocamlrt_static STATIC ${RUNTIME_SOURCES})
 add_library(ocamlrt_static_thinlto STATIC ${RUNTIME_SOURCES})
 
+foreach(target ocamlrt_static ocamlrt_static_thinlto)
+  add_dependencies(${target} bdwgc)
+  target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/bdwgc/include)
+endforeach()
+
 target_compile_options(ocamlrt_static PRIVATE -O3)
 target_compile_options(ocamlrt_static_thinlto PRIVATE -O3 -flto=thin)
 target_compile_options(ocamlrt_static_thinlto PRIVATE -flto=thin)

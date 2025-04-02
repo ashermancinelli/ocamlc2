@@ -6,7 +6,7 @@
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Builders.h>
 #include <llvm/ADT/ArrayRef.h>
-class MLIRGen;
+struct MLIRGen;
 struct TSNode;
 
 struct RuntimeFunction {

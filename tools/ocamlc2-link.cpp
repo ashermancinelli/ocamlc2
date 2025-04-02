@@ -35,6 +35,7 @@ static cl::opt<std::string> OutputFile("o", cl::desc("Output executable filename
 static cl::list<std::string> LinkOptions("l", cl::desc("Additional libraries to link"));
 static cl::list<std::string> ClangOptions("Xclang", cl::desc("Additional options to pass to clang"));
 static cl::opt<bool> Verbose("v", cl::desc("Enable verbose output"));
+static cl::opt<bool> ShowMe("showme", cl::desc("Print all the default flags to be used, but don't actually run anything"));
 
 // Add platform-specific flags from the config
 void addPlatformFlags(std::vector<std::string>& args) {
@@ -104,7 +105,7 @@ FailureOr<std::string> findClang() {
   return clangPath.get();
 }
 
-llvm::Error linkWithClang(const std::string& clangPath, const fs::path& runtimeLib, const std::string& irFile) {
+std::vector<std::string> buildLinkCommand(const std::string& clangPath, const fs::path& runtimeLib, const std::string& irFile) {
   std::vector<std::string> args;
   args.push_back(clangPath);
   args.push_back(irFile);
@@ -129,6 +130,10 @@ llvm::Error linkWithClang(const std::string& clangPath, const fs::path& runtimeL
     args.push_back(opt);
   }
   
+  return args;
+}
+
+llvm::Error linkWithClang(const std::string& clangPath, const std::vector<std::string>& args) {
   // Print command in verbose mode
   if (Verbose) {
     for (const auto& arg : args) {
@@ -178,8 +183,24 @@ int main(int argc, char *argv[]) {
   std::string clangPath = clangPathOrErr.get();
   DBGS("Found clang: " << clangPath << "\n");
   
+  // Build the link command
+  std::vector<std::string> args = buildLinkCommand(clangPath, runtimeLib, InputFile);
+  
+  // If --showme is specified, just print the command but don't execute
+  if (ShowMe) {
+    for (const auto& arg : args) {
+      // Quote arguments containing spaces
+      if (arg.find(' ') != std::string::npos)
+        llvm::outs() << "\"" << arg << "\" ";
+      else
+        llvm::outs() << arg << " ";
+    }
+    llvm::outs() << "\n";
+    return 0;
+  }
+  
   // Link the IR file with the runtime library
-  auto err = linkWithClang(clangPath, runtimeLib, InputFile);
+  auto err = linkWithClang(clangPath, args);
   if (err) {
     llvm::errs() << "Error: " << llvm::toString(std::move(err)) << "\n";
     return 1;

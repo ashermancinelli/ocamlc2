@@ -18,8 +18,13 @@ using Argument = std::pair<std::string, optional<std::string>>;
 using NodeList = std::vector<Node>;
 using NodeIter = NodeList::iterator;
 
-class MLIRGen {
-public:
+struct MLIRGen;
+struct TypeConstructor {
+  std::function<mlir::Type(MLIRGen &)> constructor;
+};
+using TypeConstructorScope = llvm::ScopedHashTableScope<llvm::StringRef, TypeConstructor>;
+
+struct MLIRGen {
   MLIRGen(mlir::MLIRContext &context);
   FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen(TSTreeAdaptor &&adaptor);
   void genCompilationUnit(TSNode node);
@@ -35,6 +40,7 @@ public:
   FailureOr<std::string> valuePathToIdentifier(TSNode *node);
   FailureOr<std::vector<mlir::Type>> getPrintfTypeHints(mlir::ValueRange args, TSNode *stringContentNode);
   FailureOr<std::vector<Argument>> getFunctionArguments(NodeIter it);
+  void insertBuiltinTypeConstructors();
   std::string getUniqueName(std::string_view prefix="");
   std::string mangleIdentifier(llvm::StringRef name);
   std::string sanitizeParsedString(TSNode *node);
@@ -45,6 +51,7 @@ public:
 private:
   TSTreeAdaptor *adaptor;
   llvm::ScopedHashTable<llvm::StringRef, mlir::Value> symbolTable;
+  llvm::ScopedHashTable<llvm::StringRef, TypeConstructor> typeConstructors;
   mlir::MLIRContext &context;
   mlir::ocaml::OcamlOpBuilder builder;
   mlir::OwningOpRef<mlir::ModuleOp> module;

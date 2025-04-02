@@ -1,2 +1,2 @@
-let pi i b = Printf.printf "%d\n" i;;
-pi 5 6;;
+let pi (i : int) = print_float (float i);;
+pi 5;;

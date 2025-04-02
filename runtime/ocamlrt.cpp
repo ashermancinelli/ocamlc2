@@ -2,6 +2,8 @@
 #include <cstdarg>
 #include <cstdio>
 
+#include <gc.h>
+
 Value unit() {
     Value v;
     v.i = 0;
