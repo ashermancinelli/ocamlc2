@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#define OCAML_PTR_ALIGNMENT 8
 extern "C" {
 enum {
   OCAML_TAG_INT = 5,
