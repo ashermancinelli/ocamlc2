@@ -7,7 +7,7 @@
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include <tree_sitter/tree-sitter-ocaml.h>
 #include <tree_sitter/api.h>
-#include "ocamlc2/Parse/MLIRGen.h"
+
 namespace fs = std::filesystem;
 
 int main(int argc, char* argv[]) {

@@ -11,6 +11,17 @@ set_target_properties(ocamlc2-link PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
+add_executable(ocamlc2-parse2 ocamlc2-parse2.cpp)
+target_link_libraries(ocamlc2-parse2 PRIVATE
+    MLIRIR
+    LLVMSupport
+    Parse
+    Support
+)
+set_target_properties(ocamlc2-parse2 PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 add_executable(ocamlc2-parse ocamlc2-parse.cpp)
 target_link_libraries(ocamlc2-parse PRIVATE
     ${TREESITTER_OCAML_LIBRARY}

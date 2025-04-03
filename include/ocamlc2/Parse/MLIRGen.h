@@ -20,7 +20,8 @@ using NodeIter = NodeList::iterator;
 
 struct MLIRGen;
 struct TypeConstructor {
-  std::function<mlir::Type(MLIRGen &)> constructor;
+  using FunctionType = std::function<mlir::Type(MLIRGen &)>;
+  FunctionType constructor;
 };
 using TypeConstructorScope = llvm::ScopedHashTableScope<llvm::StringRef, TypeConstructor>;
 
@@ -33,6 +34,9 @@ struct MLIRGen {
   FailureOr<mlir::Value> genLetBinding(TSNode node);
   FailureOr<mlir::Value> genAssign(StringRef lhs, mlir::Value rhs);
   LogicalResult declareValue(llvm::StringRef name, mlir::Value value);
+  inline void declareTypeConstructor(llvm::StringRef name, TypeConstructor::FunctionType constructor) {
+    typeConstructors.insert(name, TypeConstructor{constructor});
+  }
   FailureOr<mlir::Value> genRuntimeCall(llvm::StringRef name, mlir::ValueRange args, mlir::Location loc, TSNode *node);
   FailureOr<mlir::func::FuncOp> lookupFunction(llvm::StringRef name);
   FailureOr<mlir::Value> lookupValuePath(TSNode *node);
