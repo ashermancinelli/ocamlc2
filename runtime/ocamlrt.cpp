@@ -38,7 +38,7 @@ Value print_int(Value p) {
 Value box_convert_i64_f64(Value p) {
     DBGS("%p\n", p.p);
     auto *f64 = ocaml_malloc<double>();
-    *f64 = *(int64_t *)p.p;
+    *f64 = (double)(int64_t)p.components.rest;
     Value v;
     v.p = f64;
     DBGS("%p %f\n", v.p, *f64);

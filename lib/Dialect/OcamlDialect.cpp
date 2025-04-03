@@ -23,6 +23,27 @@ using namespace mlir;
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
 
+mlir::Type VariantType::parse(mlir::AsmParser &parser) {
+  std::string name;
+  mlir::SmallVector<mlir::Type> elements;
+  if (parser.parseLess())
+    return {};
+  if (parser.parseString(&name))
+    return {};
+  if (parser.parseComma())
+    return {};
+  if (parser.parseTypeList(elements))
+    return {};
+  if (parser.parseGreater())
+    return {};
+  mlir::StringAttr nameAttr = mlir::StringAttr::get(parser.getContext(), name);
+  return parser.getChecked<VariantType>(parser.getContext(), nameAttr, elements);
+}
+
+void VariantType::print(mlir::AsmPrinter &printer) const {
+  printer << "<" << getName() << ", " << getElements() << ">";
+}
+
 OpFoldResult ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {
   auto input = getInput();
   if (getFromType() == getToType()) {

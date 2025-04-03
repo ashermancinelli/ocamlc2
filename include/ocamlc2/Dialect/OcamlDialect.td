@@ -21,6 +21,33 @@ class Ocaml_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
+  let summary = "OCaml variant";
+  let description = "OCaml variant";
+  let parameters = (ins "mlir::StringAttr":$name, ArrayRefParameter<"mlir::Type">: $elements);
+  let hasCustomAssemblyFormat = 1;
+  let skipDefaultBuilders = 1;
+  let builders = [
+    TypeBuilder<(ins
+      "mlir::StringAttr":$name,
+      "llvm::ArrayRef<mlir::Type>":$members), [{
+      return $_get($_ctxt, name, members);    
+    }]>,
+    TypeBuilder<(ins
+      "llvm::StringRef":$name,
+      "llvm::ArrayRef<mlir::Type>":$members), [{
+      auto nameAttr = mlir::StringAttr::get($_ctxt, name);
+      return $_get($_ctxt, nameAttr, members);    
+    }]>,
+  ];
+  let extraClassDeclaration = [{
+    enum Kind { Variant, Struct };
+    std::string getNameString() const {
+      return name.str();
+    }
+  }];
+}
+
 def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
   let summary = "OCaml box";
   let description = "OCaml box";
