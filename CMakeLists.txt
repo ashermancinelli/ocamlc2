@@ -15,6 +15,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(ENABLE_SANITIZERS ON CACHE BOOL "Enable sanitizers")
+set(OCAMLRT_DEBUG ON CACHE BOOL "Enable OCamlRT debugging output")
 
 set(TREESITTER_OCAML_DIR "/usr/local" CACHE PATH "Path to Tree-sitter OCaml parser install")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -101,6 +102,11 @@ message(STATUS "OCaml version: ${OCAML_VERSION}")
 
 # Configure version header
 configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/OcamlC2Config.h.in
-  ${CMAKE_CURRENT_BINARY_DIR}/include/OcamlC2Config.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/OCamlC2Config.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/OCamlC2Config.h
 ) 
+
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/OCamlRTConfig.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/OCamlRTConfig.h
+)

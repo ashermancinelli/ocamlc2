@@ -62,7 +62,7 @@ public:
     auto callee = op.getCallee();
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto llvmPointerType = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
-    if (callee == "print_float" or callee == "box_convert_i64_f64" or callee == "box_convert_f64_i64") {
+    if (callee == "print_float" or callee == "box_convert_i64_f64" or callee == "box_convert_f64_i64" or callee == "print_int") {
       SmallVector<mlir::Value> args{rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), llvmPointerType, op.getArgs()[0])};
       auto newValue = createGenericRuntimeCall(rewriter, op, module, callee, llvmPointerType, args);
       if (failed(newValue)) {

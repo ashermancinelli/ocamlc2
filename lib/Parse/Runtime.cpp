@@ -72,6 +72,10 @@ llvm::ArrayRef<RuntimeFunction> RuntimeFunction::getRuntimeFunctions() {
       auto &builder = gen->getBuilder();
       return builder.createCallIntrinsic(loc, "print_float", args, builder.getUnitType())->getResult(0);
     }});
+    rtfs.push_back({"print_int", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
+      auto &builder = gen->getBuilder();
+      return builder.createCallIntrinsic(loc, "print_int", args, builder.getUnitType())->getResult(0);
+    }});
   }
   return rtfs;
 }
