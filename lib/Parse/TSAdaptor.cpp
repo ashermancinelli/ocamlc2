@@ -17,18 +17,6 @@ FailureOr<TSTree *> parseOCaml(const std::string &source) {
   return tree;
 }
 
-FailureOr<std::string> slurpFile(const std::string &path) {
-  std::ifstream file(path);
-  if (!file) {
-    std::cerr << "Failed to open file: " << path << std::endl;
-    exit(1);
-  }
-  
-  std::string contents((std::istreambuf_iterator<char>(file)),
-                       std::istreambuf_iterator<char>());
-  return contents;
-}
-
 void print_node(llvm::raw_ostream &os, TSNode node, std::string source, int indent = 0) {
   std::string indentation = "";
   for (int i = 0; i < indent * 2; ++i) {

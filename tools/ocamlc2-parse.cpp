@@ -7,6 +7,8 @@
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include <tree_sitter/tree-sitter-ocaml.h>
 #include <tree_sitter/api.h>
+#include "ocamlc2/Support/CL.h"
+#include "ocamlc2/Support/Utils.h"
 
 namespace fs = std::filesystem;
 

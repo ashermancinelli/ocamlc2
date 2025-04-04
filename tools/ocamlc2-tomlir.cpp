@@ -31,6 +31,8 @@
 #include "ocamlc2/Parse/MLIRGen.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
 #include "ocamlc2/Dialect/OcamlPasses.h"
+#include "ocamlc2/Support/Utils.h"
+#include "ocamlc2/Support/CL.h"
 
 #include <filesystem>
 #include <iostream>
@@ -50,10 +52,6 @@ static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::init("-"),
                                           cl::value_desc("filename"));
 
-static cl::opt<bool> runGdb("gdb",
-                           cl::desc("Run the program under gdb"),
-                           cl::init(false));
-
 int main(int argc, char **argv) {
   mlir::registerAsmPrinterCLOptions();
   mlir::registerMLIRContextCLOptions();
@@ -61,7 +59,7 @@ int main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "ocamlc2 Ocaml compiler\n");
 
-  if (runGdb) {
+  if (RunGDB) {
     DBGS("Running under gdb\n");
     std::vector<char*> newArgs;
     const char *debugger = "lldb";

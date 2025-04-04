@@ -1,18 +1,35 @@
-#include "ocamlc2/Parse/MLIRGen.h"
 #include "ocamlc2/Parse/AST.h"
+#include "ocamlc2/Parse/MLIRGen2.h"
+#include "ocamlc2/Support/Utils.h"
+#include "ocamlc2/Support/CL.h"
 #include <iostream>
 #include <filesystem>
+#include <memory>
+#include <llvm/Support/CommandLine.h>
+#include <mlir/IR/MLIRContext.h>
+#include <mlir/Pass/PassManager.h>
+#include <mlir/IR/AsmState.h>
+#define DEBUG_TYPE "ocamlc2-parse2"
+#include "ocamlc2/Support/Debug.h.inc"
 
 namespace fs = std::filesystem;
 
+using namespace llvm;
+static cl::opt<std::string> inputFilename(cl::Positional,
+                                          cl::desc("<input ocaml file>"),
+                                          cl::init("-"),
+                                          cl::Required,
+                                          cl::value_desc("filename"));
+
 int main(int argc, char* argv[]) {
-  if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <ocaml-file>" << std::endl;
-    return 1;
-  }
-  fs::path filepath = argv[1];
+  llvm::cl::ParseCommandLineOptions(argc, argv, "ocamlc2-parse2");
+  llvm::outs() << "Debug: " << Debug << "\n";
+  TRACE();
+  fs::path filepath = inputFilename.getValue();
   std::string source = must(slurpFile(filepath));
   auto ast = ocamlc2::parse(source);
-  llvm::outs() << "AST: " << *ast << "\n";
+  DBGS("AST:\n" << *ast << "\n");
+  mlir::MLIRContext context;
+  MLIRGen2 gen(context, std::move(ast));
   return 0;
 }

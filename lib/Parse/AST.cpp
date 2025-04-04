@@ -1,4 +1,5 @@
 #include "ocamlc2/Parse/AST.h"
+#include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include <filesystem>

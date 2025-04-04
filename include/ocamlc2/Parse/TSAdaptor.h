@@ -6,7 +6,6 @@
 
 extern "C" void ts_tree_delete(TSTree *tree);
 FailureOr<TSTree *> parseOCaml(const std::string &source);
-FailureOr<std::string> slurpFile(const std::string &path);
 using Walker = std::function<bool(TSNode)>;
 
 inline std::vector<std::pair<StringRef, TSNode>> childrenNodes(TSNode node) {
