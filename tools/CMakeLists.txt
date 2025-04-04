@@ -2,64 +2,44 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
 
-add_executable(ocamlc2-link ocamlc2-link.cpp)
-target_link_libraries(ocamlc2-link PRIVATE
-    LLVMSupport
-    Support
-)
-set_target_properties(ocamlc2-link PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
+function(add_ocamlc2_tool name)
+    cmake_parse_arguments(ARG "" "LINK_MLIR_LIBS" "" ${ARGN})
+    add_executable(${name} ${name}.cpp)
+    target_link_libraries(${name} PRIVATE
+        LLVMSupport
+        Parse
+        Support
+        MLIRIR
+    )
+    set_target_properties(${name} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    if(ARG_LINK_MLIR_LIBS)
+        target_link_libraries(${name} PRIVATE
+            ${dialect_libs}
+            ${conversion_libs}
+            ${extension_libs}
+            MLIRIR
+            MLIRAsmParser
+            MLIRParser
+            MLIRSCFDialect
+            MLIRFuncDialect
+            MLIRLLVMDialect
+            MLIRCallInterfaces
+            MLIRCastInterfaces
+            MLIRFunctionInterfaces
+            MLIRTransforms
+            MLIRArithToLLVM
+            MLIRFuncToLLVM
+        )
+    endif()
+    install(TARGETS ${name} DESTINATION bin)
+endfunction()
 
-add_executable(ocamlc2-parse2 ocamlc2-parse2.cpp)
-target_link_libraries(ocamlc2-parse2 PRIVATE
-    MLIRIR
-    LLVMSupport
-    Parse
-    Support
-)
-set_target_properties(ocamlc2-parse2 PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-
-add_executable(ocamlc2-parse ocamlc2-parse.cpp)
-target_link_libraries(ocamlc2-parse PRIVATE
-    ${TREESITTER_OCAML_LIBRARY}
-    MLIRIR
-    LLVMSupport
-    Parse
-    Support
-)
-set_target_properties(ocamlc2-parse PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-
-add_executable(ocamlc2-tomlir ocamlc2-tomlir.cpp)
-target_link_libraries(ocamlc2-tomlir PRIVATE
-    ${TREESITTER_OCAML_LIBRARY}
-    ${dialect_libs}
-    ${conversion_libs}
-    ${extension_libs}
-    MLIRIR
-    MLIRAsmParser
-    MLIRParser
-    MLIRSCFDialect
-    MLIRFuncDialect
-    MLIRLLVMDialect
-    MLIRCallInterfaces
-    MLIRCastInterfaces
-    MLIRFunctionInterfaces
-    MLIRTransforms
-    MLIRArithToLLVM
-    MLIRFuncToLLVM
-    LLVMSupport
-    Parse
-    Support
-    MLIROcaml
-)
-set_target_properties(ocamlc2-tomlir PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
+add_ocamlc2_tool(ocamlc2-link ocamlc2-link.cpp LINK_MLIR_LIBS)
+add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp LINK_MLIR_LIBS)
+add_ocamlc2_tool(ocamlc2-tomlir ocamlc2-tomlir.cpp LINK_MLIR_LIBS)
+add_ocamlc2_tool(ocamlc2-parse ocamlc2-parse.cpp LINK_MLIR_LIBS)
 
 # Copy the 'c' script to binary directory
 add_custom_command(

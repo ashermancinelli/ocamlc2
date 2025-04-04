@@ -1,6 +1,7 @@
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/LLVMCommon.h"
+#include "ocamlc2/Support/Colors.h"
 #include "ocamlc2/Parse/TSAdaptor.h"
 #include <filesystem>
 #include <iostream>
@@ -10,6 +11,9 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+
+#define DEBUG_TYPE "ast"
+#include "ocamlc2/Support/Debug.h.inc"
 
 using namespace ocamlc2;
 namespace fs = std::filesystem;
@@ -25,9 +29,11 @@ void dumpTSNode(TSNode node, const TSTreeAdaptor &adaptor, int indent = 0) {
   if (text.find('\n') != std::string::npos) {
     text = "<multiline>";
   }
-  
-  std::cerr << indentation << "Node: " << nodeType << " - '" << text << "'" << std::endl;
-  
+
+  std::cerr << indentation << ANSIColors::cyan << nodeType << ANSIColors::reset
+            << ": " << ANSIColors::italic << text << ANSIColors::reset
+            << std::endl;
+
   uint32_t childCount = ts_node_child_count(node);
   for (uint32_t i = 0; i < childCount; ++i) {
     TSNode child = ts_node_child(node, i);
@@ -104,6 +110,8 @@ std::unordered_map<std::string, std::string> operatorMap = {
 std::unique_ptr<ASTNode> ocamlc2::parse(const std::string &source) {
   TSTreeAdaptor tree("", source);
   TSNode rootNode = ts_tree_root_node(tree);
+  DBGS("Tree-sitter parse tree:\n");
+  DBG(dumpTSNode(rootNode, tree));
   return convertNode(rootNode, tree);
 }
 
@@ -114,8 +122,8 @@ std::unique_ptr<ASTNode> parse(const fs::path &filepath) {
   TSNode rootNode = ts_tree_root_node(tree);
   
   // Uncomment for detailed debugging
-  // std::cerr << "Tree-sitter parse tree:" << std::endl;
-  // dumpTSNode(rootNode, tree);
+  DBGS("Tree-sitter parse tree:\n");
+  DBG(dumpTSNode(rootNode, tree));
   
   return convertNode(rootNode, tree);
 }
@@ -220,8 +228,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
   // Log warning for truly unsupported node types
   if (knownNodeTypes.find(std::string(nodeType)) == knownNodeTypes.end()) {
     std::cerr << "Warning: Unsupported node type: " << nodeType << std::endl;
-    // Uncomment for debugging specific problematic nodes
-    // dumpTSNode(node, adaptor);
+    DBGS("Unsupported node type: " << nodeType << "\n");
+    DBG(dumpTSNode(node, adaptor));
   }
   
   return nullptr;
@@ -805,11 +813,12 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent = 0);
 // Helper to print indentation
 void printIndent(llvm::raw_ostream &os, int indent) {
   for (int i = 0; i < indent; ++i) {
-    os << "  ";
+    os << ANSIColors::faint << "| " << ANSIColors::reset;
   }
 }
 
 llvm::raw_ostream& ocamlc2::operator<<(llvm::raw_ostream &os, const ASTNode &node) {
+  os << ANSIColors::reset;
   dumpASTNode(os, &node);
   return os;
 }

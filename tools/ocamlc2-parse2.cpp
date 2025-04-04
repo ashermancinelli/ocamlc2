@@ -6,9 +6,6 @@
 #include <filesystem>
 #include <memory>
 #include <llvm/Support/CommandLine.h>
-#include <mlir/IR/MLIRContext.h>
-#include <mlir/Pass/PassManager.h>
-#include <mlir/IR/AsmState.h>
 #define DEBUG_TYPE "ocamlc2-parse2"
 #include "ocamlc2/Support/Debug.h.inc"
 
@@ -29,7 +26,5 @@ int main(int argc, char* argv[]) {
   std::string source = must(slurpFile(filepath));
   auto ast = ocamlc2::parse(source);
   DBGS("AST:\n" << *ast << "\n");
-  mlir::MLIRContext context;
-  MLIRGen2 gen(context, std::move(ast));
   return 0;
 }
