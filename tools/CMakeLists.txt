@@ -1,9 +1,11 @@
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+set(MLIR_LIBS ${dialect_libs} ${conversion_libs} ${extension_libs} MLIRIR MLIRAsmParser MLIRParser MLIRSCFDialect MLIRFuncDialect MLIRLLVMDialect MLIRCallInterfaces MLIRCastInterfaces MLIRFunctionInterfaces MLIRTransforms MLIRArithToLLVM MLIRFuncToLLVM)
 
 function(add_ocamlc2_tool name)
-    cmake_parse_arguments(ARG "" "LINK_MLIR_LIBS" "" ${ARGN})
+    message(STATUS "Adding tool: ${name}")
+    cmake_parse_arguments(ARG "LINK_MLIR_LIBS" "" "" ${ARGN})
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE
         LLVMSupport
@@ -15,31 +17,18 @@ function(add_ocamlc2_tool name)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     if(ARG_LINK_MLIR_LIBS)
-        target_link_libraries(${name} PRIVATE
-            ${dialect_libs}
-            ${conversion_libs}
-            ${extension_libs}
-            MLIRIR
-            MLIRAsmParser
-            MLIRParser
-            MLIRSCFDialect
-            MLIRFuncDialect
-            MLIRLLVMDialect
-            MLIRCallInterfaces
-            MLIRCastInterfaces
-            MLIRFunctionInterfaces
-            MLIRTransforms
-            MLIRArithToLLVM
-            MLIRFuncToLLVM
-        )
+        message(STATUS "Linking MLIR libs for tool ${name}")
+        target_link_libraries(${name} PRIVATE ${MLIR_LIBS})
     endif()
     install(TARGETS ${name} DESTINATION bin)
 endfunction()
 
-add_ocamlc2_tool(ocamlc2-link ocamlc2-link.cpp LINK_MLIR_LIBS)
-add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp LINK_MLIR_LIBS)
+add_ocamlc2_tool(ocamlc2-link ocamlc2-link.cpp)
+add_ocamlc2_tool(ocamlc2-parse ocamlc2-parse.cpp)
 add_ocamlc2_tool(ocamlc2-tomlir ocamlc2-tomlir.cpp LINK_MLIR_LIBS)
-add_ocamlc2_tool(ocamlc2-parse ocamlc2-parse.cpp LINK_MLIR_LIBS)
+
+add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp)
+add_ocamlc2_tool(ocamlc2-tomlir2 ocamlc2-tomlir2.cpp LINK_MLIR_LIBS)
 
 # Copy the 'c' script to binary directory
 add_custom_command(

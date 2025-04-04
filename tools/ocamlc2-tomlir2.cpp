@@ -1,12 +1,14 @@
 #include "ocamlc2/Parse/AST.h"
-#include "ocamlc2/Support/Utils.h"
+#include "ocamlc2/Parse/MLIRGen2.h"
 #include "ocamlc2/Support/LLVMCommon.h"
+#include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/CL.h"
+
 #include <iostream>
 #include <filesystem>
 #include <memory>
 #include <llvm/Support/CommandLine.h>
-#define DEBUG_TYPE "ocamlc2-parse2"
+#define DEBUG_TYPE "ocamlc2-tomlir2"
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace fs = std::filesystem;
@@ -19,12 +21,16 @@ static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::value_desc("filename"));
 
 int main(int argc, char* argv[]) {
-  llvm::cl::ParseCommandLineOptions(argc, argv, "ocamlc2-parse2");
-  llvm::outs() << "Debug: " << Debug << "\n";
+  llvm::cl::ParseCommandLineOptions(argc, argv, "ocamlc2-tomlir2");
   TRACE();
   fs::path filepath = inputFilename.getValue();
   std::string source = must(slurpFile(filepath));
   auto ast = ocamlc2::parse(source);
   DBGS("AST:\n" << *ast << "\n");
+  mlir::MLIRContext context;
+  MLIRGen2 gen(context, std::move(ast));
+  auto module = gen.gen();
+  DBGS("Module:\n");
+  llvm::outs() << module->get() << "\n";
   return 0;
 }

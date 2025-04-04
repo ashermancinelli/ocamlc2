@@ -22,7 +22,10 @@ using TypeConstructorScope = llvm::ScopedHashTableScope<llvm::StringRef, TypeCon
 struct MLIRGen2 {
   MLIRGen2(mlir::MLIRContext &context, std::unique_ptr<ocamlc2::ASTNode> compilationUnit) 
     : context(context), compilationUnit(std::move(compilationUnit)) {}
-  llvm::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen();
+  mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen();
+  inline mlir::Location loc(const ocamlc2::ASTNode *node) const {
+    return node->getMLIRLocation(context);
+  }
 private:
   mlir::MLIRContext &context;
   std::unique_ptr<ocamlc2::ASTNode> compilationUnit;

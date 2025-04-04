@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include <llvm/Support/Casting.h>
+#include <mlir/IR/Location.h>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -17,6 +18,11 @@
 
 using namespace ocamlc2;
 namespace fs = std::filesystem;
+
+mlir::Location ASTNode::getMLIRLocation(mlir::MLIRContext &context) const {
+  return mlir::FileLineColLoc::get(&context, loc().filename, loc().line,
+                                   loc().column);
+}
 
 // Debugging functions
 void dumpTSNode(TSNode node, const TSTreeAdaptor &adaptor, int indent = 0) {

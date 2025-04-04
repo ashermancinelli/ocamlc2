@@ -1,6 +1,9 @@
 #include "ocamlc2/Support/Colors.h"
 #ifdef DEBUG_TYPE
-#define DBG(X) X
+#define DBG(X)                                                                 \
+  if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                    \
+    X;                                                                         \
+  }
 #define DBGS(...)                                                              \
   if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                    \
     llvm::errs() << "[" << ANSIColors::blue << DEBUG_TYPE << ":" << __func__   \

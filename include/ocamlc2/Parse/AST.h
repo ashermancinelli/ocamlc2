@@ -6,6 +6,7 @@
 #include <optional>
 #include <variant>
 #include <llvm/Support/raw_ostream.h>
+#include <mlir/IR/Location.h>
 namespace ocamlc2 {
 
 class ASTNode;
@@ -60,6 +61,7 @@ public:
   
   ASTNodeKind getKind() const { return kind; }
   const Location& loc() const { return location; }
+  mlir::Location getMLIRLocation(mlir::MLIRContext &context) const;
 
 private:
   const ASTNodeKind kind;
