@@ -62,6 +62,8 @@ public:
   ASTNodeKind getKind() const { return kind; }
   const Location& loc() const { return location; }
   mlir::Location getMLIRLocation(mlir::MLIRContext &context) const;
+  static llvm::StringRef getName(ASTNodeKind kind);
+  static llvm::StringRef getName(const ASTNode &node);
 
 private:
   const ASTNodeKind kind;
@@ -139,6 +141,8 @@ public:
   
   const ASTNode* getFunction() const { return function.get(); }
   const std::vector<std::unique_ptr<ASTNode>>& getArguments() const { return arguments; }
+  size_t getNumArguments() const { return arguments.size(); }
+  ASTNode *getArgument(size_t index) const { return arguments[index].get(); }
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_Application;

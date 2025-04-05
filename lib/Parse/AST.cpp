@@ -19,6 +19,35 @@
 using namespace ocamlc2;
 namespace fs = std::filesystem;
 
+llvm::StringRef ASTNode::getName(const ASTNode &node) {
+  return getName(node.getKind());
+}
+
+llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
+  switch (kind) {
+    case Node_Number: return "Number";
+    case Node_ValuePath: return "ValuePath";
+    case Node_ConstructorPath: return "ConstructorPath";
+    case Node_TypeConstructorPath: return "TypeConstructorPath";
+    case Node_Application: return "Application";
+    case Node_InfixExpression: return "InfixExpression";
+    case Node_ParenthesizedExpression: return "ParenthesizedExpression";
+    case Node_MatchExpression: return "MatchExpression";
+    case Node_MatchCase: return "MatchCase";
+    case Node_LetBinding: return "LetBinding";
+    case Node_CompilationUnit: return "CompilationUnit";
+    case Node_ValuePattern: return "ValuePattern";
+    case Node_ConstructorPattern: return "ConstructorPattern";
+    case Node_TypedPattern: return "TypedPattern";
+    case Node_TypeDefinition: return "TypeDefinition";
+    case Node_ValueDefinition: return "ValueDefinition";
+    case Node_ExpressionItem: return "ExpressionItem";
+    case Node_TypeBinding: return "TypeBinding";
+    case Node_VariantDeclaration: return "VariantDeclaration";
+    case Node_ConstructorDeclaration: return "ConstructorDeclaration";
+  }
+}
+
 mlir::Location ASTNode::getMLIRLocation(mlir::MLIRContext &context) const {
   return mlir::FileLineColLoc::get(&context, loc().filename, loc().line,
                                    loc().column);

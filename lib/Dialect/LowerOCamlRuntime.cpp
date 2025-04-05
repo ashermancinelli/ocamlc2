@@ -18,7 +18,7 @@
 #include <llvm/Support/LogicalResult.h>
 #include <mlir/IR/BuiltinOps.h>
 
-#define DEBUG_TYPE "ocaml-lower-runtime"
+#define DEBUG_TYPE "lower-runtime"
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace mlir::ocaml {
@@ -136,8 +136,7 @@ public:
     auto fromType = op.getFromType();
     auto toType = op.getToType();
     auto llvmPointerType = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
-    DBGS("fromType: " << fromType << "\n");
-    DBGS("toType: " << toType << "\n");
+    DBGS(op << "\n");
     if (fromType == toType) {
       rewriter.replaceOp(op, op.getInput());
       return success();

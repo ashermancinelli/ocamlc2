@@ -3,6 +3,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Builders.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/ValueRange.h>
 
 namespace mlir::ocaml {
@@ -17,6 +18,16 @@ public:
 
   mlir::Operation *createEmbox(mlir::Location loc, mlir::Value input) {
     return createConvert(loc, input, emboxType(input.getType()));
+  }
+
+  mlir::Operation *createCall(mlir::Location loc, mlir::FunctionType ftype, mlir::ValueRange args) {
+    SmallVector<mlir::Value> convertedArgs;
+    for (auto arg : llvm::enumerate(args)) {
+      convertedArgs.push_back(
+          createConvert(loc, arg.value(), ftype.getInput(arg.index()))
+              ->getResult(0));
+    }
+    return create<mlir::func::CallOp>(loc, ftype, convertedArgs);
   }
 
   mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {

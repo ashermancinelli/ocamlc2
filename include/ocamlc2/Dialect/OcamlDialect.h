@@ -7,6 +7,7 @@
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 
 #include "ocamlc2/Dialect/OcamlDialect.h.inc"
+#include <mlir/Pass/PassManager.h>
 
 #define GET_TYPEDEF_CLASSES
 #include "ocamlc2/Dialect/OcamlTypes.h.inc"
@@ -18,4 +19,9 @@ namespace mlir::ocaml {
   inline bool isa_box_type(mlir::Type type) {
     return isa<BoxType, OpaqueBoxType, StringType, UnitType>(type);
   }
+
+  void setupRegistry(mlir::DialectRegistry &registry);
+  void setupContext(mlir::MLIRContext &context);
+  void setupDefaultPipeline(mlir::PassManager &pm);
+  void setupCodegenPipeline(mlir::PassManager &pm);
 }

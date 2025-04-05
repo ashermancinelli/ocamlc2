@@ -6,9 +6,10 @@
   }
 #define DBGS(...)                                                              \
   if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                    \
-    llvm::errs() << "[" << ANSIColors::blue << DEBUG_TYPE << ":" << __func__   \
-                 << ":" << __LINE__ << ANSIColors::reset << "]" << " "         \
-                 << ANSIColors::italic << __VA_ARGS__ << ANSIColors::reset;    \
+    llvm::errs() << "[" << ANSIColors::blue << DEBUG_TYPE << ":"               \
+                 << __PRETTY_FUNCTION__ << ":" << __LINE__                     \
+                 << ANSIColors::reset << "]" << " " << ANSIColors::italic      \
+                 << __VA_ARGS__ << ANSIColors::reset;                          \
   }
 #else
 #error "DEBUG_TYPE is not defined"

@@ -100,6 +100,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::arith::ArithDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
   registry.insert<mlir::ocaml::OcamlDialect>();
+  mlir::ocaml::setupRegistry(registry);
+  mlir::ocaml::setupContext(context);
   context.appendDialectRegistry(registry);
   context.printOpOnDiagnostic(true);
   context.getOrLoadDialect<mlir::ocaml::OcamlDialect>();
