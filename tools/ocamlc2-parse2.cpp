@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
   TRACE();
   fs::path filepath = inputFilename.getValue();
   std::string source = must(slurpFile(filepath));
-  auto ast = ocamlc2::parse(source);
+  auto ast = ocamlc2::parse(source, filepath.string());
   DBGS("AST:\n" << *ast << "\n");
   return 0;
 }

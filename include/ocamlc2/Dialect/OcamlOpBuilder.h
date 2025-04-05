@@ -31,7 +31,7 @@ public:
   }
 
   mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {
-    return create<mlir::ocaml::IntrinsicOp>(loc, getOBoxType(), getStringAttr(callee), args);
+    return create<mlir::ocaml::IntrinsicOp>(loc, getUnitType(), getStringAttr(callee), args);
   }
 
   mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args, mlir::Type resultType) {

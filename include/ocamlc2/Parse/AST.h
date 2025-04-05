@@ -12,7 +12,7 @@ namespace ocamlc2 {
 class ASTNode;
 struct Location;
 
-std::unique_ptr<ASTNode> parse(const std::string &source);
+std::unique_ptr<ASTNode> parse(const std::string &source, const std::string &filename = "<string>");
 llvm::raw_ostream& operator<<(llvm::raw_ostream &os, const ASTNode &node);
 
 /// Location in source code

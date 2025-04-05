@@ -17,6 +17,58 @@
 #include "ocamlc2/Support/Debug.h.inc"
 
 using namespace ocamlc2;
+using InsertionGuard = mlir::ocaml::OcamlOpBuilder::InsertionGuard;
+
+static std::string pathToString(llvm::ArrayRef<std::string> path) {
+  TRACE();
+  assert(path.size() > 0);
+  std::string result = path.front();
+  for (auto &part : llvm::make_range(path.begin() + 1, path.end())) {
+    result += "." + part;
+  }
+  assert(result != "");
+  DBGS(result << "\n");
+  return result;
+}
+
+static mlir::FailureOr<std::string> patternToIdentifier(std::vector<std::string> path) {
+  TRACE();
+  if (path.size() == 0) {
+    return mlir::failure();
+  }
+  return pathToString(path);
+}
+
+static mlir::FailureOr<std::string> patternToIdentifier(ASTNode const& pattern) {
+  TRACE();
+  if (auto *valuePattern = llvm::dyn_cast<ValuePatternAST>(&pattern)) {
+    return valuePattern->getName();
+  }
+  return mlir::failure();
+}
+
+void MLIRGen2::initializeTypeConstructors() {
+  typeConstructors.insert("int", {
+    [](MLIRGen2 &gen, llvm::ArrayRef<mlir::Type> params) {
+      return gen.builder.emboxType(gen.builder.getI64Type());
+    }
+  });
+  typeConstructors.insert("bool", {
+    [](MLIRGen2 &gen, llvm::ArrayRef<mlir::Type> params) {
+      return gen.builder.emboxType(gen.builder.getI1Type());
+    }
+  });
+  typeConstructors.insert("float", {
+    [](MLIRGen2 &gen, llvm::ArrayRef<mlir::Type> params) {
+      return gen.builder.emboxType(gen.builder.getF64Type());
+    }
+  });
+  typeConstructors.insert("unit", {
+    [](MLIRGen2 &gen, llvm::ArrayRef<mlir::Type> params) {
+      return gen.builder.getUnitType();
+    }
+  });
+}
 
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(NumberExprAST const& node) {
   TRACE();
@@ -28,12 +80,24 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(NumberExprAST const& node) {
   return box;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(ValuePathAST const& node) {
+  TRACE();
+  auto name = pathToString(node.getPath());
+  auto value = getVariable(name, loc(&node));
+  if (failed(value)) {
+    return mlir::emitError(loc(&node))
+        << "Variable " << name << " not found";
+  }
+  return value;
+}
+
 static mlir::FailureOr<std::string> getApplicatorName(ASTNode const& node) {
+  TRACE();
   if (auto *path = llvm::dyn_cast<ValuePathAST>(&node)) {
-    return path->getPath().back();
+    return pathToString(path->getPath());
   }
   if (auto *path = llvm::dyn_cast<ConstructorPathAST>(&node)) {
-    return path->getPath().back();
+    return pathToString(path->getPath());
   }
   return mlir::failure();
 }
@@ -56,6 +120,145 @@ mlir::FailureOr<mlir::Value> MLIRGen2::genRuntime(llvm::StringRef name, Applicat
   return mlir::failure();
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen2::declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc) {
+  DBGS("declaring '" << name << "' of type " << value.getType() << "\n");
+  if (variables.count(name)) {
+    return mlir::emitError(loc)
+        << "Variable " << name << " already declared";
+  }
+  variables.insert(name, value);
+  return value;
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::getVariable(llvm::StringRef name, mlir::Location loc) {
+  DBGS(name << "\n");
+  if (not variables.count(name)) {
+    return mlir::emitError(loc)
+        << "Variable " << name << " not declared";
+  }
+  return variables.lookup(name);
+}
+
+mlir::FailureOr<TypeConstructor> MLIRGen2::getTypeConstructor(ASTNode const& node) {
+  TRACE();
+  if (auto *typeConstructorPath = llvm::dyn_cast<TypeConstructorPathAST>(&node)) {
+    auto maybeName = patternToIdentifier(typeConstructorPath->getPath());
+    if (failed(maybeName)) {
+      return mlir::emitError(loc(&node))
+          << "Failed to generate identifier for type constructor: " << pathToString(typeConstructorPath->getPath());
+    }
+    auto name = *maybeName;
+    DBGS("type constructor '" << name << "'\n");
+    if (typeConstructors.count(name)) {
+      return typeConstructors.lookup(name);
+    }
+    return mlir::emitError(loc(&node))
+        << "Type constructor " << name << " not found";
+  }
+  return mlir::failure();
+}
+
+mlir::FailureOr<std::pair<std::vector<std::string>, std::vector<mlir::Type>>>
+MLIRGen2::processParameters(std::vector<std::unique_ptr<ASTNode>> const &parameters) {
+  TRACE();
+  std::vector<std::string> parameterNames;
+  std::vector<mlir::Type> parameterTypes;
+  for (auto &parameter : parameters) {
+    if (auto *typedPattern = llvm::dyn_cast<TypedPatternAST>(parameter.get())) {
+      auto maybeName = patternToIdentifier(*typedPattern->getPattern());
+      if (failed(maybeName)) {
+        return mlir::emitError(loc(parameter.get()))
+            << "Failed to generate identifier for parameter: " << ASTNode::getName(*parameter);
+      }
+      parameterNames.push_back(*maybeName);
+      auto ctor = getTypeConstructor(*typedPattern->getType());
+      if (failed(ctor)) {
+        return mlir::emitError(loc(parameter.get()))
+            << "Failed to generate type constructor for parameter: " << pathToString(typedPattern->getType()->getPath());
+      }
+      parameterTypes.push_back(ctor->constructor(*this, {}));
+      DBGS("parameter '" << *maybeName << "' of type " << parameterTypes.back() << "\n");
+    } else {
+      return mlir::emitError(loc(parameter.get()))
+          << "Unknown parameter type: " << ASTNode::getName(*parameter);
+    }
+  }
+  return std::make_pair(parameterNames, parameterTypes);
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(LetBindingAST const& node) {
+  TRACE();
+  auto location = loc(&node);
+  auto name = node.getName();
+  auto &parameters = node.getParameters();
+  if (parameters.empty()) {
+    // No parameters, just generate the body and assign to the name
+    auto body = gen(*node.getBody());
+    if (mlir::failed(body)) {
+      return mlir::failure();
+    }
+    return declareVariable(name, *body, location);
+  }
+  else {
+    // Function definition
+    mlir::Type returnType;
+    if (node.getReturnType()) {
+      auto ctor = getTypeConstructor(*node.getReturnType());
+      if (failed(ctor)) {
+        return mlir::emitError(loc(&node))
+            << "Failed to generate return type: " << pathToString(node.getReturnType()->getPath());
+      }
+      returnType = ctor->constructor(*this, {});
+    } else {
+      returnType = builder.getUnitType();
+    }
+    auto maybeProcessedParameters = processParameters(parameters);
+    if (mlir::failed(maybeProcessedParameters)) {
+      return mlir::emitError(loc(&node))
+          << "Failed to determine types for parameters for function: " << name;
+    }
+    auto [parameterNames, parameterTypes] = *maybeProcessedParameters;
+    auto functionType = builder.getFunctionType(parameterTypes, returnType);
+    {
+      VariableScope scope(variables);
+      InsertionGuard guard(builder);
+      builder.setInsertionPointToStart(module->getBody());
+      auto function = builder.create<mlir::func::FuncOp>(
+          location, name, functionType);
+      function.setPrivate();
+      auto *entryBlock = function.addEntryBlock();
+      builder.setInsertionPointToStart(entryBlock);
+      assert(entryBlock->getArguments().size() == parameterNames.size());
+      assert(entryBlock->getArguments().size() == parameterTypes.size());
+      for (auto [arg, name, type] : llvm::zip(entryBlock->getArguments(), parameterNames, parameterTypes)) {
+        DBGS("\n" << name << " : " << type << "\n");
+        if (failed(declareVariable(name, arg, location))) {
+          return mlir::emitError(location)
+              << "Failed to declare variable: " << name;
+        }
+      }
+      auto body = gen(*node.getBody());
+      if (mlir::failed(body)) {
+        return mlir::failure();
+      }
+      builder.create<mlir::func::ReturnOp>(location, *body);
+    }
+    DBGS("generated function\n");
+    return mlir::Value{};
+  }
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(ValueDefinitionAST const& node) {
+  TRACE();
+  mlir::FailureOr<mlir::Value> last;
+  for (auto &binding : node.getBindings()) {
+    if (last = gen(*binding); mlir::failed(last)) {
+      return mlir::failure();
+    }
+  }
+  return last;
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ApplicationExprAST const& node) {
   TRACE();
   auto maybeName = getApplicatorName(*node.getFunction());
@@ -64,44 +267,46 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ApplicationExprAST const& node) {
         << "Unknown AST node type: " << ASTNode::getName(node);
   }
   auto name = *maybeName;
+  auto function = module->lookupSymbol<mlir::func::FuncOp>(name);
+  if (function) {
+    auto ftype = function.getFunctionType();
+    (void)ftype;
+    llvm::SmallVector<mlir::Value> args;
+    for (size_t i = 0; i < node.getNumArguments(); ++i) {
+      auto arg = gen(*node.getArgument(i));
+      if (mlir::failed(arg)) {
+        return mlir::emitError(loc(&node))
+            << "Failed to generate argument " << i << " for applicator " << name;
+      }
+      args.push_back(*arg);
+    }
+    return builder.create<mlir::func::CallOp>(loc(&node), function, args)->getResult(0);
+    // return builder.createCall(loc(&node), ftype, args)->getResult(0);
+  }
 
   if (auto runtimeCall = genRuntime(name, node); succeeded(runtimeCall)) {
     return runtimeCall;
   }
 
-  auto function = module->lookupSymbol<mlir::func::FuncOp>(name);
-  if (!function) {
-    return mlir::emitError(loc(&node))
-        << "Applicator " << name << " not found";
-  }
-  auto ftype = function.getFunctionType();
-  llvm::SmallVector<mlir::Value> args;
-  for (size_t i = 0; i < node.getNumArguments(); ++i) {
-    auto arg = gen(*node.getArgument(i));
-    if (mlir::failed(arg)) {
-      return mlir::emitError(loc(&node))
-          << "Failed to generate argument " << i << " for applicator " << name;
-    }
-    args.push_back(*arg);
-  }
-  return builder.createCall(loc(&node), ftype, args)->getResult(0);
+  return mlir::emitError(loc(&node))
+      << "Applicator " << name << " not found and is not a know builtin";
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
+  TRACE();
   if (auto *exprItem = llvm::dyn_cast<ExpressionItemAST>(&node)) {
     return gen(*exprItem);
-  }
-  else if (auto *valueDef = llvm::dyn_cast<ValueDefinitionAST>(&node)) {
+  } else if (auto *valueDef = llvm::dyn_cast<ValueDefinitionAST>(&node)) {
     return gen(*valueDef);
-  }
-  else if (auto *application = llvm::dyn_cast<ApplicationExprAST>(&node)) {
+  } else if (auto *application = llvm::dyn_cast<ApplicationExprAST>(&node)) {
     return gen(*application);
-  }
-  else if (auto *number = llvm::dyn_cast<NumberExprAST>(&node)) {
+  } else if (auto *number = llvm::dyn_cast<NumberExprAST>(&node)) {
     return gen(*number);
+  } else if (auto *valuePath = llvm::dyn_cast<ValuePathAST>(&node)) {
+    return gen(*valuePath);
   }
-  DBGS("Unknown AST node type: " << ASTNode::getName(node) << "\n");
-  return mlir::failure();
+  return mlir::emitError(loc(&node))
+      << "Unknown AST node type: " << ASTNode::getName(node);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ExpressionItemAST const& node) {
@@ -111,6 +316,9 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ExpressionItemAST const& node) {
 
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(CompilationUnitAST const& node) {
   TRACE();
+  VariableScope scope(variables);
+  TypeConstructorScope typeConstructorScope(typeConstructors);
+  initializeTypeConstructors();
   mlir::Location l = loc(&node);
   mlir::FunctionType mainFuncType =
       builder.getFunctionType({}, {builder.getI32Type()});

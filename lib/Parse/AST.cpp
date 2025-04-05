@@ -142,8 +142,8 @@ std::unordered_map<std::string, std::string> operatorMap = {
     {"equal_operator", "="}
 };
 
-std::unique_ptr<ASTNode> ocamlc2::parse(const std::string &source) {
-  TSTreeAdaptor tree("", source);
+std::unique_ptr<ASTNode> ocamlc2::parse(const std::string &source, const std::string &filename) {
+  TSTreeAdaptor tree(filename, source);
   TSNode rootNode = ts_tree_root_node(tree);
   DBGS("Tree-sitter parse tree:\n");
   DBG(dumpTSNode(rootNode, tree));
