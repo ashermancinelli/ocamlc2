@@ -33,6 +33,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_InfixExpression: return "InfixExpression";
     case Node_ParenthesizedExpression: return "ParenthesizedExpression";
     case Node_MatchExpression: return "MatchExpression";
+    case Node_ForExpression: return "ForExpression";
     case Node_MatchCase: return "MatchCase";
     case Node_LetBinding: return "LetBinding";
     case Node_CompilationUnit: return "CompilationUnit";
@@ -87,6 +88,7 @@ std::unique_ptr<InfixExpressionAST> convertInfixExpr(TSNode node, const TSTreeAd
 std::unique_ptr<ParenthesizedExpressionAST> convertParenthesizedExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<MatchExpressionAST> convertMatchExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<MatchCaseAST> convertMatchCase(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ValuePatternAST> convertValuePattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ConstructorPatternAST> convertConstructorPattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<TypedPatternAST> convertTypedPattern(TSNode node, const TSTreeAdaptor &adaptor);
@@ -109,8 +111,9 @@ std::unordered_set<std::string> knownNodeTypes = {
     "constructor_declaration", "let_binding", "value_name", "type_constructor",
     "constructor_name", "add_operator", "subtract_operator", "multiply_operator",
     "division_operator", "concat_operator", "and_operator", "or_operator",
-    "equal_operator", "parameter", "field_get_expression", ";", ";;", "(",
-    ")", ":", "=", "->", "|", "of", "with", "match", "type", "let"
+    "equal_operator", "parameter", "field_get_expression", "for_expression", 
+    ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
+    "do", "done", "to", "downto"
 };
 
 // Helper functions
@@ -145,22 +148,19 @@ std::unordered_map<std::string, std::string> operatorMap = {
 std::unique_ptr<ASTNode> ocamlc2::parse(const std::string &source, const std::string &filename) {
   TSTreeAdaptor tree(filename, source);
   TSNode rootNode = ts_tree_root_node(tree);
+  
+  // Debug the tree-sitter parse tree if debug is enabled
   DBGS("Tree-sitter parse tree:\n");
   DBG(dumpTSNode(rootNode, tree));
+  
   return convertNode(rootNode, tree);
 }
 
-std::unique_ptr<ASTNode> parse(const fs::path &filepath) {
+std::unique_ptr<ASTNode> ocamlc2::parse(const std::filesystem::path &filepath) {
   assert(fs::exists(filepath) && "File does not exist");
   std::string source = must(slurpFile(filepath.string()));
-  TSTreeAdaptor tree(filepath.string(), source);
-  TSNode rootNode = ts_tree_root_node(tree);
   
-  // Uncomment for detailed debugging
-  DBGS("Tree-sitter parse tree:\n");
-  DBG(dumpTSNode(rootNode, tree));
-  
-  return convertNode(rootNode, tree);
+  return parse(source, filepath.string());
 }
 
 std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) {
@@ -191,6 +191,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertMatchExpr(node, adaptor);
   else if (type == "match_case")
     return convertMatchCase(node, adaptor);
+  else if (type == "for_expression")
+    return convertForExpr(node, adaptor);
   else if (type == "value_pattern")
     return convertValuePattern(node, adaptor);
   else if (type == "constructor_pattern")
@@ -842,6 +844,68 @@ std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TS
   );
 }
 
+std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  if (std::string(nodeType) != "for_expression") {
+    return nullptr;
+  }
+  
+  auto children = childrenNodes(node);
+  std::string loopVar;
+  std::unique_ptr<ASTNode> startExpr = nullptr;
+  std::unique_ptr<ASTNode> endExpr = nullptr;
+  std::unique_ptr<ASTNode> body = nullptr;
+  bool isDownto = false;
+  
+  for (auto [type, child] : children) {
+    if (type == "for") {
+      continue; // Skip "for" keyword
+    } else if (type == "value_pattern") {
+      // Loop variable (i)
+      loopVar = getNodeText(child, adaptor);
+    } else if (type == "=") {
+      continue; // Skip "=" token
+    } else if (type == "to" || type == "downto") {
+      isDownto = (type == "downto");
+      continue;
+    } else if (type == "number" && !startExpr) {
+      // Start expression (0)
+      startExpr = convertNumber(child, adaptor);
+    } else if (type == "number" && startExpr && !endExpr) {
+      // End expression (5) 
+      endExpr = convertNumber(child, adaptor);
+    } else if (type == "do_clause") {
+      // Body is inside do_clause
+      auto doChildren = childrenNodes(child);
+      for (auto [doType, doChild] : doChildren) {
+        if (doType != "do" && doType != "done") {
+          body = convertNode(doChild, adaptor);
+          break;
+        }
+      }
+    }
+  }
+  
+  if (loopVar.empty() || !startExpr || !endExpr || !body) {
+    // Log what we found for debugging
+    DBGS("Failed to parse for_expression: \n");
+    if (loopVar.empty()) DBGS("  Missing loop variable\n");
+    if (!startExpr) DBGS("  Missing start expression\n");
+    if (!endExpr) DBGS("  Missing end expression\n");
+    if (!body) DBGS("  Missing body\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<ForExpressionAST>(
+    getLocation(node, adaptor),
+    std::move(loopVar),
+    std::move(startExpr),
+    std::move(endExpr),
+    std::move(body),
+    isDownto
+  );
+}
+
 // AST Dump Implementation
 void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent = 0);
 
@@ -950,6 +1014,21 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       for (const auto &matchCase : match->getCases()) {
         dumpASTNode(os, matchCase.get(), indent + 2);
       }
+      break;
+    }
+    case ASTNode::Node_ForExpression: {
+      auto *forExpr = static_cast<const ForExpressionAST*>(node);
+      os << "ForExpr: " << forExpr->getLoopVar() << " = ";
+      os << (forExpr->getIsDownto() ? "downto" : "to") << "\n";
+      printIndent(os, indent + 1);
+      os << "Start:\n";
+      dumpASTNode(os, forExpr->getStartExpr(), indent + 2);
+      printIndent(os, indent + 1);
+      os << "End:\n";
+      dumpASTNode(os, forExpr->getEndExpr(), indent + 2);
+      printIndent(os, indent + 1);
+      os << "Body:\n";
+      dumpASTNode(os, forExpr->getBody(), indent + 2);
       break;
     }
     case ASTNode::Node_MatchCase: {

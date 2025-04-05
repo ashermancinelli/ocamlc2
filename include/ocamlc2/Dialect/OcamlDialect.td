@@ -85,6 +85,15 @@ def AnyBoxType : TypeConstraint<CPred<"mlir::isa<mlir::ocaml::BoxType, mlir::oca
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
 
+def Ocaml_UnitOp : Ocaml_Op<"unit"> {
+  let summary = "OCaml unit";
+  let description = "OCaml unit";
+  let arguments = (ins);
+  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
+  let results = (outs Ocaml_UnitType:$result);
+  let assemblyFormat = "attr-dict";
+}
+
 def Ocaml_IntrinsicOp : Ocaml_Op<"builtin"> {
   let summary = "OCaml intrinsic";
   let description = "OCaml intrinsic";

@@ -7,12 +7,14 @@
 #include <variant>
 #include <llvm/Support/raw_ostream.h>
 #include <mlir/IR/Location.h>
+#include <filesystem>
 namespace ocamlc2 {
 
 class ASTNode;
 struct Location;
 
 std::unique_ptr<ASTNode> parse(const std::string &source, const std::string &filename = "<string>");
+std::unique_ptr<ASTNode> parse(const std::filesystem::path &filepath);
 llvm::raw_ostream& operator<<(llvm::raw_ostream &os, const ASTNode &node);
 
 /// Location in source code
@@ -34,6 +36,7 @@ public:
     Node_InfixExpression,
     Node_ParenthesizedExpression,
     Node_MatchExpression,
+    Node_ForExpression,
     
     // Patterns
     Node_ValuePattern,
@@ -218,6 +221,37 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_MatchExpression;
+  }
+};
+
+/// For expression (e.g., for i = 1 to 10 do ... done)
+class ForExpressionAST : public ASTNode {
+  std::string loopVar;
+  std::unique_ptr<ASTNode> startExpr;
+  std::unique_ptr<ASTNode> endExpr;
+  std::unique_ptr<ASTNode> body;
+  bool isDownto;  // true if it's a downto loop (for i = 10 downto 1), false for upto (for i = 1 to 10)
+public:
+  ForExpressionAST(Location loc, std::string loopVar,
+                  std::unique_ptr<ASTNode> startExpr,
+                  std::unique_ptr<ASTNode> endExpr,
+                  std::unique_ptr<ASTNode> body,
+                  bool isDownto = false)
+    : ASTNode(Node_ForExpression, std::move(loc)),
+      loopVar(std::move(loopVar)),
+      startExpr(std::move(startExpr)),
+      endExpr(std::move(endExpr)),
+      body(std::move(body)),
+      isDownto(isDownto) {}
+  
+  const std::string& getLoopVar() const { return loopVar; }
+  const ASTNode* getStartExpr() const { return startExpr.get(); }
+  const ASTNode* getEndExpr() const { return endExpr.get(); }
+  const ASTNode* getBody() const { return body.get(); }
+  bool getIsDownto() const { return isDownto; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ForExpression;
   }
 };
 

@@ -4,6 +4,7 @@
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
@@ -289,6 +290,44 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ApplicationExprAST const& node) {
       << "Applicator " << name << " not found and is not a know builtin";
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(ForExpressionAST const& node) {
+  TRACE();
+  auto location = loc(&node);
+  auto loopVar = node.getLoopVar();
+  auto startExpr = gen(*node.getStartExpr());
+  auto endExpr = gen(*node.getEndExpr());
+
+  if (mlir::failed(startExpr) || mlir::failed(endExpr)) {
+    return mlir::emitError(location)
+        << "Failed to generate start or end expression for for loop";
+  }
+  auto step = builder
+                  .create<mlir::arith::ConstantIntOp>(
+                      location, node.getIsDownto() ? -1 : 1, 64)
+                  .getResult();
+  auto startOp =
+      builder.createConvert(location, *startExpr, builder.getI64Type())
+          ->getResult(0);
+  auto endOp = builder.createConvert(location, *endExpr, builder.getI64Type())
+                   ->getResult(0);
+  auto forOp = builder.create<mlir::scf::ForOp>(location, startOp, endOp, step);
+  {
+    InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(forOp.getBody());
+    auto iterVar = forOp.getInductionVar();
+    if (failed(declareVariable(loopVar, iterVar, location))) {
+      return mlir::emitError(location)
+          << "Failed to declare loop variable: " << loopVar;
+    }
+
+    auto body = gen(*node.getBody());
+    if (mlir::failed(body)) {
+      return mlir::failure();
+    }
+  }
+  return mlir::Value{};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
   TRACE();
   if (auto *exprItem = llvm::dyn_cast<ExpressionItemAST>(&node)) {
@@ -301,6 +340,8 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
     return gen(*number);
   } else if (auto *valuePath = llvm::dyn_cast<ValuePathAST>(&node)) {
     return gen(*valuePath);
+  } else if (auto *forExpr = llvm::dyn_cast<ForExpressionAST>(&node)) {
+    return gen(*forExpr);
   }
   return mlir::emitError(loc(&node))
       << "Unknown AST node type: " << ASTNode::getName(node);
