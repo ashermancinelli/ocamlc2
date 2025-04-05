@@ -38,10 +38,12 @@ struct MLIRGen2 {
   mlir::FailureOr<mlir::Value> gen(ocamlc2::LetBindingAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ValuePathAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ForExpressionAST const& node);
+  mlir::FailureOr<mlir::Value> gen(ocamlc2::LetExpressionAST const& node);
 
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
   mlir::FailureOr<TypeConstructor> getTypeConstructor(ocamlc2::ASTNode const& node);
+  mlir::FailureOr<std::string> getApplicatorName(ocamlc2::ASTNode const& node);
 
   // have to figure out the mlir type associated with the parameter name
   // if we are able to.

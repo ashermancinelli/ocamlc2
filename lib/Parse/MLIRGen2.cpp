@@ -23,13 +23,15 @@ using InsertionGuard = mlir::ocaml::OcamlOpBuilder::InsertionGuard;
 static std::string pathToString(llvm::ArrayRef<std::string> path) {
   TRACE();
   assert(path.size() > 0);
+  static std::set<std::string> savedStrings;
   std::string result = path.front();
   for (auto &part : llvm::make_range(path.begin() + 1, path.end())) {
     result += "." + part;
   }
   assert(result != "");
   DBGS(result << "\n");
-  return result;
+  auto [iterator, _] = savedStrings.insert(std::move(result));
+  return *iterator;
 }
 
 static mlir::FailureOr<std::string> patternToIdentifier(std::vector<std::string> path) {
@@ -87,12 +89,12 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ValuePathAST const& node) {
   auto value = getVariable(name, loc(&node));
   if (failed(value)) {
     return mlir::emitError(loc(&node))
-        << "Variable " << name << " not found";
+        << "Variable '" << name << "' not found";
   }
   return value;
 }
 
-static mlir::FailureOr<std::string> getApplicatorName(ASTNode const& node) {
+mlir::FailureOr<std::string> MLIRGen2::getApplicatorName(ASTNode const& node) {
   TRACE();
   if (auto *path = llvm::dyn_cast<ValuePathAST>(&node)) {
     return pathToString(path->getPath());
@@ -100,7 +102,8 @@ static mlir::FailureOr<std::string> getApplicatorName(ASTNode const& node) {
   if (auto *path = llvm::dyn_cast<ConstructorPathAST>(&node)) {
     return pathToString(path->getPath());
   }
-  return mlir::failure();
+  return mlir::emitError(loc(&node))
+      << "Unknown AST node type: " << ASTNode::getName(node);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen2::genRuntime(llvm::StringRef name, ApplicationExprAST const& node) {
@@ -122,12 +125,14 @@ mlir::FailureOr<mlir::Value> MLIRGen2::genRuntime(llvm::StringRef name, Applicat
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen2::declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc) {
+  static std::set<std::string> savedNames;
+  auto [iterator, _] = savedNames.insert(std::string(name));
   DBGS("declaring '" << name << "' of type " << value.getType() << "\n");
-  if (variables.count(name)) {
+  if (variables.count(*iterator)) {
     return mlir::emitError(loc)
-        << "Variable " << name << " already declared";
+        << "Variable '" << name << "' already declared";
   }
-  variables.insert(name, value);
+  variables.insert(*iterator, value);
   return value;
 }
 
@@ -135,7 +140,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::getVariable(llvm::StringRef name, mlir::L
   DBGS(name << "\n");
   if (not variables.count(name)) {
     return mlir::emitError(loc)
-        << "Variable " << name << " not declared";
+        << "Variable '" << name << "' not declared";
   }
   return variables.lookup(name);
 }
@@ -191,6 +196,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(LetBindingAST const& node) {
   TRACE();
   auto location = loc(&node);
   auto name = node.getName();
+  DBGS("let binding '" << name << "'\n");
   auto &parameters = node.getParameters();
   if (parameters.empty()) {
     // No parameters, just generate the body and assign to the name
@@ -328,6 +334,25 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ForExpressionAST const& node) {
   return mlir::Value{};
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(LetExpressionAST const& node) {
+  TRACE();
+  VariableScope scope(variables);
+  auto location = loc(&node);
+  assert(node.getBinding());
+  assert(node.getBody());
+  auto binding = gen(*node.getBinding());
+  if (mlir::failed(binding)) {
+    return mlir::emitError(location)
+        << "Failed to generate binding for let expression";
+  }
+  auto body = gen(*node.getBody());
+  if (mlir::failed(body)) {
+    return mlir::emitError(location)
+        << "Failed to generate body for let expression";
+  }
+  return *body;
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
   TRACE();
   if (auto *exprItem = llvm::dyn_cast<ExpressionItemAST>(&node)) {
@@ -342,6 +367,8 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
     return gen(*valuePath);
   } else if (auto *forExpr = llvm::dyn_cast<ForExpressionAST>(&node)) {
     return gen(*forExpr);
+  } else if (auto *letExpr = llvm::dyn_cast<LetExpressionAST>(&node)) {
+    return gen(*letExpr);
   }
   return mlir::emitError(loc(&node))
       << "Unknown AST node type: " << ASTNode::getName(node);

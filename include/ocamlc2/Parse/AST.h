@@ -37,6 +37,7 @@ public:
     Node_ParenthesizedExpression,
     Node_MatchExpression,
     Node_ForExpression,
+    Node_LetExpression,
     
     // Patterns
     Node_ValuePattern,
@@ -252,6 +253,25 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_ForExpression;
+  }
+};
+
+/// Let expression (e.g., let x = 1 in ...)
+class LetExpressionAST : public ASTNode {
+  std::unique_ptr<ASTNode> binding;
+  std::unique_ptr<ASTNode> body;
+public:
+  LetExpressionAST(Location loc, std::unique_ptr<ASTNode> binding,
+                  std::unique_ptr<ASTNode> body)
+    : ASTNode(Node_LetExpression, std::move(loc)),
+      binding(std::move(binding)),
+      body(std::move(body)) {}
+  
+  const ASTNode* getBinding() const { return binding.get(); }
+  const ASTNode* getBody() const { return body.get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_LetExpression;
   }
 };
 

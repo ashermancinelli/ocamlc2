@@ -34,6 +34,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_ParenthesizedExpression: return "ParenthesizedExpression";
     case Node_MatchExpression: return "MatchExpression";
     case Node_ForExpression: return "ForExpression";
+    case Node_LetExpression: return "LetExpression";
     case Node_MatchCase: return "MatchCase";
     case Node_LetBinding: return "LetBinding";
     case Node_CompilationUnit: return "CompilationUnit";
@@ -89,6 +90,7 @@ std::unique_ptr<ParenthesizedExpressionAST> convertParenthesizedExpr(TSNode node
 std::unique_ptr<MatchExpressionAST> convertMatchExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<MatchCaseAST> convertMatchCase(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ValuePatternAST> convertValuePattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ConstructorPatternAST> convertConstructorPattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<TypedPatternAST> convertTypedPattern(TSNode node, const TSTreeAdaptor &adaptor);
@@ -112,6 +114,7 @@ std::unordered_set<std::string> knownNodeTypes = {
     "constructor_name", "add_operator", "subtract_operator", "multiply_operator",
     "division_operator", "concat_operator", "and_operator", "or_operator",
     "equal_operator", "parameter", "field_get_expression", "for_expression", 
+    "let_expression", "in",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
     "do", "done", "to", "downto"
 };
@@ -193,6 +196,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertMatchCase(node, adaptor);
   else if (type == "for_expression")
     return convertForExpr(node, adaptor);
+  else if (type == "let_expression")
+    return convertLetExpr(node, adaptor);
   else if (type == "value_pattern")
     return convertValuePattern(node, adaptor);
   else if (type == "constructor_pattern")
@@ -868,12 +873,12 @@ std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdapto
     } else if (type == "to" || type == "downto") {
       isDownto = (type == "downto");
       continue;
-    } else if (type == "number" && !startExpr) {
-      // Start expression (0)
-      startExpr = convertNumber(child, adaptor);
-    } else if (type == "number" && startExpr && !endExpr) {
-      // End expression (5) 
-      endExpr = convertNumber(child, adaptor);
+    } else if ((type == "number" || type == "value_path") && !startExpr) {
+      // Start expression - can be a number or variable
+      startExpr = convertNode(child, adaptor);
+    } else if ((type == "number" || type == "value_path") && startExpr && !endExpr) {
+      // End expression - can be a number or variable
+      endExpr = convertNode(child, adaptor);
     } else if (type == "do_clause") {
       // Body is inside do_clause
       auto doChildren = childrenNodes(child);
@@ -903,6 +908,45 @@ std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdapto
     std::move(endExpr),
     std::move(body),
     isDownto
+  );
+}
+
+std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  if (std::string(nodeType) != "let_expression") {
+    return nullptr;
+  }
+  
+  auto children = childrenNodes(node);
+  std::unique_ptr<ASTNode> binding = nullptr;
+  std::unique_ptr<ASTNode> body = nullptr;
+  
+  for (auto [type, child] : children) {
+    if (type == "value_definition") {
+      binding = convertValueDefinition(child, adaptor);
+    } else if (type == "in") {
+      // Skip the 'in' token
+      continue;
+    } else if (!binding) {
+      // Skip anything before the binding
+      continue;
+    } else if (!body) {
+      // This should be the body (anything after 'in')
+      body = convertNode(child, adaptor);
+    }
+  }
+  
+  if (!binding || !body) {
+    DBGS("Failed to parse let_expression:\n");
+    if (!binding) DBGS("  Missing binding\n");
+    if (!body) DBGS("  Missing body\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<LetExpressionAST>(
+    getLocation(node, adaptor),
+    std::move(binding),
+    std::move(body)
   );
 }
 
@@ -1151,6 +1195,17 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       for (const auto &item : unit->getItems()) {
         dumpASTNode(os, item.get(), indent + 1);
       }
+      break;
+    }
+    case ASTNode::Node_LetExpression: {
+      auto *letExpr = static_cast<const LetExpressionAST*>(node);
+      os << "LetExpr:\n";
+      printIndent(os, indent + 1);
+      os << "Binding:\n";
+      dumpASTNode(os, letExpr->getBinding(), indent + 2);
+      printIndent(os, indent + 1);
+      os << "Body:\n";
+      dumpASTNode(os, letExpr->getBody(), indent + 2);
       break;
     }
   }
