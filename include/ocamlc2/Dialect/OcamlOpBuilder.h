@@ -20,14 +20,15 @@ public:
     return createConvert(loc, input, emboxType(input.getType()));
   }
 
-  mlir::Operation *createCall(mlir::Location loc, mlir::FunctionType ftype, mlir::ValueRange args) {
+  mlir::Operation *createCall(mlir::Location loc, func::FuncOp function, mlir::ValueRange args) {
     SmallVector<mlir::Value> convertedArgs;
+    auto ftype = function.getFunctionType();
     for (auto arg : llvm::enumerate(args)) {
       convertedArgs.push_back(
           createConvert(loc, arg.value(), ftype.getInput(arg.index()))
               ->getResult(0));
     }
-    return create<mlir::func::CallOp>(loc, ftype, convertedArgs);
+    return create<mlir::func::CallOp>(loc, function, convertedArgs);
   }
 
   mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {

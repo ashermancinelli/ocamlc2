@@ -269,19 +269,16 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ApplicationExprAST const& node) {
   auto name = *maybeName;
   auto function = module->lookupSymbol<mlir::func::FuncOp>(name);
   if (function) {
-    auto ftype = function.getFunctionType();
-    (void)ftype;
     llvm::SmallVector<mlir::Value> args;
     for (size_t i = 0; i < node.getNumArguments(); ++i) {
-      auto arg = gen(*node.getArgument(i));
-      if (mlir::failed(arg)) {
+      if (auto arg = gen(*node.getArgument(i)); succeeded(arg)) {
+        args.push_back(*arg);
+      } else {
         return mlir::emitError(loc(&node))
             << "Failed to generate argument " << i << " for applicator " << name;
       }
-      args.push_back(*arg);
     }
-    return builder.create<mlir::func::CallOp>(loc(&node), function, args)->getResult(0);
-    // return builder.createCall(loc(&node), ftype, args)->getResult(0);
+    return builder.createCall(loc(&node), function, args)->getResult(0);
   }
 
   if (auto runtimeCall = genRuntime(name, node); succeeded(runtimeCall)) {
