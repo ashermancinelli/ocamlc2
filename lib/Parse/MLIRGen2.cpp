@@ -145,6 +145,27 @@ mlir::FailureOr<mlir::Value> MLIRGen2::getVariable(llvm::StringRef name, mlir::L
   return variables.lookup(name);
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(ParenthesizedExpressionAST const& node) {
+  TRACE();
+  return gen(*node.getExpression());
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(InfixExpressionAST const& node) {
+  TRACE();
+  auto rhs = gen(*node.getRHS());
+  if (mlir::failed(rhs)) {
+    return mlir::emitError(loc(&node))
+        << "Failed to generate right hand side of infix expression '" << node.getOperator() << "'";
+  }
+  auto lhs = gen(*node.getLHS());
+  if (mlir::failed(lhs)) {
+    return mlir::emitError(loc(&node))
+        << "Failed to generate left hand side of infix expression '" << node.getOperator() << "'";
+  }
+  // auto op = builder.createInfix(loc(&node), *lhs, node.getOperator(), *rhs);
+  return lhs;
+}
+
 mlir::FailureOr<TypeConstructor> MLIRGen2::getTypeConstructor(ASTNode const& node) {
   TRACE();
   if (auto *typeConstructorPath = llvm::dyn_cast<TypeConstructorPathAST>(&node)) {
@@ -369,6 +390,10 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
     return gen(*forExpr);
   } else if (auto *letExpr = llvm::dyn_cast<LetExpressionAST>(&node)) {
     return gen(*letExpr);
+  } else if (auto *parenthesizedExpr = llvm::dyn_cast<ParenthesizedExpressionAST>(&node)) {
+    return gen(*parenthesizedExpr);
+  } else if (auto *infixExpr = llvm::dyn_cast<InfixExpressionAST>(&node)) {
+    return gen(*infixExpr);
   }
   return mlir::emitError(loc(&node))
       << "Unknown AST node type: " << ASTNode::getName(node);
