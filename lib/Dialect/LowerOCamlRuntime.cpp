@@ -84,20 +84,6 @@ public:
         return success();
       }
       return op.emitError("Failed to create runtime call: ") << callee;
-    } else if (callee == "Printf.printf") {
-      SmallVector<mlir::Value> argsFrom = op.getArgs();
-      SmallVector<mlir::Value> argsTo{rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), llvmPointerType, argsFrom[0])};
-      auto it = argsFrom.begin();
-      it++;
-      while (it != argsFrom.end()) {
-        argsTo.push_back(rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), llvmPointerType, *it++));
-      }
-      auto newValue = createGenericRuntimeCall(rewriter, op, module, callee, llvmPointerType, argsTo);
-      if (failed(newValue)) {
-        return op.emitError("Failed to create runtime call: ") << callee;
-      }
-      rewriter.replaceOp(op, newValue->getResult(0));
-      return success();
     } else if (callee == "embox_i64") {
       auto i64Type = rewriter.getI64Type();
       auto boxType = mlir::ocaml::BoxType::get(i64Type);
@@ -108,6 +94,14 @@ public:
       }
       auto castedResult = rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), boxType, newValue->getResult(0));
       rewriter.replaceOp(op, castedResult);
+      return success();
+    } else if (callee == "variant_ctor_empty" or callee == "variant_ctor") {
+      auto variantType = op.getResult().getType();
+      auto newValue = createGenericRuntimeCall(rewriter, op, module, callee, variantType, op.getArgs());
+      if (failed(newValue)) {
+        return op.emitError("Failed to create runtime call: ") << callee;
+      }
+      rewriter.replaceOp(op, newValue->getResult(0));
       return success();
     } else if (callee == "+" or callee == "-" or callee == "*" or callee == "/" or callee == "%") {
       auto lhs = op.getArgs()[0];
@@ -140,7 +134,9 @@ public:
       rewriter.replaceOp(op, newValue->getResult(0));
       return success();
     } else {
-      return op.emitError("Unsupported intrinsic: ") << callee;
+      op.emitError("Unsupported intrinsic: ") << callee;
+      assert(false && "Unsupported intrinsic");
+      return failure();
     }
     return failure();
   }

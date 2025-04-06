@@ -1,7 +1,9 @@
 #include "ocamlc2/Parse/MLIRGen2.h"
+#include "ocamlc2/Dialect/OcamlDialect.h"
 #include "ocamlc2/Parse/AST.h"
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
+#include <llvm/Support/LogicalResult.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
@@ -92,6 +94,18 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ValuePathAST const& node) {
         << "Variable '" << name << "' not found";
   }
   return value;
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(ConstructorPathAST const& node) {
+  TRACE();
+  auto name = pathToString(node.getPath());
+  auto function = module->lookupSymbol<mlir::func::FuncOp>(name);
+  if (not function) {
+    return mlir::emitError(loc(&node))
+        << "Function '" << name << "' not found";
+  }
+  auto call = builder.createCall(loc(&node), function, {});
+  return call->getResult(0);
 }
 
 mlir::FailureOr<std::string> MLIRGen2::getApplicatorName(ASTNode const& node) {
@@ -303,9 +317,46 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ValueDefinitionAST const& node) {
   return last;
 }
 
+mlir::LogicalResult MLIRGen2::genVariantConstructors(mlir::ocaml::VariantType variantType, mlir::Location loc) {
+  TRACE();
+  auto constructorNames = variantType.getConstructors();
+  auto constructorTypes = variantType.getTypes();
+  for (auto iter : llvm::enumerate(llvm::zip(constructorNames, constructorTypes))) {
+    auto [constructorName, constructorType] = iter.value();
+    SmallVector<mlir::Type> argumentTypes;
+    bool emptyCtor = false;
+    if (auto tupleType = llvm::dyn_cast<mlir::ocaml::TupleType>(constructorType)) {
+      argumentTypes = SmallVector<mlir::Type>(tupleType.getTypes());
+    } else if (constructorType != builder.getUnitType()) {
+      argumentTypes.push_back(constructorType);
+    } else {
+      emptyCtor = true;
+    }
+    (void)emptyCtor;
+    InsertionGuard guard(builder);
+    builder.setInsertionPointToEnd(module->getBody());
+    auto functionType = builder.getFunctionType(argumentTypes, variantType);
+    auto function = builder.create<mlir::func::FuncOp>(loc, constructorName, functionType);
+    function.setPrivate();
+    auto *entryBlock = function.addEntryBlock();
+    builder.setInsertionPointToStart(entryBlock);
+    auto variantIndex = builder.create<mlir::arith::ConstantIntOp>(loc, iter.index(), 64);
+    auto variantIndexBox = builder.createEmbox(loc, variantIndex);
+    // if (emptyCtor) {
+      SmallVector<mlir::Value> args {variantIndexBox->getResult(0)};
+      auto variant = builder.create<mlir::ocaml::IntrinsicOp>(loc, variantType, "variant_ctor_empty", args);
+      builder.create<mlir::func::ReturnOp>(loc, variant->getResult(0));
+    // } else {
+    //   builder.create<mlir::func::ReturnOp>(loc, variantIndexBox);
+    // }
+  }
+  return mlir::success();
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(TypeBindingAST const& node) {
   TRACE();
   std::string name = node.getName();
+  auto location = loc(&node);
   SmallVector<mlir::StringAttr> names;
   SmallVector<mlir::Type> types;
   if (auto *variantDecl = llvm::dyn_cast<VariantDeclarationAST>(node.getDefinition())) {
@@ -314,28 +365,42 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(TypeBindingAST const& node) {
       return mlir::emitError(loc(&node))
           << "Failed to generate type constructor for variant declaration: " << name;
     }
+    SmallVector<SmallVector<mlir::Type, 1>> argumentTypes;
     for (auto &ctor : *declarations) {
       auto name = builder.getStringAttr(ctor.first);
       names.push_back(name);
       types.push_back(ctor.second.value_or(builder.getUnitType()));
+      if (ctor.second) {
+        auto type = ctor.second.value();
+        if (auto tupleType = llvm::dyn_cast<mlir::ocaml::TupleType>(type)) {
+          argumentTypes.push_back(SmallVector<mlir::Type>(tupleType.getTypes()));
+        } else {
+          argumentTypes.push_back({type});
+        }
+      } else {
+        argumentTypes.push_back({});
+      }
+    }
+
+    auto variantType = mlir::ocaml::VariantType::get(
+        builder.getContext(), builder.getStringAttr(name), names, types);
+    if (failed(genVariantConstructors(variantType, location))) {
+      return mlir::emitError(location)
+          << "Failed to generate variant constructors for type: " << name;
+    }
+
+    auto typeCtor = TypeConstructor{
+        [&, name, names, types](
+            MLIRGen2 &gen, llvm::ArrayRef<mlir::Type> params) -> mlir::Type {
+          return variantType;
+        }};
+    if (failed(declareTypeConstructor(name, typeCtor, location))) {
+      return mlir::emitError(location)
+             << "Failed to declare type constructor: " << name;
     }
   } else {
-    return mlir::emitError(loc(&node))
+    return mlir::emitError(location)
         << "Unknown type definition: " << ASTNode::getName(node);
-  }
-  auto type = mlir::ocaml::VariantType::get(
-      builder.getContext(), builder.getStringAttr(name), names, types);
-  DBGS("type: " << type << "\n");
-  auto typeCtor = TypeConstructor{
-      [&, name, names, types](MLIRGen2 &gen,
-                              llvm::ArrayRef<mlir::Type> params) -> mlir::Type {
-        return mlir::ocaml::VariantType::get(gen.builder.getContext(),
-                                             gen.builder.getStringAttr(name),
-                                             names, types);
-      }};
-  if (failed(declareTypeConstructor(name, typeCtor, loc(&node)))) {
-    return mlir::emitError(loc(&node))
-        << "Failed to declare type constructor: " << name;
   }
   return mlir::Value{};
 }
@@ -357,14 +422,25 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(TypeDefinitionAST const& node) {
 
 mlir::FailureOr<std::optional<mlir::Type>> MLIRGen2::gen(ConstructorDeclarationAST const& node) {
   TRACE();
-  auto type = node.getOfType();
-  if (type) {
-    auto typeCtor = getTypeConstructor(*type);
+  if (node.hasSingleType()) {
+    auto typeCtor = getTypeConstructor(*node.getOfType());
     if (failed(typeCtor)) {
       return mlir::emitError(loc(&node))
           << "Failed to generate type constructor for constructor declaration: " << node.getName();
     }
     return {typeCtor->constructor(*this, {})};
+  } else if (node.getOfTypes().size() > 1) {
+    SmallVector<mlir::Type> types;
+    for (auto &type : node.getOfTypes()) {
+      auto typeCtor = getTypeConstructor(*type);
+      if (failed(typeCtor)) {
+        return mlir::emitError(loc(&node))
+            << "Failed to generate type constructor for constructor declaration: " << node.getName();
+      }
+      types.push_back(typeCtor->constructor(*this, {}));
+    }
+    auto type = mlir::ocaml::TupleType::get(builder.getContext(), types);
+    return {type};
   }
   return {std::nullopt};
 }
@@ -489,6 +565,8 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
   } else if (auto *valueDef = llvm::dyn_cast<ValueDefinitionAST>(&node)) {
     return gen(*valueDef);
   } else if (auto *application = llvm::dyn_cast<ApplicationExprAST>(&node)) {
+    return gen(*application);
+  } else if (auto *application = llvm::dyn_cast<ConstructorPathAST>(&node)) {
     return gen(*application);
   } else if (auto *number = llvm::dyn_cast<NumberExprAST>(&node)) {
     return gen(*number);

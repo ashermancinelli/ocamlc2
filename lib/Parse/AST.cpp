@@ -596,15 +596,17 @@ std::unique_ptr<ConstructorDeclarationAST> convertConstructorDeclaration(TSNode 
   
   auto children = childrenNodes(node);
   std::string name;
-  std::unique_ptr<TypeConstructorPathAST> ofType = nullptr;
+  std::vector<std::unique_ptr<TypeConstructorPathAST>> ofTypes;
   
   for (auto [type, child] : children) {
     if (type == "constructor_name") {
       name = getNodeText(child, adaptor);
     } else if (type == "of") {
       // Skip "of" keyword
+    } else if (type == "*") {
+      // Skip "*" operator for tuples
     } else if (type == "type_constructor_path") {
-      ofType = convertTypeConstructorPath(child, adaptor);
+      ofTypes.push_back(convertTypeConstructorPath(child, adaptor));
     }
   }
   
@@ -615,7 +617,7 @@ std::unique_ptr<ConstructorDeclarationAST> convertConstructorDeclaration(TSNode 
   return std::make_unique<ConstructorDeclarationAST>(
     getLocation(node, adaptor),
     name,
-    std::move(ofType)
+    std::move(ofTypes)
   );
 }
 
@@ -1158,9 +1160,11 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     case ASTNode::Node_ConstructorDeclaration: {
       auto *ctorDecl = static_cast<const ConstructorDeclarationAST*>(node);
       os << "ConstructorDeclaration: " << ctorDecl->getName();
-      if (ctorDecl->getOfType()) {
+      if (!ctorDecl->getOfTypes().empty()) {
         os << " of\n";
-        dumpASTNode(os, ctorDecl->getOfType(), indent + 1);
+        for (const auto &type : ctorDecl->getOfTypes()) {
+          dumpASTNode(os, type.get(), indent + 1);
+        }
       } else {
         os << "\n";
       }

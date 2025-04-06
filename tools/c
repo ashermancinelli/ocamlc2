@@ -1,44 +1,35 @@
-#!/usr/bin/env python3
-import sys
-import os
-import subprocess
-import tempfile
-import shutil
-import argparse
+#!/usr/bin/env perl
+use warnings;
+use strict;
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("source", help="OCaml source file")
-    parser.add_argument("--cc", help="CC", default="cc")
-    parser.add_argument("--llvm-dir", help="LLVM directory", default="")
-    parser.add_argument("--output", help="Output file", default="a.out")
-    args = parser.parse_args()
+# Get the path to the current script
+use FindBin qw($RealBin);
+use File::Temp qw/ tempfile tempdir /;
 
-    mlir_opt = os.path.join(args.llvm_dir, "bin", "mlir-opt") if args.llvm_dir else "mlir-opt"
-    mlir_translate = os.path.join(args.llvm_dir, "bin", "mlir-translate") if args.llvm_dir else "mlir-translate"
-    bindir = os.path.dirname(os.path.abspath(__file__))
-    source = os.path.abspath(args.source)
-    srcbase = source.replace(".ml", "")
-    compiler = os.path.join(bindir, "ocamlc2-tomlir")
-    conversions = [
-        "--convert-scf-to-cf",
-        "--convert-cf-to-llvm",
-        "--convert-arith-to-llvm",
-        "--convert-func-to-llvm",
-    ]
+my $realbin = $RealBin;
 
-    def run(cmd):
-        sys.stderr.write('+ ' + cmd + "\n")
-        os.system(cmd)
+my $arg = shift;
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        mlir0 = os.path.join(temp_dir, f"{srcbase}.0.mlir")
-        mlir1 = os.path.join(temp_dir, f"{srcbase}.1.mlir")
-        llvm_ir = os.path.join(temp_dir, f"{srcbase}.ll")
-        run(f"{compiler} {source} 2>/dev/null > {mlir0}")
-        run(f"{mlir_opt} {' '.join(conversions)} {mlir0} > {mlir1}")
-        run(f"{mlir_translate} --mlir-to-llvmir {mlir1} > {llvm_ir}")
-        run(f"{args.cc} {llvm_ir} -o {args.output}")
+my $compiler = "$realbin/ocamlc2-tomlir2";
+my $mlirtranslate = `which mlir-translate`;
+chomp($mlirtranslate);
+my $linker = "$realbin/ocamlc2-link";
 
-if __name__ == "__main__":
-    main()
+die "Input file not provided" unless $arg and -f $arg;
+my $basename = `basename $arg`;
+chomp($basename);
+my $tempdir = tempdir(CLEANUP => 1);
+my $mlir_file = "$tempdir/$basename.mlir";
+my $llvmir_file = "$tempdir/$basename.ll";
+my $output_file = "./a.out";
+
+sub orDie {
+  my $cmd = shift;
+  my $msg = shift;
+  print "+ $cmd\n";
+  system($cmd) == 0 or die "Failed to run $msg: $!";
+}
+
+orDie("$compiler $arg > $mlir_file", "compile $arg to MLIR");
+orDie("$mlirtranslate --mlir-to-llvmir $mlir_file > $llvmir_file", "translate MLIR to LLVM IR");
+orDie("$linker $llvmir_file -o $output_file", "link LLVM IR to executable");

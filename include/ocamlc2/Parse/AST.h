@@ -329,15 +329,17 @@ public:
 /// Constructor declaration (e.g., A, B of int)
 class ConstructorDeclarationAST : public ASTNode {
   std::string name;
-  std::unique_ptr<TypeConstructorPathAST> ofType;
+  std::vector<std::unique_ptr<TypeConstructorPathAST>> ofTypes;
 public:
   ConstructorDeclarationAST(Location loc, std::string name,
-                           std::unique_ptr<TypeConstructorPathAST> ofType = nullptr)
+                           std::vector<std::unique_ptr<TypeConstructorPathAST>> ofTypes = {})
     : ASTNode(Node_ConstructorDeclaration, std::move(loc)),
-      name(std::move(name)), ofType(std::move(ofType)) {}
+      name(std::move(name)), ofTypes(std::move(ofTypes)) {}
   
   const std::string& getName() const { return name; }
-  const TypeConstructorPathAST* getOfType() const { return ofType.get(); }
+  const std::vector<std::unique_ptr<TypeConstructorPathAST>>& getOfTypes() const { return ofTypes; }
+  bool hasSingleType() const { return ofTypes.size() == 1; }
+  const TypeConstructorPathAST* getOfType() const { return !ofTypes.empty() ? ofTypes[0].get() : nullptr; }
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_ConstructorDeclaration;

@@ -44,6 +44,7 @@ struct MLIRGen2 {
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ParenthesizedExpressionAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::TypeDefinitionAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::TypeBindingAST const& node);
+  mlir::LogicalResult genVariantConstructors(mlir::ocaml::VariantType variantType, mlir::Location loc);
   mlir::FailureOr<VariantDeclarations> gen(ocamlc2::VariantDeclarationAST const& node);
   mlir::FailureOr<std::optional<mlir::Type>> gen(ocamlc2::ConstructorDeclarationAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::MatchExpressionAST const& node);

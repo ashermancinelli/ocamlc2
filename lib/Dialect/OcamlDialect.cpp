@@ -23,6 +23,28 @@ using namespace mlir;
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
 
+void ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
+  printer << "<";
+  for (auto type : llvm::enumerate(getTypes())) {
+    printer << type.value();
+    if (type.index() < getTypes().size() - 1) {
+      printer << ", ";
+    }
+  }
+  printer << ">";
+}
+
+mlir::Type ocaml::TupleType::parse(mlir::AsmParser &parser) {
+  mlir::SmallVector<mlir::Type> elements;
+  if (parser.parseLess())
+    return {};
+  if (parser.parseTypeList(elements))
+    return {};
+  if (parser.parseGreater())
+    return {};
+  return parser.getChecked<TupleType>(parser.getContext(), elements);
+}
+
 // `variant` `<` $name `is` $ctor `of` $type (`|` $ctor `of` $type)* `>`
 mlir::Type VariantType::parse(mlir::AsmParser &parser) {
   std::string name;
@@ -40,10 +62,12 @@ mlir::Type VariantType::parse(mlir::AsmParser &parser) {
     mlir::Type type;
     if (parser.parseString(&ctor))
       return mlir::failure();
-    if (parser.parseKeyword("of"))
-      return mlir::failure();
-    if (parser.parseType(type))
-      return mlir::failure();
+    if (parser.parseOptionalKeyword("of")) {
+      type = UnitType::get(parser.getContext());
+    } else {
+      if (parser.parseType(type))
+        return mlir::failure();
+    }
     elements.push_back(type);
     ctors.push_back(mlir::StringAttr::get(parser.getContext(), ctor));
     return mlir::success();
@@ -66,9 +90,13 @@ mlir::Type VariantType::parse(mlir::AsmParser &parser) {
 
 void VariantType::print(mlir::AsmPrinter &printer) const {
   printer << "<" << getName() << " is ";
-  for (auto ctor : llvm::enumerate(getConstructors())) {
-    printer << ctor.value() << " of " << getTypes()[ctor.index()];
-    if (ctor.index() < getConstructors().size() - 1) {
+  for (auto iter : llvm::enumerate(llvm::zip(getConstructors(), getTypes()))) {
+    auto [ctor, type] = iter.value();
+    printer << ctor;
+    if (type != UnitType::get(getContext())) {
+      printer << " of " << type;
+    }
+    if (iter.index() < getConstructors().size() - 1) {
       printer << " | ";
     }
   }

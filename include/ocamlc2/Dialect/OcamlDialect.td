@@ -21,6 +21,18 @@ class Ocaml_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+def Ocaml_TupleType : Ocaml_Type<"Tuple", "tuple"> {
+  let summary = "OCaml tuple";
+  let description = "OCaml tuple";
+  let parameters = (ins ArrayRefParameter<"mlir::Type">:$types);
+  let hasCustomAssemblyFormat = 1;
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "llvm::ArrayRef<mlir::Type>":$types), [{
+      return $_get(types[0].getContext(), types);
+    }]>,
+  ];
+}
+
 def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
   let summary = "OCaml variant";
   let description = "OCaml variant";
@@ -83,6 +95,22 @@ def AnyBoxType : TypeConstraint<CPred<"mlir::isa<mlir::ocaml::BoxType, mlir::oca
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
+
+def Ocaml_TupleCtorOp : Ocaml_Op<"tuple_ctor"> {
+  let summary = "OCaml tuple constructor";
+  let description = "OCaml tuple constructor";
+  let arguments = (ins Variadic<AnyType>:$elements);
+  let results = (outs Ocaml_TupleType:$result);
+  let assemblyFormat = "$elements attr-dict `:` type($elements) `->` type($result)";
+}
+
+def Ocaml_TupleGetOp : Ocaml_Op<"tuple_get"> {
+  let summary = "OCaml tuple get";
+  let description = "OCaml tuple get";
+  let arguments = (ins Ocaml_TupleType:$tuple, I64:$index);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$tuple `[` $index `]` attr-dict `:` type($tuple) `,` type($index) `->` type($result)";
+}
 
 def Ocaml_UnitOp : Ocaml_Op<"unit"> {
   let summary = "OCaml unit";

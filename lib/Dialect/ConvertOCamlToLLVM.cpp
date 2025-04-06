@@ -73,7 +73,8 @@ static void addTypeConversions(mlir::LLVMTypeConverter &typeConverter) {
   typeConverter.addConversion([&](mlir::Type type) -> std::optional<mlir::Type> {
     DBGS("type conversion: " << type << "\n");
     if (mlir::isa<mlir::ocaml::OpaqueBoxType, mlir::ocaml::BoxType,
-                  mlir::ocaml::UnitType, mlir::ocaml::StringType>(type)) {
+                  mlir::ocaml::UnitType, mlir::ocaml::StringType,
+                  mlir::ocaml::VariantType, mlir::ocaml::TupleType>(type)) {
       DBGS("OCaml type converted to LLVM pointer: " << type << "\n");
       return mlir::LLVM::LLVMPointerType::get(type.getContext());
     }

@@ -34,6 +34,7 @@ int main(int argc, char* argv[]) {
   maybeReplaceWithGDB(argc, argv);
   fs::path filepath = inputFilename.getValue();
   std::string source = must(slurpFile(filepath));
+  DBGS("Source:\n" << source << "\n");
   auto ast = ocamlc2::parse(source, filepath.string());
   DBGS("AST:\n" << *ast << "\n");
 
