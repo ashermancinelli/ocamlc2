@@ -463,6 +463,28 @@ mlir::FailureOr<VariantDeclarations> MLIRGen2::gen(VariantDeclarationAST const& 
 
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(MatchExpressionAST const& node) {
   TRACE();
+  VariableScope scope(variables);
+  auto location = loc(&node);
+  auto scrutinee = gen(*node.getValue());
+  if (mlir::failed(scrutinee)) {
+    return mlir::emitError(location)
+        << "Failed to generate scrutinee for match expression";
+  }
+
+  auto scrutineeType = scrutinee->getType();
+  auto &matchCases = node.getCases();
+  if (auto variantType = llvm::dyn_cast<mlir::ocaml::VariantType>(scrutineeType)) {
+    UU auto constructors = variantType.getConstructors();
+    UU auto types = variantType.getTypes();
+    for (auto &matchCase : matchCases) {
+      UU auto pattern = matchCase->getPattern();
+      UU auto expression = matchCase->getExpression();
+    }
+  } else {
+    return mlir::emitError(location)
+        << "TODO: handle non-variant scrutinee for match expression";
+  }
+
   return mlir::Value{};
 }
 

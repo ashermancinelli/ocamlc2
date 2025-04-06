@@ -9,6 +9,8 @@
 #include <string_view>
 #include "llvm/ADT/ArrayRef.h"
 
+#define UU [[maybe_unused]]
+
 using llvm::ArrayRef;
 using llvm::SmallVector;
 using llvm::FailureOr;
