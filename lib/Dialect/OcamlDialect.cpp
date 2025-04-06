@@ -23,25 +23,56 @@ using namespace mlir;
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
 
+// `variant` `<` $name `is` $ctor `of` $type (`|` $ctor `of` $type)* `>`
 mlir::Type VariantType::parse(mlir::AsmParser &parser) {
   std::string name;
   mlir::SmallVector<mlir::Type> elements;
+  mlir::SmallVector<mlir::StringAttr> ctors;
   if (parser.parseLess())
     return {};
   if (parser.parseString(&name))
     return {};
-  if (parser.parseComma())
+  if (parser.parseKeyword("is"))
     return {};
-  if (parser.parseTypeList(elements))
+
+  auto parseCtorAndType = [&] -> LogicalResult {
+    std::string ctor;
+    mlir::Type type;
+    if (parser.parseString(&ctor))
+      return mlir::failure();
+    if (parser.parseKeyword("of"))
+      return mlir::failure();
+    if (parser.parseType(type))
+      return mlir::failure();
+    elements.push_back(type);
+    ctors.push_back(mlir::StringAttr::get(parser.getContext(), ctor));
+    return mlir::success();
+  };
+
+  if (failed(parseCtorAndType()))
     return {};
+
+  while (parser.parseOptionalKeyword("|")) {
+    if (failed(parseCtorAndType()))
+      return {};
+  }
+
   if (parser.parseGreater())
     return {};
+
   mlir::StringAttr nameAttr = mlir::StringAttr::get(parser.getContext(), name);
-  return parser.getChecked<VariantType>(parser.getContext(), nameAttr, elements);
+  return parser.getChecked<VariantType>(parser.getContext(), nameAttr, ctors, elements);
 }
 
 void VariantType::print(mlir::AsmPrinter &printer) const {
-  printer << "<" << getName() << ", " << getElements() << ">";
+  printer << "<" << getName() << " is ";
+  for (auto ctor : llvm::enumerate(getConstructors())) {
+    printer << ctor.value() << " of " << getTypes()[ctor.index()];
+    if (ctor.index() < getConstructors().size() - 1) {
+      printer << " | ";
+    }
+  }
+  printer << ">";
 }
 
 OpFoldResult ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {

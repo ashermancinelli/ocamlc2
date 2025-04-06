@@ -21,6 +21,7 @@ struct TypeConstructor {
 };
 using TypeConstructorScope = llvm::ScopedHashTableScope<llvm::StringRef, TypeConstructor>;
 using VariableScope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::Value>;
+using VariantDeclarations = std::vector<std::pair<std::string, std::optional<mlir::Type>>>;
 
 struct MLIRGen2 {
   MLIRGen2(mlir::MLIRContext &context, std::unique_ptr<ocamlc2::ASTNode> compilationUnit) 
@@ -41,9 +42,16 @@ struct MLIRGen2 {
   mlir::FailureOr<mlir::Value> gen(ocamlc2::LetExpressionAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::InfixExpressionAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ParenthesizedExpressionAST const& node);
+  mlir::FailureOr<mlir::Value> gen(ocamlc2::TypeDefinitionAST const& node);
+  mlir::FailureOr<mlir::Value> gen(ocamlc2::TypeBindingAST const& node);
+  mlir::FailureOr<VariantDeclarations> gen(ocamlc2::VariantDeclarationAST const& node);
+  mlir::FailureOr<std::optional<mlir::Type>> gen(ocamlc2::ConstructorDeclarationAST const& node);
+  mlir::FailureOr<mlir::Value> gen(ocamlc2::MatchExpressionAST const& node);
+  mlir::FailureOr<mlir::Value> gen(ocamlc2::MatchCaseAST const& node);
 
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
+  mlir::LogicalResult declareTypeConstructor(llvm::StringRef name, TypeConstructor constructor, mlir::Location loc);
   mlir::FailureOr<TypeConstructor> getTypeConstructor(ocamlc2::ASTNode const& node);
   mlir::FailureOr<std::string> getApplicatorName(ocamlc2::ASTNode const& node);
 

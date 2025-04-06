@@ -136,6 +136,17 @@ mlir::FailureOr<mlir::Value> MLIRGen2::declareVariable(llvm::StringRef name, mli
   return value;
 }
 
+mlir::LogicalResult MLIRGen2::declareTypeConstructor(llvm::StringRef name, TypeConstructor constructor, mlir::Location loc) {
+  static std::set<std::string> savedNames;
+  auto [iterator, _] = savedNames.insert(std::string(name));
+  if (typeConstructors.count(*iterator)) {
+    return mlir::emitError(loc)
+        << "Type constructor '" << name << "' already declared";
+  }
+  typeConstructors.insert(*iterator, constructor);
+  return mlir::success();
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen2::getVariable(llvm::StringRef name, mlir::Location loc) {
   DBGS(name << "\n");
   if (not variables.count(name)) {
@@ -292,6 +303,98 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ValueDefinitionAST const& node) {
   return last;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(TypeBindingAST const& node) {
+  TRACE();
+  std::string name = node.getName();
+  SmallVector<mlir::StringAttr> names;
+  SmallVector<mlir::Type> types;
+  if (auto *variantDecl = llvm::dyn_cast<VariantDeclarationAST>(node.getDefinition())) {
+    auto declarations = gen(*variantDecl);
+    if (mlir::failed(declarations)) {
+      return mlir::emitError(loc(&node))
+          << "Failed to generate type constructor for variant declaration: " << name;
+    }
+    for (auto &ctor : *declarations) {
+      auto name = builder.getStringAttr(ctor.first);
+      names.push_back(name);
+      types.push_back(ctor.second.value_or(builder.getUnitType()));
+    }
+  } else {
+    return mlir::emitError(loc(&node))
+        << "Unknown type definition: " << ASTNode::getName(node);
+  }
+  auto type = mlir::ocaml::VariantType::get(
+      builder.getContext(), builder.getStringAttr(name), names, types);
+  DBGS("type: " << type << "\n");
+  auto typeCtor = TypeConstructor{
+      [&, name, names, types](MLIRGen2 &gen,
+                              llvm::ArrayRef<mlir::Type> params) -> mlir::Type {
+        return mlir::ocaml::VariantType::get(gen.builder.getContext(),
+                                             gen.builder.getStringAttr(name),
+                                             names, types);
+      }};
+  if (failed(declareTypeConstructor(name, typeCtor, loc(&node)))) {
+    return mlir::emitError(loc(&node))
+        << "Failed to declare type constructor: " << name;
+  }
+  return mlir::Value{};
+}
+
+
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(TypeDefinitionAST const& node) {
+  TRACE();
+  auto location = loc(&node);
+  for (auto &binding : node.getBindings()) {
+    if (auto result = gen(*binding); mlir::succeeded(result)) {
+      DBGS("generated type constructor\n");
+    } else {
+      return mlir::emitError(location)
+          << "Failed to generate type constructor for type definition";
+    }
+  }
+  return mlir::Value{};
+}
+
+mlir::FailureOr<std::optional<mlir::Type>> MLIRGen2::gen(ConstructorDeclarationAST const& node) {
+  TRACE();
+  auto type = node.getOfType();
+  if (type) {
+    auto typeCtor = getTypeConstructor(*type);
+    if (failed(typeCtor)) {
+      return mlir::emitError(loc(&node))
+          << "Failed to generate type constructor for constructor declaration: " << node.getName();
+    }
+    return {typeCtor->constructor(*this, {})};
+  }
+  return {std::nullopt};
+}
+
+mlir::FailureOr<VariantDeclarations> MLIRGen2::gen(VariantDeclarationAST const& node) {
+  TRACE();
+  auto location = loc(&node);
+  auto &ctors = node.getConstructors();
+  VariantDeclarations results;
+  for (auto &ctor : ctors) {
+    auto ctorType = gen(*ctor);
+    if (mlir::failed(ctorType)) {
+      return mlir::emitError(location)
+          << "Failed to generate type constructor for variant declaration: " << ctor->getName();
+    }
+    results.push_back({ctor->getName(), *ctorType});
+  }
+  return results;
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(MatchExpressionAST const& node) {
+  TRACE();
+  return mlir::Value{};
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::gen(MatchCaseAST const& node) {
+  TRACE();
+  return mlir::Value{};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ApplicationExprAST const& node) {
   TRACE();
   auto maybeName = getApplicatorName(*node.getFunction());
@@ -399,6 +502,10 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
     return gen(*parenthesizedExpr);
   } else if (auto *infixExpr = llvm::dyn_cast<InfixExpressionAST>(&node)) {
     return gen(*infixExpr);
+  } else if (auto *typeDef = llvm::dyn_cast<TypeDefinitionAST>(&node)) {
+    return gen(*typeDef);
+  } else if (auto *matchExpr = llvm::dyn_cast<MatchExpressionAST>(&node)) {
+    return gen(*matchExpr);
   }
   return mlir::emitError(loc(&node))
       << "Unknown AST node type: " << ASTNode::getName(node);

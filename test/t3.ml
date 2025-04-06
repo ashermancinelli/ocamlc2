@@ -1,9 +1,5 @@
-(* Printf.printf "%d\n" (Obj.magic (Obj.repr 5) : int);; *)
-let p (i : int) : unit = print_int (i + 5 * 3);;
-
 let x = 0 in
-let y = 10 in
-for i = x to y do
-  p i
-done;;
-
+let y = 5 in
+    for i = x to y do
+        print_int i
+    done;;

@@ -276,10 +276,11 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     return gen(children.begin());
   } else if (childType == "type_definition") {
     auto children = childrenNodes(child);
-    declareTypeConstructor("shape", [](MLIRGen &gen) {
-      auto i64 = gen.builder.getI64Type();
-      return mlir::ocaml::VariantType::get("shape", {i64});
-    });
+    return mlir::emitError(loc(child)) << "Type definition not implemented";
+    // declareTypeConstructor("shape", [](MLIRGen &gen) {
+    //   auto i64 = gen.builder.getI64Type();
+    //   return mlir::ocaml::VariantType::get("shape", {i64});
+    // });
   } else if (childType == "application_expression") {
     auto children = childrenNodes(child);
     auto it = children.begin();

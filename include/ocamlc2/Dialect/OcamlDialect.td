@@ -24,23 +24,22 @@ class Ocaml_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
   let summary = "OCaml variant";
   let description = "OCaml variant";
-  let parameters = (ins "mlir::StringAttr":$name, ArrayRefParameter<"mlir::Type">: $elements);
+  let parameters = (ins 
+    "mlir::StringAttr":$name,
+    ArrayRefParameter<"mlir::StringAttr">:$constructors,
+    ArrayRefParameter<"mlir::Type">:$types
+  );
   let hasCustomAssemblyFormat = 1;
   let builders = [
     TypeBuilderWithInferredContext<(ins
-      "llvm::StringRef":$name,
-      "llvm::ArrayRef<mlir::Type>":$members), [{
-      auto nameAttr = mlir::StringAttr::get(members[0].getContext(), name);
-      return $_get(members[0].getContext(), nameAttr, members);    
-    }]>,
-    TypeBuilderWithInferredContext<(ins
       "mlir::StringAttr":$name,
-      "llvm::ArrayRef<mlir::Type>":$members), [{
-      return $_get(name.getContext(), name, members);    
+      "llvm::ArrayRef<mlir::StringAttr>":$names,
+      "llvm::ArrayRef<mlir::Type>":$types), [{
+      return $_get(name.getContext(), name, names, types);
     }]>,
   ];
   let extraClassDeclaration = [{
-    enum Kind { Variant, Struct };
+    enum Kind { Variant, Record };
     std::string getNameString() const {
       return name.str();
     }
