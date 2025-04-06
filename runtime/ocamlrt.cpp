@@ -23,6 +23,36 @@ Value unit() {
     return v;
 }
 
+Value add_i64_i64(Value lhs, Value rhs) {
+    DBGS("\n");
+    int64_t result = lhs.components.rest + rhs.components.rest;
+    return embox_i64(result);
+}
+
+Value sub_i64_i64(Value lhs, Value rhs) {
+    DBGS("\n");
+    int64_t result = lhs.components.rest - rhs.components.rest;
+    return embox_i64(result);
+}
+
+Value mul_i64_i64(Value lhs, Value rhs) {
+    DBGS("\n");
+    int64_t result = lhs.components.rest * rhs.components.rest;
+    return embox_i64(result);
+}
+
+Value div_i64_i64(Value lhs, Value rhs) {
+    DBGS("\n");
+    int64_t result = lhs.components.rest / rhs.components.rest;
+    return embox_i64(result);
+}
+
+Value mod_i64_i64(Value lhs, Value rhs) {
+    DBGS("\n");
+    int64_t result = lhs.components.rest % rhs.components.rest;
+    return embox_i64(result);
+}
+
 Value print_float(Value p) {
     DBGS("\n");
     printf("%f\n", *(double *)p.p);

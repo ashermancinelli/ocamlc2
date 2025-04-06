@@ -109,19 +109,42 @@ public:
       auto castedResult = rewriter.create<mlir::ocaml::ConvertOp>(op.getLoc(), boxType, newValue->getResult(0));
       rewriter.replaceOp(op, castedResult);
       return success();
+    } else if (callee == "+" or callee == "-" or callee == "*" or callee == "/" or callee == "%") {
+      auto lhs = op.getArgs()[0];
+      auto lhsType = dyn_cast<mlir::ocaml::BoxType>(lhs.getType());
+      auto rhs = op.getArgs()[1];
+      auto rhsType = dyn_cast<mlir::ocaml::BoxType>(rhs.getType());
+      if (!lhsType || !rhsType) {
+        return op.emitError("Expected box types for intrinsic: ") << callee;
+      }
+      auto resultType = resolveTypes(lhsType, rhsType, op.getLoc());
+      if (failed(resultType)) {
+        return op.emitError("Failed to resolve types for intrinsic: ") << callee;
+      }
+      auto maybeCallee = mlir::ocaml::binaryOpToRuntimeName(callee.str(), op.getLoc());
+      if (failed(maybeCallee)) {
+        return op.emitError("Failed to get runtime name for intrinsic: ") << callee;
+      }
+      auto callee = *maybeCallee;
+      auto lhsSuffix = getPODTypeRuntimeName(lhsType.getElementType());
+      auto rhsSuffix = getPODTypeRuntimeName(rhsType.getElementType());
+      if (failed(lhsSuffix) || failed(rhsSuffix)) {
+        return op.emitError("Failed to get the runtime name for the operands of ") << callee;
+      }
+      callee += "_" + *lhsSuffix + "_" + *rhsSuffix;
+      auto newValue = createGenericRuntimeCall(rewriter, op, module, callee,
+                                               *resultType, {lhs, rhs});
+      if (failed(newValue)) {
+        return op.emitError("Failed to create runtime call: ") << callee;
+      }
+      rewriter.replaceOp(op, newValue->getResult(0));
+      return success();
     } else {
       return op.emitError("Unsupported intrinsic: ") << callee;
     }
     return failure();
   }
 };
-
-static auto getPODTypeRuntimeName(mlir::Type type) {
-  return llvm::TypeSwitch<mlir::Type, FailureOr<std::string>>(type)
-      .Case<mlir::Float64Type>([](auto) -> std::string { return "f64"; })
-      .Case<mlir::IntegerType>([](auto) -> std::string { return "i64"; })
-      .Default([](auto) -> LogicalResult { return failure(); });
-}
 
 class LowerOCamlConversions : public OpRewritePattern<mlir::ocaml::ConvertOp> {
 public:

@@ -26,6 +26,11 @@ struct Value {
 DECLARE_RT(unit, void, Value);
 DECLARE_RT(print_float, Value, Value p);
 DECLARE_RT(print_int, Value, Value p);
+DECLARE_RT(mul_i64_i64, Value, Value lhs, Value rhs);
+DECLARE_RT(add_i64_i64, Value, Value lhs, Value rhs);
+DECLARE_RT(sub_i64_i64, Value, Value lhs, Value rhs);
+DECLARE_RT(div_i64_i64, Value, Value lhs, Value rhs);
+DECLARE_RT(mod_i64_i64, Value, Value lhs, Value rhs);
 DECLARE_RT(box_convert_i64_f64, Value, Value p);
 DECLARE_RT(box_convert_f64_i64, Value, Value p);
 DECLARE_RT(embox_i64, Value, int64_t i64);

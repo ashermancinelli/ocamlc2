@@ -1,1 +1,1 @@
-print_float (float 5);;
+print_int (5 + 5);;

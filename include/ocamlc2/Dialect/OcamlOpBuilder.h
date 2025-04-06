@@ -52,4 +52,8 @@ public:
   }
 };
 
+mlir::FailureOr<mlir::Type> resolveTypes(mlir::Type lhs, mlir::Type rhs, mlir::Location loc);
+mlir::FailureOr<std::string> getPODTypeRuntimeName(mlir::Type type);
+mlir::FailureOr<std::string> binaryOpToRuntimeName(std::string op, mlir::Location loc);
+
 }

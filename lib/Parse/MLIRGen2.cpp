@@ -162,8 +162,13 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(InfixExpressionAST const& node) {
     return mlir::emitError(loc(&node))
         << "Failed to generate left hand side of infix expression '" << node.getOperator() << "'";
   }
-  // auto op = builder.createInfix(loc(&node), *lhs, node.getOperator(), *rhs);
-  return lhs;
+  auto resultType = mlir::ocaml::resolveTypes(lhs->getType(), rhs->getType(), loc(&node));
+  if (mlir::failed(resultType)) {
+    return mlir::emitError(loc(&node))
+        << "Failed to resolve types for infix expression '" << node.getOperator() << "'";
+  }
+  auto callOp = builder.createCallIntrinsic(loc(&node), node.getOperator(), {*lhs, *rhs}, *resultType);
+  return callOp->getResult(0);
 }
 
 mlir::FailureOr<TypeConstructor> MLIRGen2::getTypeConstructor(ASTNode const& node) {
