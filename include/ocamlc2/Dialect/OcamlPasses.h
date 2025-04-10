@@ -1,6 +1,8 @@
 #pragma once
 #include "mlir/Pass/Pass.h"
-#include "OcamlDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 
 namespace mlir {
 namespace ocaml {

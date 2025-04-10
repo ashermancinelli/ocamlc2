@@ -567,17 +567,39 @@ std::unique_ptr<TypedPatternAST> convertTypedPattern(TSNode node, const TSTreeAd
   std::unique_ptr<ASTNode> pattern = nullptr;
   std::unique_ptr<TypeConstructorPathAST> type = nullptr;
   
+  // Debug children for this node
+  DBGS("Typed pattern children:\n");
   for (auto [childType, child] : children) {
-    if (childType != ":" && childType != "(" && childType != ")") {
-      if (!pattern) {
-        pattern = convertNode(child, adaptor);
-      } else if (!type && childType == "type_constructor_path") {
-        type = convertTypeConstructorPath(child, adaptor);
+    DBGS("  Type: " << childType.str() << "\n");
+  }
+  
+  // First pass - try to find pattern and type
+  for (auto [childType, child] : children) {
+    if (childType == "value_name") {
+      std::string name = getNodeText(child, adaptor);
+      pattern = std::make_unique<ValuePatternAST>(getLocation(child, adaptor), name);
+    } else if (childType == "type_constructor_path") {
+      type = convertTypeConstructorPath(child, adaptor);
+    }
+  }
+  
+  // Second pass - for more complex patterns or if we didn't find a simple value_name
+  if (!pattern) {
+    for (auto [childType, child] : children) {
+      if (childType != ":" && childType != "(" && childType != ")") {
+        // Try to extract any other pattern node
+        auto possiblePattern = convertNode(child, adaptor);
+        if (possiblePattern && !pattern) {
+          pattern = std::move(possiblePattern);
+        }
       }
     }
   }
   
   if (!pattern || !type) {
+    DBGS("Failed to parse typed_pattern:\n");
+    if (!pattern) DBGS("  Missing pattern\n");
+    if (!type) DBGS("  Missing type\n");
     return nullptr;
   }
   
@@ -720,10 +742,33 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
   std::unique_ptr<TypeConstructorPathAST> returnType = nullptr;
   std::unique_ptr<ASTNode> body = nullptr;
   
+  // First try to find a typed_pattern or value_name for the binding name
+  std::string patternName;
   for (auto [type, child] : children) {
     if (type == "value_name") {
       name = getNodeText(child, adaptor);
-    } else if (type == "parameter") {
+      break;
+    } else if (type == "typed_pattern") {
+      // Extract name from the typed pattern
+      auto patternChildren = childrenNodes(child);
+      for (auto [patternType, patternChild] : patternChildren) {
+        if (patternType == "value_name") {
+          name = getNodeText(patternChild, adaptor);
+          break;
+        }
+      }
+      
+      // If we found the name, no need to check for return type
+      // as it's already included in the typed pattern
+      if (!name.empty()) {
+        break;
+      }
+    }
+  }
+  
+  // Then process the rest of the binding
+  for (auto [type, child] : children) {
+    if (type == "parameter") {
       auto paramChildren = childrenNodes(child);
       bool foundParam = false;
       for (auto [paramType, paramChild] : paramChildren) {
@@ -749,7 +794,7 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
       returnType = convertTypeConstructorPath(child, adaptor);
     } else if (type == "=") {
       // Skip "=" token
-    } else if (type != "value_name" && type != ":" && type != "=") {
+    } else if (type != "value_name" && type != ":" && type != "=" && type != "typed_pattern") {
       // This could be the function body (various expression types)
       auto possibleBody = convertNode(child, adaptor);
       if (possibleBody) {
@@ -759,6 +804,9 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
   }
   
   if (name.empty() || !body) {
+    DBGS("Failed to parse let_binding:\n");
+    if (name.empty()) DBGS("  Missing name\n");
+    if (!body) DBGS("  Missing body\n");
     return nullptr;
   }
   
@@ -922,19 +970,42 @@ std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdapto
   auto children = childrenNodes(node);
   std::unique_ptr<ASTNode> binding = nullptr;
   std::unique_ptr<ASTNode> body = nullptr;
+  bool foundIn = false;
   
+  // Dump the children structure for debugging
+  DBGS("Let expression children:\n");
   for (auto [type, child] : children) {
-    if (type == "value_definition") {
+    DBGS("  Type: " << type.str() << "\n");
+  }
+  
+  // Process let_binding directly if available, or through value_definition otherwise
+  for (auto [type, child] : children) {
+    if (type == "let_binding") {
+      // Direct let_binding
+      binding = convertLetBinding(child, adaptor);
+    } else if (type == "value_definition") {
+      // Value definition containing let_binding
       binding = convertValueDefinition(child, adaptor);
     } else if (type == "in") {
+      foundIn = true;
       // Skip the 'in' token
       continue;
-    } else if (!binding) {
-      // Skip anything before the binding
-      continue;
-    } else if (!body) {
+    } else if (foundIn && !body) {
       // This should be the body (anything after 'in')
       body = convertNode(child, adaptor);
+    }
+  }
+  
+  // If we didn't find a binding yet, look deeper into the children
+  if (!binding) {
+    for (auto [type, child] : children) {
+      if (type != "in" && !foundIn) {
+        // Try to find a binding in any non-in token before 'in'
+        auto possibleBinding = convertNode(child, adaptor);
+        if (possibleBinding) {
+          binding = std::move(possibleBinding);
+        }
+      }
     }
   }
   

@@ -6,6 +6,7 @@ add_mlir_dialect_library(MLIROcaml
     ConvertOCamlToLLVM.cpp
     LowerOCamlRuntime.cpp
     OcamlOpBuilder.cpp
+    TypeInference.cpp
     Setup.cpp
     DEPENDS
     OcamlIncGen

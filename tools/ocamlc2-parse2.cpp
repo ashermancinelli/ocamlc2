@@ -1,4 +1,5 @@
 #include "ocamlc2/Parse/AST.h"
+#include "ocamlc2/Parse/TypeSystem.h"
 #include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Support/CL.h"
@@ -26,5 +27,14 @@ int main(int argc, char* argv[]) {
   DBGS("Source:\n" << source << "\n");
   auto ast = ocamlc2::parse(source, filepath.string());
   DBGS("AST:\n" << *ast << "\n");
+  
+  // Perform type inference
+  llvm::outs() << "Performing type inference...\n";
+  auto typeScheme = ocamlc2::inferProgramType(ast.get());
+  
+  // Print the inferred type
+  llvm::outs() << "Inferred type: ";
+  ocamlc2::dumpTypeScheme(typeScheme);
+  
   return 0;
 }

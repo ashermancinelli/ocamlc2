@@ -19,4 +19,9 @@ def ConvertOCamlToLLVM : Pass<"convert-ocaml-to-llvm", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
 }
 
+def TypeInference : Pass<"type-inference", "mlir::ModuleOp"> {
+  let summary = "Type inference";
+  let dependentDialects = ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect"];
+}
+
 #endif

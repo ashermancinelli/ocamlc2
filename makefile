@@ -11,7 +11,7 @@ ARGS             += -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(PR
 ARGS             += -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_C_COMPILER=$(CC)
 
 ifeq ($(ARCH),Darwin)
-CXXFLAGS         += -mmacosx-version-min=$(shell xcrun --sdk macosx --show-sdk-version)
+#CXXFLAGS         += -mmacosx-version-min=$(shell xcrun --sdk macosx --show-sdk-version)
 ARGS             += -DCMAKE_EXE_LINKER_FLAGS=-Wl,-no_warn_duplicate_libraries
 endif
 

@@ -34,6 +34,16 @@ void ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
   printer << ">";
 }
 
+static StringRef ocamlAttributePrefix() {
+  return "ocaml.";
+}
+
+mlir::NamedAttribute ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
+  auto name = ocamlAttributePrefix() + "match_case";
+  return mlir::NamedAttribute(mlir::StringAttr::get(context, name),
+                              mlir::UnitAttr::get(context));
+}
+
 mlir::Type ocaml::TupleType::parse(mlir::AsmParser &parser) {
   mlir::SmallVector<mlir::Type> elements;
   if (parser.parseLess())

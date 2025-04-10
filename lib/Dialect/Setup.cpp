@@ -37,6 +37,7 @@ namespace mlir::ocaml {
   }
   void setupDefaultPipeline(mlir::PassManager &pm) {
     pm.addPass(mlir::createInlinerPass());
+    pm.addPass(mlir::ocaml::createTypeInference());
     pm.addPass(mlir::ocaml::createLowerOCamlRuntime());
     pm.addPass(mlir::ocaml::createBufferizeBoxes());
     pm.addPass(mlir::createCanonicalizerPass());

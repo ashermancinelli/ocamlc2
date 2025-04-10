@@ -179,7 +179,9 @@ public:
         auto maybeFromType = getPODTypeRuntimeName(maybeFromBoxType.getElementType());
         auto maybeToType = getPODTypeRuntimeName(maybeToBoxType.getElementType());
         if (failed(maybeFromType) || failed(maybeToType)) {
-          return op.emitError("Unsupported type for box conversion: ") << fromType << " to " << toType;
+          DBGS("failed to get runtime name for box conversion: " << fromType << " to " << toType << "\n");
+          assert(false && "Unsupported type for box conversion");
+          return failure();
         }
         callee += *maybeFromType + "_" + *maybeToType;
         rewriter.replaceOpWithNewOp<mlir::ocaml::IntrinsicOp>(op, maybeToBoxType, callee, op.getInput());
@@ -194,7 +196,9 @@ public:
         DBGS("simple embox\n");
         auto suffix = getPODTypeRuntimeName(elementType);
         if (failed(suffix)) {
-          return op.emitError("Unsupported type for embox: ") << elementType;
+          DBGS("failed to get runtime name for embox: " << elementType << "\n");
+          assert(false && "Unsupported type for embox");
+          return failure();
         }
         auto callee = "embox_" + *suffix;
         auto newOp = rewriter.replaceOpWithNewOp<mlir::ocaml::IntrinsicOp>(op, maybeToBoxType, callee, op.getInput());
@@ -218,7 +222,9 @@ public:
         // this is generally ok
         return failure();
       }
-      return op.emitError("Unsupported type for conversion: ") << fromType << " to " << toType;
+      DBGS("failed to get runtime name for conversion: " << fromType << " to " << toType << "\n");
+      assert(false && "Unsupported type for conversion");
+      return failure();
     }
 
     return failure();

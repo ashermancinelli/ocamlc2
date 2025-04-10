@@ -7,6 +7,7 @@
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 
 #include "ocamlc2/Dialect/OcamlDialect.h.inc"
+#include <mlir/IR/Attributes.h>
 #include <mlir/Pass/PassManager.h>
 
 #define GET_TYPEDEF_CLASSES
@@ -24,4 +25,6 @@ namespace mlir::ocaml {
   void setupContext(mlir::MLIRContext &context);
   void setupDefaultPipeline(mlir::PassManager &pm);
   void setupCodegenPipeline(mlir::PassManager &pm);
+  mlir::NamedAttribute getMatchCaseAttr(mlir::MLIRContext *context);
+  bool hasMatchCaseAttr(mlir::Operation *op);
 }

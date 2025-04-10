@@ -7,6 +7,9 @@
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
@@ -461,36 +464,154 @@ mlir::FailureOr<VariantDeclarations> MLIRGen2::gen(VariantDeclarationAST const& 
   return results;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen2::genPattern(ocamlc2::ASTNode const& node, mlir::Value scrutinee) {
+  if (auto *constructorPath = llvm::dyn_cast<ConstructorPathAST>(&node)) {
+    return genPattern(*constructorPath, scrutinee);
+  } else if (auto *valuePattern = llvm::dyn_cast<ValuePatternAST>(&node)) {
+    return genPattern(*valuePattern, scrutinee);
+  }
+  return mlir::emitError(loc(&node))
+      << "Unknown pattern type: " << ASTNode::getName(node);
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::genPattern(ocamlc2::ConstructorPathAST const& node, mlir::Value scrutinee) {
+  auto location = loc(&node);
+  auto name = pathToString(node.getPath());
+  auto function = module->lookupSymbol<mlir::func::FuncOp>(name);
+  if (!function) {
+    return mlir::emitError(location)
+        << "Unknown constructor: " << name;
+  }
+  auto args = function.getFunctionType().getResult(0);
+  auto variantType = llvm::dyn_cast<mlir::ocaml::VariantType>(args);
+  if (!variantType) {
+    return mlir::emitError(location)
+        << "Constructor is not a variant: " << name;
+  }
+  if (scrutinee.getType() != variantType) {
+    return mlir::emitError(location)
+        << "Scrutinee is not a variant: " << name;
+  }
+  auto variantIndexValue = builder.create<mlir::ocaml::IntrinsicOp>(
+      location, builder.emboxType(builder.getI64Type()),
+      builder.getStringAttr("variant_get_kind"), mlir::ValueRange{scrutinee});
+  auto variantIndex = builder.create<mlir::ocaml::IntrinsicOp>(
+      location, builder.getI64Type(), builder.getStringAttr("unbox_i64"),
+      mlir::ValueRange{variantIndexValue->getResult(0)});
+  auto memberNames = variantType.getConstructors();
+  auto iter = llvm::find_if(memberNames, [name](mlir::StringRef memberName) {
+    return memberName == name;
+  });
+  if (iter == memberNames.end()) {
+    return mlir::emitError(location)
+        << "Unknown constructor: " << name;
+  }
+  const unsigned index = std::distance(memberNames.begin(), iter);
+  auto indexOp = builder.create<mlir::arith::ConstantIntOp>(
+      location, index, 64);
+  auto comparison = builder.create<mlir::arith::CmpIOp>(
+      location, mlir::arith::CmpIPredicate::eq, variantIndex, indexOp);
+  return comparison->getResult(0);
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::genPattern(ocamlc2::ValuePatternAST const& node, mlir::Value scrutinee) {
+  auto location = loc(&node);
+  auto name = node.getName();
+  if (name == "_") {
+    return builder.create<mlir::arith::ConstantIntOp>(location, 1, 1)->getResult(0);
+  }
+  return mlir::emitError(loc(&node))
+      << "TODO: handle value pattern for match expression";
+}
+mlir::FailureOr<mlir::Value> MLIRGen2::genMatchCase(
+    MatchCases::const_iterator current, MatchCases::const_iterator end,
+    mlir::Value scrutinee, mlir::Type resultType, mlir::Location location) {
+  TRACE();
+  auto &thisCase = *current;
+  auto *pattern = thisCase->getPattern();
+  auto matched = genPattern(*pattern, scrutinee);
+  if (mlir::failed(matched)) {
+    return mlir::emitError(location)
+           << "Failed to generate pattern for match case";
+  }
+
+  auto *expression = thisCase->getExpression();
+  auto ifOp = builder.create<mlir::scf::IfOp>(
+      location, /*results=*/mlir::TypeRange{resultType}, *matched, true);
+  ifOp->setAttrs(mlir::ocaml::getMatchCaseAttr(builder.getContext()));
+
+  builder.setInsertionPointToStart(&ifOp.getThenRegion().front());
+  auto expressionResult = gen(*expression);
+  if (mlir::failed(expressionResult)) {
+    return mlir::emitError(location)
+           << "Failed to generate expression for match case";
+  }
+
+  auto converted =
+      builder.createConvert(location, *expressionResult, resultType);
+  builder.create<mlir::scf::YieldOp>(location, converted->getResult(0));
+  builder.setInsertionPointToStart(&ifOp.getElseRegion().front());
+  if (++current == end) {
+    auto zero = builder.create<mlir::arith::ConstantIntOp>(location, 0, 1);
+    builder.create<mlir::cf::AssertOp>(
+        location, zero, builder.getStringAttr("Match-case is not exhaustive!"));
+    auto unitOp = builder.create<mlir::ocaml::UnitOp>(location, builder.getUnitType());
+    auto converted = builder.createConvert(location, unitOp->getResult(0), resultType);
+    builder.create<mlir::scf::YieldOp>(location, converted->getResult(0));
+  } else {
+    mlir::Value elseValue;
+    {
+      InsertionGuard guard(builder);
+      auto maybeElseValue =
+          genMatchCase(current, end, scrutinee, resultType, location);
+      if (mlir::failed(maybeElseValue)) {
+        return mlir::emitError(location)
+               << "Failed to generate else value for match case";
+      }
+      elseValue = *maybeElseValue;
+    }
+    auto converted = builder.createConvert(location, elseValue, resultType);
+    builder.create<mlir::scf::YieldOp>(location, converted->getResult(0));
+  }
+
+  return ifOp.getResult(0);
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen2::genMatchCases(
+    MatchCases const& cases,
+    mlir::Value scrutinee, mlir::Type resultType, mlir::Location location) {
+  TRACE();
+  auto matchResult = genMatchCase(cases.begin(), cases.end(), scrutinee, resultType, location);
+  if (mlir::failed(matchResult)) {
+    return mlir::emitError(location)
+        << "Failed to generate match cases";
+  }
+  DBGS("generated match case\n" << *matchResult << "\n");
+  return matchResult;
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(MatchExpressionAST const& node) {
   TRACE();
   VariableScope scope(variables);
   auto location = loc(&node);
-  auto scrutinee = gen(*node.getValue());
-  if (mlir::failed(scrutinee)) {
+  auto maybeScrutinee = gen(*node.getValue());
+  if (mlir::failed(maybeScrutinee)) {
     return mlir::emitError(location)
         << "Failed to generate scrutinee for match expression";
   }
+  DBGS("generated scrutinee\n" << *maybeScrutinee << '\n');
 
-  auto scrutineeType = scrutinee->getType();
+  auto scrutinee = *maybeScrutinee;
   auto &matchCases = node.getCases();
-  if (auto variantType = llvm::dyn_cast<mlir::ocaml::VariantType>(scrutineeType)) {
-    UU auto constructors = variantType.getConstructors();
-    UU auto types = variantType.getTypes();
-    for (auto &matchCase : matchCases) {
-      UU auto pattern = matchCase->getPattern();
-      UU auto expression = matchCase->getExpression();
-    }
-  } else {
-    return mlir::emitError(location)
-        << "TODO: handle non-variant scrutinee for match expression";
+  auto resultType = builder.getOBoxType(); /* type inference later */
+
+  InsertionGuard guard(builder);
+  auto matchCasesResult =
+      genMatchCases(matchCases, scrutinee, resultType, location);
+  if (mlir::failed(matchCasesResult)) {
+    return mlir::emitError(location) << "Failed to generate match cases";
   }
-
-  return mlir::Value{};
-}
-
-mlir::FailureOr<mlir::Value> MLIRGen2::gen(MatchCaseAST const& node) {
-  TRACE();
-  return mlir::Value{};
+  return *matchCasesResult;
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ApplicationExprAST const& node) {
@@ -588,8 +709,8 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
     return gen(*valueDef);
   } else if (auto *application = llvm::dyn_cast<ApplicationExprAST>(&node)) {
     return gen(*application);
-  } else if (auto *application = llvm::dyn_cast<ConstructorPathAST>(&node)) {
-    return gen(*application);
+  } else if (auto *constructorPath = llvm::dyn_cast<ConstructorPathAST>(&node)) {
+    return gen(*constructorPath);
   } else if (auto *number = llvm::dyn_cast<NumberExprAST>(&node)) {
     return gen(*number);
   } else if (auto *valuePath = llvm::dyn_cast<ValuePathAST>(&node)) {

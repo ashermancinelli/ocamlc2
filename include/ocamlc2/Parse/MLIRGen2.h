@@ -32,7 +32,6 @@ struct MLIRGen2 {
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ConstructorPathAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::TypeConstructorPathAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ApplicationExprAST const& node);
-  mlir::FailureOr<mlir::Value> genRuntime(llvm::StringRef name, ocamlc2::ApplicationExprAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::CompilationUnitAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ExpressionItemAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ValueDefinitionAST const& node);
@@ -42,19 +41,34 @@ struct MLIRGen2 {
   mlir::FailureOr<mlir::Value> gen(ocamlc2::LetExpressionAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::InfixExpressionAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::ParenthesizedExpressionAST const& node);
+
   mlir::FailureOr<mlir::Value> gen(ocamlc2::TypeDefinitionAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::TypeBindingAST const& node);
+  mlir::FailureOr<std::optional<mlir::Type>> gen(ocamlc2::ConstructorDeclarationAST const& node);
+
   mlir::LogicalResult genVariantConstructors(mlir::ocaml::VariantType variantType, mlir::Location loc);
   mlir::FailureOr<VariantDeclarations> gen(ocamlc2::VariantDeclarationAST const& node);
-  mlir::FailureOr<std::optional<mlir::Type>> gen(ocamlc2::ConstructorDeclarationAST const& node);
   mlir::FailureOr<mlir::Value> gen(ocamlc2::MatchExpressionAST const& node);
-  mlir::FailureOr<mlir::Value> gen(ocamlc2::MatchCaseAST const& node);
+
+  using MatchCases = std::vector<std::unique_ptr<ocamlc2::MatchCaseAST>>;
+  mlir::FailureOr<mlir::Value> genMatchCases(
+      MatchCases const& cases,
+      mlir::Value scrutinee, mlir::Type resultType, mlir::Location location);
+  mlir::FailureOr<mlir::Value> genMatchCase(
+      MatchCases::const_iterator current, MatchCases::const_iterator end,
+      mlir::Value scrutinee, mlir::Type resultType, mlir::Location location);
+
+  mlir::FailureOr<mlir::Value> genPattern(ocamlc2::ASTNode const& node, mlir::Value scrutinee);
+  mlir::FailureOr<mlir::Value> genPattern(ocamlc2::ConstructorPathAST const& node, mlir::Value scrutinee);
+  mlir::FailureOr<mlir::Value> genPattern(ocamlc2::ValuePatternAST const& node, mlir::Value scrutinee);
 
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
+
   mlir::LogicalResult declareTypeConstructor(llvm::StringRef name, TypeConstructor constructor, mlir::Location loc);
   mlir::FailureOr<TypeConstructor> getTypeConstructor(ocamlc2::ASTNode const& node);
   mlir::FailureOr<std::string> getApplicatorName(ocamlc2::ASTNode const& node);
+  mlir::FailureOr<mlir::Value> genRuntime(llvm::StringRef name, ocamlc2::ApplicationExprAST const& node);
 
   // have to figure out the mlir type associated with the parameter name
   // if we are able to.
