@@ -11,6 +11,7 @@
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace fs = std::filesystem;
+using namespace ocamlc2;
 
 using namespace llvm;
 static cl::opt<std::string> inputFilename(cl::Positional,
@@ -28,13 +29,14 @@ int main(int argc, char* argv[]) {
   auto ast = ocamlc2::parse(source, filepath.string());
   DBGS("AST:\n" << *ast << "\n");
   
+  Unifier unifier;
+
   // Perform type inference
   llvm::outs() << "Performing type inference...\n";
-  auto typeScheme = ocamlc2::inferProgramType(ast.get());
+  auto typeExpr = unifier.infer(ast.get());
   
   // Print the inferred type
-  llvm::outs() << "Inferred type: ";
-  ocamlc2::dumpTypeScheme(typeScheme);
+  llvm::outs() << "Inferred type:\n" << typeExpr << '\n';
   
   return 0;
 }
