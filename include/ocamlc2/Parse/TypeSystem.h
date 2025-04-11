@@ -11,6 +11,7 @@
 #include <set>
 #include <llvm/Support/Casting.h>
 #include <llvm/ADT/ScopedHashTable.h>
+
 namespace ocamlc2 {
 
 struct TypeExpr {
@@ -37,6 +38,8 @@ struct TypeOperator : public TypeExpr {
   inline TypeExpr* at(size_t index) const { return args[index]; }
   consteval static llvm::StringRef getFunctionOperatorName() { return "->"; }
   consteval static llvm::StringRef getTupleOperatorName() { return "*"; }
+  inline TypeExpr *operator[](size_t index) const { return args[index]; }
+  inline TypeExpr *back() const { return args.back(); }
 
 private:
   llvm::SmallVector<TypeExpr*> args;
@@ -44,7 +47,7 @@ private:
 };
 
 struct FunctionOperator : public TypeOperator {
-  FunctionOperator(TypeExpr* from, TypeExpr* to) : TypeOperator(TypeOperator::getFunctionOperatorName(), {from, to}) {}
+  FunctionOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(TypeOperator::getFunctionOperatorName(), args) {}
 };
 
 struct TupleOperator : public TypeOperator {
@@ -74,21 +77,23 @@ struct Function : TypeOperator {
     : TypeOperator("->", {from, to}) {}
 };
 
+template <typename T> struct Scope {
+  using T2 = std::remove_reference_t<T>;
+  Scope(T *ptr) : ptr(ptr), oldValue(*ptr) {}
+  T *ptr;
+  T2 oldValue;
+  ~Scope() { *ptr = oldValue; }
+};
+
 struct Unifier {
+  Unifier() {
+    // rootScope = std::make_unique<Scope<Env>>(&env);
+    // initializeEnvironment();
+  }
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr*>;
-  template<typename T>
-  using Set = llvm::DenseSet<T>;
-  Env env;
-  struct ConcreteTypeScope {
-    ConcreteTypeScope(Set<TypeVariable *> *concreteTypes)
-        : concreteTypes(concreteTypes), oldConcreteTypes(*concreteTypes) {}
-    Set<TypeVariable*> *concreteTypes;
-    Set<TypeVariable*> oldConcreteTypes;
-    ~ConcreteTypeScope() {
-      *concreteTypes = oldConcreteTypes;
-    }
-  };
-  void initializeEnvironment();
+  using EnvScope = Env::ScopeTy;
+  using ConcreteTypes = llvm::DenseSet<TypeVariable*>;
+  // std::unique_ptr<EnvScope> rootScope;
   TypeExpr* infer(const ASTNode* ast);
   template <typename T, typename... Args>
   T* create(Args&&... args) {
@@ -98,6 +103,8 @@ struct Unifier {
     return static_cast<T*>(typeArena.back().get());
   }
 private:
+  void initializeEnvironment();
+
   void unify(TypeExpr* a, TypeExpr* b);
 
   // Clone a type expression, replacing generic type variables with new ones
@@ -138,30 +145,24 @@ private:
     return isSubTypeOfAny(type, concreteTypes);
   }
 
-  inline void declare(llvm::StringRef name, TypeExpr* type) {
-    if (env.count(name)) {
-      assert(false && "Type already declared");
-    }
-    env.insert(name, type);
-  }
+  void declare(llvm::StringRef name, TypeExpr* type);
 
-  inline TypeExpr* getDeclaredType(const llvm::StringRef name) {
-    if (env.count(name)) {
-      return clone(env.lookup(name));
-    }
-    assert(false && "Type not declared");
-    return nullptr;
-  }
+  TypeExpr* getType(const llvm::StringRef name);
 
-  inline auto *createFunction(TypeExpr* from, TypeExpr* to) {
-    return create<FunctionOperator>(from, to);
+  inline auto *createFunction(llvm::ArrayRef<TypeExpr*> args) {
+    return create<FunctionOperator>(args);
   }
 
   inline auto *createTuple(llvm::ArrayRef<TypeExpr*> args) {
     return create<TupleOperator>(args);
   }
 
-  Set<TypeVariable*> concreteTypes;
+  inline auto *createTypeVariable() {
+    return create<TypeVariable>();
+  }
+
+  Env env;
+  ConcreteTypes concreteTypes;
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
 };
 

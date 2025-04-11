@@ -33,10 +33,10 @@ int main(int argc, char* argv[]) {
 
   // Perform type inference
   llvm::outs() << "Performing type inference...\n";
-  auto typeExpr = unifier.infer(ast.get());
+  auto *typeExpr = unifier.infer(ast.get());
   
   // Print the inferred type
-  llvm::outs() << "Inferred type:\n" << typeExpr << '\n';
+  llvm::outs() << "Inferred type:\n" << *typeExpr << '\n';
   
   return 0;
 }

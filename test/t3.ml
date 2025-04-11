@@ -5,4 +5,4 @@ let f lb ub =
             print_int i
         done;;
 
-f 0 5;;
+let x = 1 in f x 1;;
