@@ -1,0 +1,183 @@
+---
+description: Update AST generation from Treesitter nodes
+globs: 
+alwaysApply: false
+---
+# AST Node Type Implementation Guide
+
+## Testing
+
+To build and test the AST changes, run this command:
+```shell
+ninja -C build ocamlc2-parse2 && ./build/bin/ocamlc2-parse2 ./test/t1.ml -L
+```
+
+The `-L` flag enables debug output - you should look over the output for any warnings or errors.
+
+## Overview
+
+This document outlines the process for adding support for new Tree-sitter node types in the OCaml compiler's AST.
+
+## Implementation Pattern
+
+For each new node type, follow this general pattern:
+
+### 1. Header File Changes (AST.h)
+
+```cpp
+// 1. Add the node type to the ASTNodeKind enum
+enum ASTNodeKind {
+  // ...existing node types...
+  Node_NewType,
+  // ...
+};
+
+// 2. Define the new AST class
+class NewTypeAST : public ASTNode {
+  // Add necessary member variables to represent the node
+  std::unique_ptr<ASTNode> someChild;
+  std::string someValue;
+  
+public:
+  // Constructor
+  NewTypeAST(Location loc, std::unique_ptr<ASTNode> someChild, std::string someValue)
+    : ASTNode(Node_NewType, std::move(loc)), 
+      someChild(std::move(someChild)), 
+      someValue(std::move(someValue)) {}
+  
+  // Getters
+  const ASTNode* getSomeChild() const { return someChild.get(); }
+  const std::string& getSomeValue() const { return someValue; }
+  
+  // LLVM-style RTTI support
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_NewType;
+  }
+};
+```
+
+### 2. Source File Changes (AST.cpp)
+
+```cpp
+// 1. Add forward declaration
+std::unique_ptr<NewTypeAST> convertNewType(TSNode node, const TSTreeAdaptor &adaptor);
+
+// 2. Add node type to knownNodeTypes set
+std::unordered_set<std::string> knownNodeTypes = {
+  // ...existing types...
+  "new_type", "new_type_keyword",
+  // ...
+};
+
+// 3. Update getName function
+llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
+  switch (kind) {
+    // ...existing cases...
+    case Node_NewType: return "NewType";
+    // ...
+  }
+}
+
+// 4. Update convertNode to handle the new type
+std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) {
+  // ...existing code...
+  else if (type == "new_type" || type == "new_type_keyword")
+    return convertNewType(node, adaptor);
+  // ...
+}
+
+// 5. Implement the conversion function
+std::unique_ptr<NewTypeAST> convertNewType(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  
+  // Check if this is the node type we expect
+  if (std::string(nodeType) != "new_type" && std::string(nodeType) != "new_type_keyword") {
+    return nullptr;
+  }
+  
+  // Find the target node (sometimes need to look at parent)
+  TSNode targetNode = node;
+  if (std::string(nodeType) == "new_type_keyword") {
+    targetNode = ts_node_parent(node);
+    if (ts_node_is_null(targetNode)) {
+      return nullptr;
+    }
+  }
+  
+  // Process the node's children to extract information
+  auto children = childrenNodes(targetNode);
+  std::unique_ptr<ASTNode> someChild = nullptr;
+  std::string someValue;
+  
+  for (auto [type, child] : children) {
+    if (type == "some_child_type") {
+      someChild = convertNode(child, adaptor);
+    } else if (type == "some_value_type") {
+      someValue = getNodeText(child, adaptor);
+    }
+    // Handle other child types...
+  }
+  
+  // Validate that we have the required components
+  if (!someChild) {
+    DBGS("Failed to parse new_type:\n");
+    DBGS("  Missing someChild\n");
+    return nullptr;
+  }
+  
+  // Create and return the AST node
+  return std::make_unique<NewTypeAST>(
+    getLocation(targetNode, adaptor),
+    std::move(someChild),
+    std::move(someValue)
+  );
+}
+
+// 6. Update dumpASTNode to display the node
+void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
+  // ...existing code...
+  switch (node->getKind()) {
+    // ...existing cases...
+    case ASTNode::Node_NewType: {
+      auto *newType = static_cast<const NewTypeAST*>(node);
+      os << "NewType: " << newType->getSomeValue() << "\n";
+      
+      // If the node has child nodes, print them with proper indentation
+      printIndent(os, indent + 1);
+      os << "Child:\n";
+      dumpASTNode(os, newType->getSomeChild(), indent + 2);
+      break;
+    }
+    // ...
+  }
+}
+```
+
+## Important Tips
+
+1. **Handling Tree-sitter Structure**: The Tree-sitter parse tree might not perfectly match your desired AST. You'll often need to navigate through parent/child relationships and handle various cases.
+
+2. **Debugging**: Make extensive use of the `DBGS` macro for debug output to understand the tree structure and track conversion issues.
+
+3. **Incremental Implementation**: Add one node type at a time and test thoroughly before moving to the next.
+
+4. **Understanding Relationships**: Some nodes have complex relationships (like guardPatterns and matchCases). You may need to modify multiple functions to ensure they work together correctly.
+
+5. **Error Handling**: Always validate required components before creating AST nodes and provide clear error messages for debugging.
+
+6. **Test Thoroughly**: Use a representative test file with examples of all supported node types to verify correct parsing and AST generation.
+
+## Example Implementation Outline
+
+For implementing a new feature like string interpolation:
+
+1. Create `StringInterpolationAST` class in AST.h
+2. Add `Node_StringInterpolation` to the enum
+3. Create the conversion function in AST.cpp
+4. Add "string_interpolation" to knownNodeTypes
+5. Update convertNode to recognize the new type
+6. Implement a detailed printer in dumpASTNode
+7. Test with examples containing string interpolation
+8. Look for new warnings/errors in the debug output, and iterate on your solution to address them.
+
+Following this pattern ensures consistent implementation of AST nodes and simplifies the process of adding new language features to the compiler.

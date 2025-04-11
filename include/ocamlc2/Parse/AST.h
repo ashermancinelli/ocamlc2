@@ -29,6 +29,7 @@ public:
   enum ASTNodeKind {
     // Expressions
     Node_Number,
+    Node_String,
     Node_ValuePath,
     Node_ConstructorPath,
     Node_TypeConstructorPath,
@@ -38,11 +39,16 @@ public:
     Node_MatchExpression,
     Node_ForExpression,
     Node_LetExpression,
+    Node_IfExpression,
+    Node_ListExpression,
+    Node_FunExpression,
+    Node_UnitExpression,
     
     // Patterns
     Node_ValuePattern,
     Node_ConstructorPattern,
     Node_TypedPattern,
+    Node_GuardedPattern,
     
     // Declarations
     Node_TypeDefinition,
@@ -87,6 +93,20 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_Number;
+  }
+};
+
+/// String literal expression (e.g., "hello", "world")
+class StringExprAST : public ASTNode {
+  std::string value;
+public:
+  StringExprAST(Location loc, std::string value)
+    : ASTNode(Node_String, std::move(loc)), value(std::move(value)) {}
+  
+  const std::string& getValue() const { return value; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_String;
   }
 };
 
@@ -256,6 +276,76 @@ public:
   }
 };
 
+/// If expression (e.g., if x > 0 then y else z)
+class IfExpressionAST : public ASTNode {
+  std::unique_ptr<ASTNode> condition;
+  std::unique_ptr<ASTNode> thenBranch;
+  std::unique_ptr<ASTNode> elseBranch;
+public:
+  IfExpressionAST(Location loc, std::unique_ptr<ASTNode> condition,
+                 std::unique_ptr<ASTNode> thenBranch,
+                 std::unique_ptr<ASTNode> elseBranch = nullptr)
+    : ASTNode(Node_IfExpression, std::move(loc)),
+      condition(std::move(condition)),
+      thenBranch(std::move(thenBranch)),
+      elseBranch(std::move(elseBranch)) {}
+  
+  const ASTNode* getCondition() const { return condition.get(); }
+  const ASTNode* getThenBranch() const { return thenBranch.get(); }
+  const ASTNode* getElseBranch() const { return elseBranch.get(); }
+  bool hasElseBranch() const { return elseBranch != nullptr; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_IfExpression;
+  }
+};
+
+/// List expression (e.g., [1; 2; 3])
+class ListExpressionAST : public ASTNode {
+  std::vector<std::unique_ptr<ASTNode>> elements;
+public:
+  ListExpressionAST(Location loc, std::vector<std::unique_ptr<ASTNode>> elements)
+    : ASTNode(Node_ListExpression, std::move(loc)), elements(std::move(elements)) {}
+  
+  const std::vector<std::unique_ptr<ASTNode>>& getElements() const { return elements; }
+  size_t getNumElements() const { return elements.size(); }
+  ASTNode* getElement(size_t index) const { return elements[index].get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ListExpression;
+  }
+};
+
+/// Function expression (e.g., fun x -> x + 1)
+class FunExpressionAST : public ASTNode {
+  std::vector<std::unique_ptr<ASTNode>> parameters;
+  std::unique_ptr<ASTNode> body;
+public:
+  FunExpressionAST(Location loc, std::vector<std::unique_ptr<ASTNode>> parameters,
+                  std::unique_ptr<ASTNode> body)
+    : ASTNode(Node_FunExpression, std::move(loc)),
+      parameters(std::move(parameters)),
+      body(std::move(body)) {}
+  
+  const std::vector<std::unique_ptr<ASTNode>>& getParameters() const { return parameters; }
+  const ASTNode* getBody() const { return body.get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_FunExpression;
+  }
+};
+
+/// Unit expression (e.g., ())
+class UnitExpressionAST : public ASTNode {
+public:
+  UnitExpressionAST(Location loc)
+    : ASTNode(Node_UnitExpression, std::move(loc)) {}
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_UnitExpression;
+  }
+};
+
 /// Let expression (e.g., let x = 1 in ...)
 class LetExpressionAST : public ASTNode {
   std::unique_ptr<ASTNode> binding;
@@ -323,6 +413,24 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_TypedPattern;
+  }
+};
+
+/// Guarded pattern (e.g., x when x > 0)
+class GuardedPatternAST : public ASTNode {
+  std::unique_ptr<ASTNode> pattern;
+  std::unique_ptr<ASTNode> guard;
+public:
+  GuardedPatternAST(Location loc, std::unique_ptr<ASTNode> pattern,
+                   std::unique_ptr<ASTNode> guard)
+    : ASTNode(Node_GuardedPattern, std::move(loc)),
+      pattern(std::move(pattern)), guard(std::move(guard)) {}
+  
+  const ASTNode* getPattern() const { return pattern.get(); }
+  const ASTNode* getGuard() const { return guard.get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_GuardedPattern;
   }
 };
 
