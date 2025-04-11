@@ -12,7 +12,8 @@ namespace ocamlc2 {
 
 class ASTNode;
 struct Location;
-
+struct TypeExpr;
+struct Unifier;
 std::unique_ptr<ASTNode> parse(const std::string &source, const std::string &filename = "<string>");
 std::unique_ptr<ASTNode> parse(const std::filesystem::path &filepath);
 llvm::raw_ostream& operator<<(llvm::raw_ostream &os, const ASTNode &node);
@@ -74,10 +75,13 @@ public:
   mlir::Location getMLIRLocation(mlir::MLIRContext &context) const;
   static llvm::StringRef getName(ASTNodeKind kind);
   static llvm::StringRef getName(const ASTNode &node);
+  TypeExpr *getTypeExpr() const { return typeExpr; }
+  friend struct Unifier;
 
 private:
   const ASTNodeKind kind;
   Location location;
+  mutable TypeExpr *typeExpr = nullptr;
 };
 
 using ASTNodeList = std::vector<std::unique_ptr<ASTNode>>;
@@ -509,22 +513,25 @@ class LetBindingAST : public ASTNode {
   std::vector<std::unique_ptr<ASTNode>> parameters;
   std::unique_ptr<TypeConstructorPathAST> returnType;
   std::unique_ptr<ASTNode> body;
+  bool isRecursive;
 public:
   LetBindingAST(Location loc, std::string name,
                std::vector<std::unique_ptr<ASTNode>> parameters,
                std::unique_ptr<TypeConstructorPathAST> returnType,
-               std::unique_ptr<ASTNode> body)
+               std::unique_ptr<ASTNode> body,
+               bool isRecursive = false)
     : ASTNode(Node_LetBinding, std::move(loc)),
       name(std::move(name)),
       parameters(std::move(parameters)),
       returnType(std::move(returnType)),
-      body(std::move(body)) {}
+      body(std::move(body)),
+      isRecursive(isRecursive) {}
   
   const std::string& getName() const { return name; }
   const std::vector<std::unique_ptr<ASTNode>>& getParameters() const { return parameters; }
   const TypeConstructorPathAST* getReturnType() const { return returnType.get(); }
   const ASTNode* getBody() const { return body.get(); }
-  
+  bool getIsRecursive() const { return isRecursive; }
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_LetBinding;
   }

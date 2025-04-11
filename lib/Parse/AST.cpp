@@ -873,8 +873,8 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
   }
   
   // For recursive bindings, try to handle special cases
+  bool isRec = false;
   if (name.empty() && !hasUnitPattern) {
-    bool isRec = false;
     for (auto [type, child] : children) {
       if (type == "rec") {
         isRec = true;
@@ -920,7 +920,8 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
         "_unit", // Special name for unit bindings
         std::move(parameters),
         std::move(returnType),
-        std::move(body)
+        std::move(body),
+        isRec
       );
     } else {
       DBGS("Failed to parse unit let_binding: missing body\n");
@@ -1778,8 +1779,9 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_LetBinding: {
       auto *letBinding = static_cast<const LetBindingAST*>(node);
-      os << "LetBinding: " << letBinding->getName() << "\n";
-      
+      os << "LetBinding: " << (letBinding->getIsRecursive() ? "rec " : "")
+         << letBinding->getName() << "\n";
+
       if (!letBinding->getParameters().empty()) {
         printIndent(os, indent + 1);
         os << "Parameters:\n";

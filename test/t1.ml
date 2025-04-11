@@ -47,14 +47,6 @@ let area = function
       let s = (a +. b +. c) /. 2.0 in
       sqrt (s *. (s -. a) *. (s -. b) *. (s -. c))
 
-(* Module usage *)
-module MySet = Set.Make(Int)
-let int_set = MySet.empty
-  |> MySet.add 1
-  |> MySet.add 2
-  |> MySet.add 3
-  |> MySet.add 2  (* Duplicates are ignored *)
-
 (* Print results to verify *)
 let () =
   Printf.printf "Value of x: %d\n" x;
