@@ -88,39 +88,44 @@ void Unifier::initializeEnvironment() {
 
 #if 0
 CompilationUnit:
-| ExpressionItem:
-| | LetExpr:
-| | | Binding:
-| | | | ValueDefinition:
-| | | | | LetBinding: x
-| | | | | | Body:
-| | | | | | | Number: 0
+| ValueDefinition:
+| | LetBinding: f
+| | | Parameters:
+| | | | ValuePattern: lb
+| | | | ValuePattern: ub
 | | | Body:
 | | | | LetExpr:
 | | | | | Binding:
 | | | | | | ValueDefinition:
-| | | | | | | LetBinding: y
+| | | | | | | LetBinding: x
 | | | | | | | | Body:
-| | | | | | | | | Number: 5
+| | | | | | | | | ValuePath: lb
 | | | | | Body:
-| | | | | | ForExpr: i = to
-| | | | | | | Start:
-| | | | | | | | ValuePath: x
-| | | | | | | End:
-| | | | | | | | ValuePath: y
+| | | | | | LetExpr:
+| | | | | | | Binding:
+| | | | | | | | ValueDefinition:
+| | | | | | | | | LetBinding: y
+| | | | | | | | | | Body:
+| | | | | | | | | | | ValuePath: ub
 | | | | | | | Body:
-| | | | | | | | ApplicationExpr:
-| | | | | | | | | Function:
-| | | | | | | | | | ValuePath: print_int
-| | | | | | | | | Arguments:
-| | | | | | | | | | ValuePath: i
+| | | | | | | | ForExpr: i = to
+| | | | | | | | | Start:
+| | | | | | | | | | ValuePath: x
+| | | | | | | | | End:
+| | | | | | | | | | ValuePath: y
+| | | | | | | | | Body:
+| | | | | | | | | | ApplicationExpr:
+| | | | | | | | | | | Function:
+| | | | | | | | | | | | ValuePath: print_int
+| | | | | | | | | | | Arguments:
+| | | | | | | | | | | | ValuePath: i
 #endif
 static std::string getPath(llvm::ArrayRef<std::string> path) {
   return llvm::join(path, ".");
 }
 
 TypeExpr* Unifier::inferType(const ASTNode* ast) {
-  DBGS(*ast << '\n');
+  DBGS('\n' << *ast << '\n');
   if (auto *_ = llvm::dyn_cast<NumberExprAST>(ast)) {
     return getDeclaredType("int");
   } else if (auto *_ = llvm::dyn_cast<StringExprAST>(ast)) {
@@ -133,8 +138,13 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     }
   } else if (auto *ei = llvm::dyn_cast<ExpressionItemAST>(ast)) {
     return infer(ei->getExpression());
-  } else if (auto *le = llvm::dyn_cast<LetExpressionAST>(ast)) {
-    return infer(le->getBody());
+  // } else if (auto *le = llvm::dyn_cast<LetExpressionAST>(ast)) {
+  //   auto *exprType = infer(le->getBody());
+  //   Env::ScopeTy es(env);
+  //   ConcreteTypeScope cts(&this->concreteTypes);
+  //   declare(le->getBinding()->getName(), exprType);
+  //   auto *result = infer(le->getBody());
+  //   return result;
   // } else if (auto *fe = llvm::dyn_cast<ForExprAST>(ast)) {
   //   return infer(fe->getBody());
   }

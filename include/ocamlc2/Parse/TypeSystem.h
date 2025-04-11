@@ -79,6 +79,15 @@ struct Unifier {
   template<typename T>
   using Set = llvm::DenseSet<T>;
   Env env;
+  struct ConcreteTypeScope {
+    ConcreteTypeScope(Set<TypeVariable *> *concreteTypes)
+        : concreteTypes(concreteTypes), oldConcreteTypes(*concreteTypes) {}
+    Set<TypeVariable*> *concreteTypes;
+    Set<TypeVariable*> oldConcreteTypes;
+    ~ConcreteTypeScope() {
+      *concreteTypes = oldConcreteTypes;
+    }
+  };
   void initializeEnvironment();
   TypeExpr* infer(const ASTNode* ast);
   template <typename T, typename... Args>
@@ -127,6 +136,13 @@ private:
   template<typename ITERABLE>
   inline bool isConcrete(TypeExpr* type, ITERABLE concreteTypes) {
     return isSubTypeOfAny(type, concreteTypes);
+  }
+
+  inline void declare(llvm::StringRef name, TypeExpr* type) {
+    if (env.count(name)) {
+      assert(false && "Type already declared");
+    }
+    env.insert(name, type);
   }
 
   inline TypeExpr* getDeclaredType(const llvm::StringRef name) {

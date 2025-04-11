@@ -111,7 +111,7 @@ std::unique_ptr<ExpressionItemAST> convertExpressionItem(TSNode node, const TSTr
 std::unique_ptr<TypeBindingAST> convertTypeBinding(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<VariantDeclarationAST> convertVariantDeclaration(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ConstructorDeclarationAST> convertConstructorDeclaration(TSNode node, const TSTreeAdaptor &adaptor);
-std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor, bool parentIsRec = false);
 std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTreeAdaptor &adaptor);
 
@@ -130,7 +130,7 @@ std::unordered_set<std::string> knownNodeTypes = {
     "when", "guard", "in", "list_expression", "[", "]", "list",
     "fun_expression", "fun", "function_expression", "function", "unit",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
-    "do", "done", "to", "downto"
+    "do", "done", "to", "downto", "rec"  // Added "rec" to known node types
 };
 
 // Helper functions
@@ -216,11 +216,12 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertLetExpr(node, adaptor);
   else if (type == "if_expression" || type == "if")
     return convertIfExpr(node, adaptor);
-  else if (type == "list_expression" || type == "[")
+  else if (type == "list_expression")
     return convertListExpr(node, adaptor);
-  else if (type == "fun_expression" || type == "fun" || type == "function_expression" || type == "function")
+  else if (type == "fun_expression" || type == "fun" || 
+           type == "function_expression" || type == "function")
     return convertFunExpr(node, adaptor);
-  else if (type == "unit")
+  else if (type == "unit_expression" || type == "unit")
     return convertUnitExpr(node, adaptor);
   else if (type == "value_pattern")
     return convertValuePattern(node, adaptor);
@@ -241,63 +242,21 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
   else if (type == "constructor_declaration")
     return convertConstructorDeclaration(node, adaptor);
   else if (type == "let_binding")
-    return convertLetBinding(node, adaptor);
-  else if (type == "field_get_expression") {
-    // For field_get_expression, we can treat it as a special case of value_path
-    auto children = childrenNodes(node);
-    std::vector<std::string> path;
-    
-    // Process all parts of the field path
-    for (auto [childType, child] : children) {
-      if (childType != "." && childType != "field_name") {
-        auto expr = convertNode(child, adaptor);
-        if (expr) {
-          if (auto *valuePath = llvm::dyn_cast<ValuePathAST>(expr.get())) {
-            // Extract the existing path and add to it
-            auto existingPath = valuePath->getPath();
-            path.insert(path.end(), existingPath.begin(), existingPath.end());
-          } else {
-            // If not a ValuePath, get the text directly
-            path.push_back(getNodeText(child, adaptor));
-          }
-        }
-      } else if (childType == "field_name") {
-        path.push_back(getNodeText(child, adaptor));
-      }
-    }
-    
-    // Add field_name and field_path to known node types
-    knownNodeTypes.insert("field_name");
-    knownNodeTypes.insert("field_path");
-    
-    return std::make_unique<ValuePathAST>(getLocation(node, adaptor), std::move(path));
-  } else if (type == "guard" || type == "when") {
+    return convertLetBinding(node, adaptor, false);
+  else if (type == "guard" || type == "when")
     return convertGuardedPattern(node, adaptor);
-  }
-  
-  // Default: try processing children nodes if this is an unknown node type
-  // This helps with handling various expression and pattern types that might not have direct handlers
-  auto children = childrenNodes(node);
-  if (!children.empty()) {
-    for (auto [childType, child] : children) {
-      // Skip tokens and try to process actual nodes
-      if (childType != ";" && childType != ";;" && childType != "(" && childType != ")" &&
-          childType != ":" && childType != "=" && childType != "->" && childType != "|" &&
-          childType != "of" && childType != "with" && childType != "match" && 
-          childType != "type" && childType != "let") {
-        auto result = convertNode(child, adaptor);
-        if (result) {
-          return result;
-        }
-      }
+  else if (type == "rec") {
+    // For recursive bindings, we need to look at the parent node
+    TSNode parent = ts_node_parent(node);
+    if (!ts_node_is_null(parent)) {
+      return convertNode(parent, adaptor);
     }
   }
-  
-  // Log warning for truly unsupported node types
-  if (knownNodeTypes.find(std::string(nodeType)) == knownNodeTypes.end()) {
-    std::cerr << "Warning: Unsupported node type: " << nodeType << std::endl;
-    DBGS("Unsupported node type: " << nodeType << "\n");
-    DBG(dumpTSNode(node, adaptor));
+  else {
+    if (knownNodeTypes.find(type.str()) == knownNodeTypes.end()) {
+      // Unknown node type, log it for debugging
+      DBGS("Unknown node type: " << type << "\n");
+    }
   }
   
   return nullptr;
@@ -792,7 +751,7 @@ std::unique_ptr<TypeDefinitionAST> convertTypeDefinition(TSNode node, const TSTr
   );
 }
 
-std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor) {
+std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor, bool parentIsRec) {
   const char* nodeType = ts_node_type(node);
   if (std::string(nodeType) != "let_binding") {
     return nullptr;
@@ -803,17 +762,14 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
   std::vector<std::unique_ptr<ASTNode>> parameters;
   std::unique_ptr<TypeConstructorPathAST> returnType = nullptr;
   std::unique_ptr<ASTNode> body = nullptr;
-  
-  DBGS("Let binding children:\n");
-  for (auto [type, child] : children) {
-    DBGS("  Type: " << type.str() << "\n");
-  }
-  
-  // Check for unit pattern as a special case
+  bool isRec = parentIsRec;  // Start with the parent's isRec value
   bool hasUnitPattern = false;
+  
+  // Also check for "rec" keyword within this node to identify recursive bindings
   for (auto [type, child] : children) {
-    if (type == "unit") {
-      hasUnitPattern = true;
+    if (type == "rec") {
+      isRec = true;
+      DBGS("Found recursive keyword 'rec', setting isRec = true\n");
       break;
     }
   }
@@ -873,7 +829,6 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
   }
   
   // For recursive bindings, try to handle special cases
-  bool isRec = false;
   if (name.empty() && !hasUnitPattern) {
     for (auto [type, child] : children) {
       if (type == "rec") {
@@ -909,6 +864,7 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
   DBGS("  Parameters: " << parameters.size() << "\n");
   DBGS("  Return type: " << (returnType ? "found" : "missing") << "\n");
   DBGS("  Body: " << (body ? "found" : "missing") << "\n");
+  DBGS("  Is recursive: " << (isRec ? "yes" : "no") << "\n");
   
   // Special handling for unit binding patterns (let () = ...)
   if (hasUnitPattern) {
@@ -970,7 +926,8 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
     name,
     std::move(parameters),
     std::move(returnType),
-    std::move(body)
+    std::move(body),
+    isRec
   );
 }
 
@@ -982,10 +939,20 @@ std::unique_ptr<ValueDefinitionAST> convertValueDefinition(TSNode node, const TS
   
   auto children = childrenNodes(node);
   std::vector<std::unique_ptr<LetBindingAST>> bindings;
+  bool isRec = false;
+  
+  // Check for 'rec' keyword at the value_definition level
+  for (auto [type, child] : children) {
+    if (type == "rec") {
+      isRec = true;
+      DBGS("Found recursive keyword at value_definition level, setting isRec = true\n");
+      break;
+    }
+  }
   
   for (auto [type, child] : children) {
     if (type == "let_binding") {
-      auto binding = convertLetBinding(child, adaptor);
+      auto binding = convertLetBinding(child, adaptor, isRec);
       if (binding) {
         bindings.push_back(std::move(binding));
       }
@@ -1137,7 +1104,7 @@ std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdapto
   for (auto [type, child] : children) {
     if (type == "let_binding") {
       // Direct let_binding
-      binding = convertLetBinding(child, adaptor);
+      binding = convertLetBinding(child, adaptor, false);
     } else if (type == "value_definition") {
       // Value definition containing let_binding
       auto valueDef = convertValueDefinition(child, adaptor);
@@ -1148,7 +1115,7 @@ std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdapto
         auto defChildren = childrenNodes(child);
         for (auto [defType, defChild] : defChildren) {
           if (defType == "let_binding") {
-            binding = convertLetBinding(defChild, adaptor);
+            binding = convertLetBinding(defChild, adaptor, false);
             if (binding) break;
           }
         }
@@ -1194,7 +1161,7 @@ std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdapto
         if (letIdx + 1 < children.size()) {
           auto nextChild = children[letIdx + 1].second;
           if (std::string(ts_node_type(nextChild)) == "let_binding") {
-            binding = convertLetBinding(nextChild, adaptor);
+            binding = convertLetBinding(nextChild, adaptor, false);
           }
         }
       } else if (type != "in" && !foundIn && !binding) {

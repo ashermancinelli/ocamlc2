@@ -1,5 +1,8 @@
-let x = 0 in
-let y = 5 in
-    for i = x to y do
-        print_int i
-    done;;
+let f lb ub = 
+    let x = lb in
+    let y = ub in
+        for i = x to y do
+            print_int i
+        done;;
+
+f 0 5;;
