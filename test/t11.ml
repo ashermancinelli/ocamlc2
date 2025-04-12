@@ -2,7 +2,7 @@
 (* AJM: warning constructors with no arguments is bug in treesitter *)
 let find_index item arr =
   let rec aux i =
-    if i >= Array.length arr then None
+    if i >= Array.length arr then (None)
     else if arr.(i) = item then Some i
     else aux (i + 1)
   in

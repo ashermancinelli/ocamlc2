@@ -185,10 +185,11 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     return infer(pe->getExpression());
   } else if (auto *vd = llvm::dyn_cast<ValueDefinitionAST>(ast)) {
     DBGS("value definition\n");
+    TypeExpr *result = getType("unit");
     for (auto &binding : vd->getBindings()) {
-      infer(binding.get());
+      result = infer(binding.get());
     }
-    return getType("unit");
+    return result;
   } else if (auto *lb = llvm::dyn_cast<LetBindingAST>(ast)) {
     DBGS("let binding\n");
     if (lb->getParameters().empty()) {
@@ -272,9 +273,20 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     unify(functionType, declaredFunctionType);
     return functionType->back();
   } else if (auto *cp = llvm::dyn_cast<ConstructorPathAST>(ast)) {
-    DBGS("constructor path\n");
     auto name = getPath(cp->getPath());
-    return getType(name);
+    DBGS("constructor path: " << name << '\n');
+    auto *ctorType = getType(name);
+    DBGS("ctor type: " << *ctorType << '\n');
+    if (auto *op = llvm::dyn_cast<TypeOperator>(ctorType)) {
+      if (op->getArgs().size() == 1) {
+        DBGS("HACK: unwrap constructor\n");
+        // TODO:
+        // work around bug in treesitter upstream where constructors with no arguments
+        // are not wrapped in an application expression... so we unwrap our selves.
+        return op->back();
+      }
+    }
+    return ctorType;
   } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
     DBGS("value pattern\n");
     return getType(vp->getName());
