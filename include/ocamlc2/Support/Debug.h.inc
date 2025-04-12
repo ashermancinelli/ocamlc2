@@ -1,5 +1,7 @@
 #include "ocamlc2/Support/Colors.h"
 #ifdef DEBUG_TYPE
+// #define FUNCTION_NAME __PRETTY_FUNCTION__
+#define FUNCTION_NAME __func__
 #define DBG(X)                                                                 \
   if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                    \
     X;                                                                         \
@@ -7,9 +9,9 @@
 #define DBGS(...)                                                              \
   if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                    \
     llvm::errs() << "[" << ANSIColors::blue() << DEBUG_TYPE << ":"             \
-                 << __PRETTY_FUNCTION__ << ":" << __LINE__                     \
-                 << ANSIColors::reset() << "]" << " " << ANSIColors::italic()  \
-                 << __VA_ARGS__ << ANSIColors::reset();                        \
+                 << FUNCTION_NAME << ":" << __LINE__ << ANSIColors::reset()    \
+                 << "]" << " " << ANSIColors::italic() << __VA_ARGS__          \
+                 << ANSIColors::reset();                                       \
   }
 #else
 #error "DEBUG_TYPE is not defined"

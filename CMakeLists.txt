@@ -103,10 +103,10 @@ message(STATUS "OCaml version: ${OCAML_VERSION}")
 # Configure version header
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake/OCamlC2Config.h.in
-  ${CMAKE_CURRENT_BINARY_DIR}/include/OCamlC2Config.h
+  ${CMAKE_CURRENT_BINARY_DIR}/include/ocamlc2/OcamlC2Config.h
 ) 
 
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake/OCamlRTConfig.h.in
-  ${CMAKE_CURRENT_BINARY_DIR}/include/OCamlRTConfig.h
+  ${CMAKE_CURRENT_BINARY_DIR}/include/ocamlc2/OCamlRTConfig.h
 )
