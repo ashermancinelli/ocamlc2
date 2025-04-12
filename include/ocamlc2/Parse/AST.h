@@ -45,7 +45,8 @@ public:
     Node_ListExpression,
     Node_FunExpression,
     Node_UnitExpression,
-    
+    Node_SignExpression,
+
     // Patterns
     Node_ValuePattern,
     Node_ConstructorPattern,
@@ -126,6 +127,25 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_Boolean;
+  }
+};
+
+/// Sign expression (e.g., +1, -2)
+class SignExpressionAST : public ASTNode {
+  std::string op;
+  std::unique_ptr<ASTNode> operand;
+
+public:
+  SignExpressionAST(Location loc, std::string op,
+                    std::unique_ptr<ASTNode> operand)
+      : ASTNode(Node_SignExpression, std::move(loc)), op(std::move(op)),
+        operand(std::move(operand)) {}
+
+  const std::string &getOperator() const { return op; }
+  const ASTNode *getOperand() const { return operand.get(); }
+
+  static bool classof(const ASTNode *node) {
+    return node->getKind() == Node_SignExpression;
   }
 };
 

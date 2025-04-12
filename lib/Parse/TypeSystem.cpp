@@ -152,6 +152,8 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     return getType("string");
   } else if (auto *_ = llvm::dyn_cast<BooleanExprAST>(ast)) {
     return getType("bool");
+  } else if (auto *se = llvm::dyn_cast<SignExpressionAST>(ast)) {
+    return infer(se->getOperand());
   } else if (auto *vp = llvm::dyn_cast<ValuePathAST>(ast)) {
     return getType(getPath(vp->getPath()));
   } else if (auto *cu = llvm::dyn_cast<CompilationUnitAST>(ast)) {

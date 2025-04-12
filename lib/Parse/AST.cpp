@@ -54,7 +54,9 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_ListExpression: return "ListExpression";
     case Node_FunExpression: return "FunExpression";
     case Node_UnitExpression: return "UnitExpression";
+    case Node_SignExpression: return "SignExpression";
   }
+  return "";
 }
 
 mlir::Location ASTNode::getMLIRLocation(mlir::MLIRContext &context) const {
@@ -116,11 +118,12 @@ std::unique_ptr<ConstructorDeclarationAST> convertConstructorDeclaration(TSNode 
 std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor, bool parentIsRec = false);
 std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
 std::unordered_set<std::string> knownNodeTypes = {
     "compilation_unit", "number", "string", "boolean", "true", "false", "value_path", "constructor_path",
-    "type_constructor_path", "application_expression", "infix_expression",
+    "type_constructor_path", "application_expression", "infix_expression", "sign_expression", "sign_operator",
     "parenthesized_expression", "match_expression", "match_case",
     "value_pattern", "constructor_pattern", "typed_pattern", "type_definition",
     "value_definition", "expression_item", "type_binding", "variant_declaration",
@@ -208,6 +211,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertApplicationExpr(node, adaptor);
   else if (type == "infix_expression")
     return convertInfixExpr(node, adaptor);
+  else if (type == "sign_expression" || type == "sign_operator")
+    return convertSignExpression(node, adaptor);
   else if (type == "parenthesized_expression")
     return convertParenthesizedExpr(node, adaptor);
   else if (type == "match_expression")
@@ -1428,6 +1433,60 @@ std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTr
   );
 }
 
+std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  bool isSignExpr = (std::string(nodeType) == "sign_expression");
+  bool isSignOperator = (std::string(nodeType) == "sign_operator");
+  
+  if (!isSignExpr && !isSignOperator) {
+    return nullptr;
+  }
+  
+  // If we have a sign_operator node, look at its parent which should be a sign_expression
+  TSNode targetNode = isSignOperator ? ts_node_parent(node) : node;
+  if (ts_node_is_null(targetNode) || 
+      (isSignOperator && std::string(ts_node_type(targetNode)) != "sign_expression")) {
+    return nullptr;
+  }
+  
+  auto children = childrenNodes(targetNode);
+  std::string op;
+  std::unique_ptr<ASTNode> operand = nullptr;
+  
+  // First pass to identify the operator and operand
+  for (auto [type, child] : children) {
+    if (type == "sign_operator") {
+      op = getNodeText(child, adaptor);
+    } else if (!operand) {
+      // The first non-operator node should be the operand
+      operand = convertNode(child, adaptor);
+    }
+  }
+  
+  // If we didn't find the operand yet, try looking for specific node types
+  if (!operand) {
+    for (auto [type, child] : children) {
+      if (type != "sign_operator" && type != "sign_expression") {
+        operand = convertNode(child, adaptor);
+        if (operand) break;
+      }
+    }
+  }
+  
+  if (op.empty() || !operand) {
+    DBGS("Failed to parse sign_expression:\n");
+    if (op.empty()) DBGS("  Missing operator\n");
+    if (!operand) DBGS("  Missing operand\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<SignExpressionAST>(
+    getLocation(targetNode, adaptor),
+    op,
+    std::move(operand)
+  );
+}
+
 std::unique_ptr<ListExpressionAST> convertListExpr(TSNode node, const TSTreeAdaptor &adaptor) {
   const char* nodeType = ts_node_type(node);
   bool isListExpr = (std::string(nodeType) == "list_expression");
@@ -1606,6 +1665,14 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     case ASTNode::Node_Boolean: {
       auto *boolean = static_cast<const BooleanExprAST*>(node);
       os << "Boolean: " << (boolean->getValue() ? "true" : "false") << "\n";
+      break;
+    }
+    case ASTNode::Node_SignExpression: {
+      auto *signExpr = static_cast<const SignExpressionAST*>(node);
+      os << "SignExpression: " << signExpr->getOperator() << "\n";
+      printIndent(os, indent + 1);
+      os << "Operand:\n";
+      dumpASTNode(os, signExpr->getOperand(), indent + 2);
       break;
     }
     case ASTNode::Node_ValuePath: {
