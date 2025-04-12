@@ -109,48 +109,58 @@ TypeExpr* Unifier::infer(const ASTNode* ast) {
 }
 
 void Unifier::initializeEnvironment() {
-  for (auto name : {"int", "float", "bool", "string", "unit"}) {
-    env.insert(name, create<TypeOperator>(name));
+  for (auto name : {"int", "float", "bool", "string", "unit", "_"}) {
+    declare(name, createTypeOperator(name));
   }
+  auto *T_bool = getType("bool");
+  auto *T_float = getType("float");
   auto *T_int = getType("int");
   auto *T_unit = getType("unit");
-  env.insert("print_int", createFunction({T_int, T_unit}));
-  env.insert("+", createFunction({T_int, T_int, T_int}));
+  auto *T1 = createTypeVariable();
+  for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
+    declare(arithmetic, createFunction({T_int, T_int, T_int}));
+    declare(std::string(arithmetic) + ".", createFunction({T_float, T_float, T_float}));
+  }
+  for (auto comparison : {"==", "!=", "<", "<=", ">", ">="}) {
+    declare(comparison, createFunction({T1, T1, T_bool}));
+  }
+  declare("print_int", createFunction({T_int, T_unit}));
+  declare("length", createFunction({createTypeVariable(), T_int}));
 }
 
 #if 0
-CompilationUnit:
-| ValueDefinition:
-| | LetBinding: f
-| | | Parameters:
-| | | | ValuePattern: lb
-| | | | ValuePattern: ub
-| | | Body:
-| | | | LetExpr:
-| | | | | Binding:
-| | | | | | ValueDefinition:
-| | | | | | | LetBinding: x
-| | | | | | | | Body:
-| | | | | | | | | ValuePath: lb
-| | | | | Body:
-| | | | | | LetExpr:
-| | | | | | | Binding:
-| | | | | | | | ValueDefinition:
-| | | | | | | | | LetBinding: y
-| | | | | | | | | | Body:
-| | | | | | | | | | | ValuePath: ub
-| | | | | | | Body:
-| | | | | | | | ForExpr: i = to
-| | | | | | | | | Start:
-| | | | | | | | | | ValuePath: x
-| | | | | | | | | End:
-| | | | | | | | | | ValuePath: y
-| | | | | | | | | Body:
-| | | | | | | | | | ApplicationExpr:
-| | | | | | | | | | | Function:
-| | | | | | | | | | | | ValuePath: print_int
-| | | | | | | | | | | Arguments:
-| | | | | | | | | | | | ValuePath: i
+MatchExpr:
+| Value:
+| | ValuePath: n
+| Cases:
+| | MatchCase:
+| | | Pattern:
+| | | | Number: 0
+| | | Expression:
+| | | | String: "Zero"
+| | MatchCase:
+| | | Pattern:
+| | | | Number: 1
+| | | Expression:
+| | | | String: "One"
+| | MatchCase:
+| | | Pattern:
+| | | | Number: 2
+| | | Expression:
+| | | | String: "Two"
+| | MatchCase:
+| | | Pattern:
+| | | | GuardedPattern:
+| | | | | Pattern:
+| | | | | | ValuePattern: n
+| | | | | Guard:
+| | | | | | InfixExpr: >
+| | | | | | | LHS:
+| | | | | | | | ValuePath: n
+| | | | | | | RHS:
+| | | | | | | | Number: 0
+| | | Expression:
+| | | | String: "Positive"
 #endif
 static std::string getPath(llvm::ArrayRef<std::string> path) {
   return llvm::join(path, ".");
@@ -181,6 +191,8 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     auto *result = infer(le->getBody());
     concreteTypes = savedTypes;
     return result;
+  } else if (auto *pe = llvm::dyn_cast<ParenthesizedExpressionAST>(ast)) {
+    return infer(pe->getExpression());
   } else if (auto *vd = llvm::dyn_cast<ValueDefinitionAST>(ast)) {
     for (auto &binding : vd->getBindings()) {
       infer(binding.get());
@@ -193,6 +205,11 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       return bodyType;
     } else {
       TypeExpr *functionType;
+      const bool isRecursive = lb->getIsRecursive();
+      if (isRecursive) {
+        DBGS("Recursive let binding: " << lb->getName() << '\n');
+        declare(lb->getName(), createTypeVariable());
+      }
       {
         EnvScope es(env);
         auto savedTypes = concreteTypes;
@@ -211,9 +228,30 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
         concreteTypes = savedTypes;
         functionType = createFunction(types);
       }
-      declare(lb->getName(), functionType);
+      if (isRecursive) {
+        unify(functionType, getType(lb->getName()));
+      } else {
+        declare(lb->getName(), functionType);
+      }
       return functionType;
     }
+  } else if (auto *ite = llvm::dyn_cast<IfExpressionAST>(ast)) {
+    auto *cond = ite->getCondition();
+    auto *thenAst = ite->getThenBranch();
+    auto *elseAst = ite->hasElseBranch() ? ite->getElseBranch() : nullptr;
+    auto *condType = infer(cond);
+    unify(condType, getType("bool"));
+    auto *thenType = infer(thenAst);
+    auto *elseType = infer(elseAst);
+    unify(thenType, elseType);
+    return thenType;
+  } else if (auto *ie = llvm::dyn_cast<InfixExpressionAST>(ast)) {
+    auto *left = infer(ie->getLHS());
+    auto *right = infer(ie->getRHS());
+    auto *operationType = getType(ie->getOperator());
+    auto *functionType = createFunction({left, right, createTypeVariable()});
+    unify(functionType, operationType);
+    return functionType->back();
   } else if (auto *ae = llvm::dyn_cast<ApplicationExprAST>(ast)) {
     auto *declaredFunctionType = infer(ae->getFunction());
     auto args = llvm::map_to_vector(ae->getArguments(), [&](auto &arg) {
@@ -223,6 +261,31 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     auto *functionType = createFunction(args);
     unify(functionType, declaredFunctionType);
     return functionType->back();
+  } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
+    return getType(vp->getName());
+  } else if (auto *gp = llvm::dyn_cast<GuardedPatternAST>(ast)) {
+    auto *pattern = gp->getPattern();
+    auto *guard = gp->getGuard();
+    auto *patternType = infer(pattern);
+    auto *guardType = infer(guard);
+    unify(guardType, getType("bool"));
+    return patternType;
+  } else if (auto *me = llvm::dyn_cast<MatchExpressionAST>(ast)) {
+    auto *value = me->getValue();
+    auto &cases = me->getCases();
+    auto *valueType = infer(value);
+    auto *resultType = createTypeVariable();
+    for (auto &caseAst : cases) {
+      auto *pattern = caseAst->getPattern();
+      // inference on a pattern will check the guard, if there is one
+      auto *patternType = infer(pattern);
+      // TODO: will the pattern type always match the value type?
+      unify(valueType, patternType);
+      // 
+      auto *expressionType = infer(caseAst->getExpression());
+      unify(expressionType, resultType);
+    }
+    return resultType;
   } else if (auto *fe = llvm::dyn_cast<ForExpressionAST>(ast)) {
     EnvScope es(env);
     auto savedTypes = concreteTypes;
@@ -260,6 +323,11 @@ void Unifier::unify(TypeExpr* a, TypeExpr* b) {
     if (llvm::isa<TypeVariable>(b)) {
       return unify(b, a);
     } else if (auto *tob = llvm::dyn_cast<TypeOperator>(b)) {
+      auto *wildcard = getWildcardType();
+      if (toa->getName() == wildcard->getName() or tob->getName() == wildcard->getName()) {
+        DBGS("Unifying with wildcard\n");
+        return;
+      }
       if (toa->getName() != tob->getName() or toa->getArgs().size() != tob->getArgs().size()) {
         llvm::errs() << "Could not unify types: " << *toa << " and " << *tob << '\n';
         assert(false);

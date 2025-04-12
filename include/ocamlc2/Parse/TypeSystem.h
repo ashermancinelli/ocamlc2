@@ -161,6 +161,17 @@ private:
     return create<TypeVariable>();
   }
 
+  inline auto *createTypeOperator(llvm::StringRef name) {
+    return create<TypeOperator>(name);
+  }
+
+  inline auto *getBoolType() { return getType("bool"); }
+  inline auto *getFloatType() { return getType("float"); }
+  inline auto *getIntType() { return getType("int"); }
+  inline auto *getUnitType() { return getType("unit"); }
+  inline auto *getStringType() { return getType("string"); }
+  inline auto *getWildcardType() { return getType("_"); }
+
   Env env;
   ConcreteTypes concreteTypes;
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
