@@ -137,7 +137,7 @@ std::unordered_set<std::string> knownNodeTypes = {
     "when", "guard", "in", "list_expression", "[", "]", "list",
     "fun_expression", "fun", "function_expression", "function", "unit",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
-    "do", "done", "to", "downto", "rec", "array_get_expression"  // Added "rec" and "array_get_expression" to known node types
+    "do", "done", "to", "downto", "rec", "array_get_expression", "comment"  // Added "comment" to known node types
 };
 
 // Helper functions
@@ -265,6 +265,15 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
   }
   else if (type == "array_get_expression")
     return convertArrayGetExpr(node, adaptor);
+  else if (type == "comment") {
+    auto str = getNodeText(node, adaptor);
+    if (str.contains("AJM")) {
+      auto loc = getLocation(node, adaptor);
+      llvm::errs() << loc.filename << ":" << loc.line << ":" << loc.column
+                   << " " << str << "\n";
+    }
+    return nullptr;
+  }
   else {
     if (knownNodeTypes.find(type.str()) == knownNodeTypes.end()) {
       // Unknown node type, log it for debugging
@@ -1046,7 +1055,8 @@ std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TS
   for (auto [type, child] : children) {
     if (type == "type_definition" || 
         type == "value_definition" || 
-        type == "expression_item") {
+        type == "expression_item" ||
+        type == "comment") {
       auto item = convertNode(child, adaptor);
       if (item) {
         items.push_back(std::move(item));
