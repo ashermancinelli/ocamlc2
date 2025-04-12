@@ -116,6 +116,7 @@ void Unifier::initializeEnvironment() {
   auto *T_float = getFloatType();
   auto *T_int = getIntType();
   auto *T_unit = getUnitType();
+  auto *T_string = getStringType();
   auto *T1 = createTypeVariable();
   for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
     declare(arithmetic, createFunction({T_int, T_int, T_int}));
@@ -125,6 +126,7 @@ void Unifier::initializeEnvironment() {
     declare(comparison, createFunction({T1, T1, T_bool}));
   }
   declare("print_int", createFunction({T_int, T_unit}));
+  declare("print_string", createFunction({T_string, T_unit}));
   declare("length", createFunction({createTypeVariable(), T_int}));
 
   // Builtin constructors
@@ -182,6 +184,8 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     return getType("int");
   } else if (auto *_ = llvm::dyn_cast<StringExprAST>(ast)) {
     return getType("string");
+  } else if (auto *_ = llvm::dyn_cast<BooleanExprAST>(ast)) {
+    return getType("bool");
   } else if (auto *vp = llvm::dyn_cast<ValuePathAST>(ast)) {
     return getType(getPath(vp->getPath()));
   } else if (auto *cu = llvm::dyn_cast<CompilationUnitAST>(ast)) {

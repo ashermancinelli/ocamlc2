@@ -31,6 +31,7 @@ public:
     // Expressions
     Node_Number,
     Node_String,
+    Node_Boolean,
     Node_ValuePath,
     Node_ConstructorPath,
     Node_TypeConstructorPath,
@@ -111,6 +112,20 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_String;
+  }
+};
+
+/// Boolean literal expression (e.g., true, false)
+class BooleanExprAST : public ASTNode {
+  bool value;
+public:
+  BooleanExprAST(Location loc, bool value)
+    : ASTNode(Node_Boolean, std::move(loc)), value(value) {}
+  
+  bool getValue() const { return value; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_Boolean;
   }
 };
 

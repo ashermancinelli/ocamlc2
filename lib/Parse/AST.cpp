@@ -27,6 +27,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
   switch (kind) {
     case Node_Number: return "Number";
     case Node_String: return "String";
+    case Node_Boolean: return "Boolean";
     case Node_ValuePath: return "ValuePath";
     case Node_ConstructorPath: return "ConstructorPath";
     case Node_TypeConstructorPath: return "TypeConstructorPath";
@@ -88,6 +89,7 @@ void dumpTSNode(TSNode node, const TSTreeAdaptor &adaptor, int indent = 0) {
 std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<NumberExprAST> convertNumber(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<StringExprAST> convertString(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<BooleanExprAST> convertBoolean(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ConstructorPathAST> convertConstructorPath(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<TypeConstructorPathAST> convertTypeConstructorPath(TSNode node, const TSTreeAdaptor &adaptor);
@@ -117,7 +119,7 @@ std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTr
 
 // Set of known/supported node types for better error reporting
 std::unordered_set<std::string> knownNodeTypes = {
-    "compilation_unit", "number", "string", "value_path", "constructor_path",
+    "compilation_unit", "number", "string", "boolean", "true", "false", "value_path", "constructor_path",
     "type_constructor_path", "application_expression", "infix_expression",
     "parenthesized_expression", "match_expression", "match_case",
     "value_pattern", "constructor_pattern", "typed_pattern", "type_definition",
@@ -194,6 +196,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertNumber(node, adaptor);
   else if (type == "string")
     return convertString(node, adaptor);
+  else if (type == "boolean" || type == "true" || type == "false")
+    return convertBoolean(node, adaptor);
   else if (type == "value_path")
     return convertValuePath(node, adaptor);
   else if (type == "constructor_path")
@@ -285,6 +289,32 @@ std::unique_ptr<StringExprAST> convertString(TSNode node, const TSTreeAdaptor &a
   }
   
   return std::make_unique<StringExprAST>(getLocation(node, adaptor), value);
+}
+
+std::unique_ptr<BooleanExprAST> convertBoolean(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  bool isBool = (std::string(nodeType) == "boolean");
+  bool isTrue = (std::string(nodeType) == "true");
+  bool isFalse = (std::string(nodeType) == "false");
+  
+  if (!isBool && !isTrue && !isFalse) {
+    return nullptr;
+  }
+  
+  // If we have the boolean wrapper node, look at its children for the actual value
+  if (isBool) {
+    auto children = childrenNodes(node);
+    for (auto [childType, child] : children) {
+      if (childType == "true" || childType == "false") {
+        return convertBoolean(child, adaptor);
+      }
+    }
+    return nullptr;
+  }
+  
+  // We're directly at a true/false node
+  bool value = isTrue; // true or false
+  return std::make_unique<BooleanExprAST>(getLocation(node, adaptor), value);
 }
 
 std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor &adaptor) {
@@ -1217,6 +1247,9 @@ std::unique_ptr<IfExpressionAST> convertIfExpr(TSNode node, const TSTreeAdaptor 
   for (auto [type, child] : children) {
     if (type == "if") {
       continue; // Skip 'if' keyword
+    } else if (type == "boolean" || type == "true" || type == "false") {
+      // This is likely the condition
+      condition = convertBoolean(child, adaptor);
     } else if (type == "then_clause") {
       // Extract expression from then_clause
       auto thenChildren = childrenNodes(child);
@@ -1231,7 +1264,13 @@ std::unique_ptr<IfExpressionAST> convertIfExpr(TSNode node, const TSTreeAdaptor 
       auto elseChildren = childrenNodes(child);
       for (auto [elseType, elseChild] : elseChildren) {
         if (elseType != "else") {
-          elseBranch = convertNode(elseChild, adaptor);
+          // Check if there's a nested if expression in the else clause
+          if (elseType == "if_expression") {
+            // Handle nested if expression
+            elseBranch = convertIfExpr(elseChild, adaptor);
+          } else {
+            elseBranch = convertNode(elseChild, adaptor);
+          }
           if (elseBranch) break;
         }
       }
@@ -1274,7 +1313,14 @@ std::unique_ptr<IfExpressionAST> convertIfExpr(TSNode node, const TSTreeAdaptor 
         
         // The next node after 'else' should be the else branch
         if (idx + 1 < children.size()) {
-          elseBranch = convertNode(children[idx + 1].second, adaptor);
+          // Check if the next node is an if expression
+          auto nextType = children[idx + 1].first;
+          auto nextNode = children[idx + 1].second;
+          if (nextType == "if_expression" || nextType == "if") {
+            elseBranch = convertIfExpr(nextNode, adaptor);
+          } else {
+            elseBranch = convertNode(nextNode, adaptor);
+          }
         }
       }
     }
@@ -1555,6 +1601,11 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     case ASTNode::Node_String: {
       auto *str = static_cast<const StringExprAST*>(node);
       os << "String: \"" << str->getValue() << "\"\n";
+      break;
+    }
+    case ASTNode::Node_Boolean: {
+      auto *boolean = static_cast<const BooleanExprAST*>(node);
+      os << "Boolean: " << (boolean->getValue() ? "true" : "false") << "\n";
       break;
     }
     case ASTNode::Node_ValuePath: {
