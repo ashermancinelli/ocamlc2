@@ -46,6 +46,7 @@ public:
     Node_FunExpression,
     Node_UnitExpression,
     Node_SignExpression,
+    Node_ArrayGetExpression,
 
     // Patterns
     Node_ValuePattern,
@@ -382,6 +383,25 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_UnitExpression;
+  }
+};
+
+/// Array get expression (e.g., arr.(i))
+class ArrayGetExpressionAST : public ASTNode {
+  std::unique_ptr<ASTNode> array;
+  std::unique_ptr<ASTNode> index;
+public:
+  ArrayGetExpressionAST(Location loc, std::unique_ptr<ASTNode> array,
+                      std::unique_ptr<ASTNode> index)
+    : ASTNode(Node_ArrayGetExpression, std::move(loc)),
+      array(std::move(array)),
+      index(std::move(index)) {}
+  
+  const ASTNode* getArray() const { return array.get(); }
+  const ASTNode* getIndex() const { return index.get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ArrayGetExpression;
   }
 };
 

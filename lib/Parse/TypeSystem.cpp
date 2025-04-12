@@ -104,12 +104,12 @@ bool TypeVariable::operator==(const TypeVariable& other) const {
 TypeExpr* Unifier::infer(const ASTNode* ast) {
   auto *type = inferType(ast);
   ast->typeExpr = type;
-  DBGS("Inferred type: " << *type << '\n');
+  DBGS("\nInferred type: " << *type << " for:\n" << *ast << '\n');
   return type;
 }
 
 void Unifier::initializeEnvironment() {
-  for (auto name : {"int", "float", "bool", "string", "unit", "_"}) {
+  for (auto name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
     declare(name, createTypeOperator(name));
   }
   auto *T_bool = getBoolType();
@@ -122,22 +122,21 @@ void Unifier::initializeEnvironment() {
     declare(arithmetic, createFunction({T_int, T_int, T_int}));
     declare(std::string(arithmetic) + ".", createFunction({T_float, T_float, T_float}));
   }
-  for (auto comparison : {"==", "!=", "<", "<=", ">", ">="}) {
+  for (auto comparison : {"=", "!=", "<", "<=", ">", ">="}) {
     declare(comparison, createFunction({T1, T1, T_bool}));
   }
   declare("print_int", createFunction({T_int, T_unit}));
   declare("print_string", createFunction({T_string, T_unit}));
-  declare("length", createFunction({createTypeVariable(), T_int}));
 
   // Builtin constructors
-  auto *T = createTypeVariable();
-  auto *Optional = createTypeOperator("Optional", {T});
-  declare("None", createFunction({T_unit, Optional}));
-  declare("Some", createFunction({T, Optional}));
+  auto *Optional = createTypeOperator("Optional", {(T1 = createTypeVariable())});
+  declare("None", createFunction({Optional}));
+  declare("Some", createFunction({T1, Optional}));
 
-  auto *List = createTypeOperator("List", {T});
-  declare("Nil", createFunction({T_unit, List}));
-  declare("Cons", createFunction({T, List, List}));
+  auto *List = createTypeOperator("List", {(T1 = createTypeVariable())});
+  declare("Nil", createFunction({List}));
+  declare("Cons", createFunction({T1, List, List}));
+  declare("length", createFunction({List, T_int}));
 }
 
 static std::string getPath(llvm::ArrayRef<std::string> path) {
@@ -147,16 +146,22 @@ static std::string getPath(llvm::ArrayRef<std::string> path) {
 TypeExpr* Unifier::inferType(const ASTNode* ast) {
   DBGS('\n' << *ast << '\n');
   if (auto *_ = llvm::dyn_cast<NumberExprAST>(ast)) {
+    DBGS("number\n");
     return getType("int");
   } else if (auto *_ = llvm::dyn_cast<StringExprAST>(ast)) {
+    DBGS("string\n");
     return getType("string");
   } else if (auto *_ = llvm::dyn_cast<BooleanExprAST>(ast)) {
+    DBGS("boolean\n");
     return getType("bool");
   } else if (auto *se = llvm::dyn_cast<SignExpressionAST>(ast)) {
+    DBGS("sign\n");
     return infer(se->getOperand());
   } else if (auto *vp = llvm::dyn_cast<ValuePathAST>(ast)) {
+    DBGS("value path\n");
     return getType(getPath(vp->getPath()));
   } else if (auto *cu = llvm::dyn_cast<CompilationUnitAST>(ast)) {
+    DBGS("compilation unit\n");
     EnvScope es(env);
     initializeEnvironment();
     TypeExpr *last = nullptr;
@@ -165,8 +170,10 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     }
     return last ? last : getType("unit");
   } else if (auto *ei = llvm::dyn_cast<ExpressionItemAST>(ast)) {
+    DBGS("expression item\n");
     return infer(ei->getExpression());
   } else if (auto *le = llvm::dyn_cast<LetExpressionAST>(ast)) {
+    DBGS("let expression\n");
     EnvScope es(env);
     auto savedTypes = concreteTypes;
     infer(le->getBinding());
@@ -174,13 +181,16 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     concreteTypes = savedTypes;
     return result;
   } else if (auto *pe = llvm::dyn_cast<ParenthesizedExpressionAST>(ast)) {
+    DBGS("parenthesized expression\n");
     return infer(pe->getExpression());
   } else if (auto *vd = llvm::dyn_cast<ValueDefinitionAST>(ast)) {
+    DBGS("value definition\n");
     for (auto &binding : vd->getBindings()) {
       infer(binding.get());
     }
     return getType("unit");
   } else if (auto *lb = llvm::dyn_cast<LetBindingAST>(ast)) {
+    DBGS("let binding\n");
     if (lb->getParameters().empty()) {
       auto *bodyType = infer(lb->getBody());
       declare(lb->getName(), bodyType);
@@ -217,17 +227,32 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       }
       return functionType;
     }
+  } else if (auto *ag = llvm::dyn_cast<ArrayGetExpressionAST>(ast)) {
+    DBGS("array get\n");
+    auto *index = infer(ag->getIndex());
+    unify(index, getIntType());
+    auto *inferredListType = infer(ag->getArray());
+    auto *listType = getListOfType(createTypeVariable());
+    unify(inferredListType, listType);
+    return listType->at(0);
   } else if (auto *ite = llvm::dyn_cast<IfExpressionAST>(ast)) {
+    DBGS("if expression\n");
     auto *cond = ite->getCondition();
-    auto *thenAst = ite->getThenBranch();
-    auto *elseAst = ite->hasElseBranch() ? ite->getElseBranch() : nullptr;
     auto *condType = infer(cond);
     unify(condType, getType("bool"));
+
+    auto *thenAst = ite->getThenBranch();
     auto *thenType = infer(thenAst);
-    auto *elseType = ite->hasElseBranch() ? infer(elseAst) : getUnitType();
-    unify(thenType, elseType);
+
+    if (ite->hasElseBranch()) {
+      auto *elseAst = ite->getElseBranch();
+      auto *elseType = infer(elseAst);
+      unify(thenType, elseType);
+    }
+
     return thenType;
   } else if (auto *ie = llvm::dyn_cast<InfixExpressionAST>(ast)) {
+    DBGS("infix expression\n");
     auto *left = infer(ie->getLHS());
     auto *right = infer(ie->getRHS());
     auto *operationType = getType(ie->getOperator());
@@ -235,23 +260,26 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     unify(functionType, operationType);
     return functionType->back();
   } else if (auto *ae = llvm::dyn_cast<ApplicationExprAST>(ast)) {
+    DBGS("application expression\n");
     auto *declaredFunctionType = infer(ae->getFunction());
     auto args = llvm::map_to_vector(ae->getArguments(), [&](auto &arg) {
       return infer(arg.get());
     });
     args.push_back(createTypeVariable()); // return type
     auto *functionType = createFunction(args);
+    DBGS("function type: " << *functionType << '\n');
+    DBGS("declared function type: " << *declaredFunctionType << '\n');
     unify(functionType, declaredFunctionType);
     return functionType->back();
   } else if (auto *cp = llvm::dyn_cast<ConstructorPathAST>(ast)) {
+    DBGS("constructor path\n");
     auto name = getPath(cp->getPath());
-    auto *constructorType = getType(name);
-    auto *funcType = createFunction({getUnitType(), createTypeVariable()});
-    unify(funcType, constructorType);
-    return funcType->back();
+    return getType(name);
   } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
+    DBGS("value pattern\n");
     return getType(vp->getName());
   } else if (auto *gp = llvm::dyn_cast<GuardedPatternAST>(ast)) {
+    DBGS("guarded pattern\n");
     auto *pattern = gp->getPattern();
     auto *guard = gp->getGuard();
     auto *patternType = infer(pattern);
@@ -259,6 +287,7 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     unify(guardType, getType("bool"));
     return patternType;
   } else if (auto *me = llvm::dyn_cast<MatchExpressionAST>(ast)) {
+    DBGS("match expression\n");
     auto *value = me->getValue();
     auto &cases = me->getCases();
     auto *valueType = infer(value);
@@ -275,6 +304,7 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     }
     return resultType;
   } else if (auto *fe = llvm::dyn_cast<ForExpressionAST>(ast)) {
+    DBGS("for expression\n");
     EnvScope es(env);
     auto savedTypes = concreteTypes;
     auto loopVar = fe->getLoopVar();

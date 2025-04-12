@@ -55,6 +55,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_FunExpression: return "FunExpression";
     case Node_UnitExpression: return "UnitExpression";
     case Node_SignExpression: return "SignExpression";
+    case Node_ArrayGetExpression: return "ArrayGetExpression";
   }
   return "";
 }
@@ -119,6 +120,7 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
 std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
 std::unordered_set<std::string> knownNodeTypes = {
@@ -135,7 +137,7 @@ std::unordered_set<std::string> knownNodeTypes = {
     "when", "guard", "in", "list_expression", "[", "]", "list",
     "fun_expression", "fun", "function_expression", "function", "unit",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
-    "do", "done", "to", "downto", "rec"  // Added "rec" to known node types
+    "do", "done", "to", "downto", "rec", "array_get_expression"  // Added "rec" and "array_get_expression" to known node types
 };
 
 // Helper functions
@@ -261,6 +263,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
       return convertNode(parent, adaptor);
     }
   }
+  else if (type == "array_get_expression")
+    return convertArrayGetExpr(node, adaptor);
   else {
     if (knownNodeTypes.find(type.str()) == knownNodeTypes.end()) {
       // Unknown node type, log it for debugging
@@ -1626,6 +1630,52 @@ std::unique_ptr<UnitExpressionAST> convertUnitExpr(TSNode node, const TSTreeAdap
   return nullptr;
 }
 
+std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  if (std::string(nodeType) != "array_get_expression") {
+    return nullptr;
+  }
+  
+  auto children = childrenNodes(node);
+  std::unique_ptr<ASTNode> array = nullptr;
+  std::unique_ptr<ASTNode> index = nullptr;
+  
+  // First find the array (first child before the dot)
+  for (auto [type, child] : children) {
+    if (type != "." && type != "(" && type != ")" && !array) {
+      array = convertNode(child, adaptor);
+      break;
+    }
+  }
+  
+  // Then find the index (between parentheses)
+  bool foundLeftParen = false;
+  for (auto [type, child] : children) {
+    if (type == "(") {
+      foundLeftParen = true;
+      continue;
+    }
+    
+    if (foundLeftParen && type != ")") {
+      index = convertNode(child, adaptor);
+      break;
+    }
+  }
+  
+  if (!array || !index) {
+    DBGS("Failed to parse array_get_expression:\n");
+    if (!array) DBGS("  Missing array\n");
+    if (!index) DBGS("  Missing index\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<ArrayGetExpressionAST>(
+    getLocation(node, adaptor),
+    std::move(array),
+    std::move(index)
+  );
+}
+
 // AST Dump Implementation
 void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent = 0);
 
@@ -1669,7 +1719,8 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_SignExpression: {
       auto *signExpr = static_cast<const SignExpressionAST*>(node);
-      os << "SignExpression: " << signExpr->getOperator() << "\n";
+      os << "SignExpr: " << signExpr->getOperator() << "\n";
+      
       printIndent(os, indent + 1);
       os << "Operand:\n";
       dumpASTNode(os, signExpr->getOperand(), indent + 2);
@@ -1971,8 +2022,20 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       dumpASTNode(os, fun->getBody(), indent + 2);
       break;
     }
-    case ASTNode::Node_UnitExpression: {
-      os << "UnitExpr: ()\n";
+    case ASTNode::Node_UnitExpression:
+      os << "UnitExpression:\n";
+      break;
+    case ASTNode::Node_ArrayGetExpression: {
+      auto *arrayGetExpr = static_cast<const ArrayGetExpressionAST*>(node);
+      os << "ArrayGetExpr:\n";
+      
+      printIndent(os, indent + 1);
+      os << "Array:\n";
+      dumpASTNode(os, arrayGetExpr->getArray(), indent + 2);
+      
+      printIndent(os, indent + 1);
+      os << "Index:\n";
+      dumpASTNode(os, arrayGetExpr->getIndex(), indent + 2);
       break;
     }
   }

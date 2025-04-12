@@ -12,7 +12,7 @@ To build and test the AST changes, run this command:
 ninja -C build ocamlc2-parse2 && ./build/bin/ocamlc2-parse2 ./test/t1.ml -L
 ```
 
-The `-L` flag enables debug output - you should look over the output for any warnings or errors.
+The `-L` flag enables debug output - you should look over the output for any warnings or errors. There are lots of tests in the `test` directory - feel free to add one to test a change you made, but not required.
 
 ## Overview
 
@@ -155,7 +155,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
 
 ## Important Tips
 
-1. **Handling Tree-sitter Structure**: The Tree-sitter parse tree might not perfectly match your desired AST. You'll often need to navigate through parent/child relationships and handle various cases.
+1. **Handling Tree-sitter Structure**: The Tree-sitter parse tree might not perfectly match your desired AST. You'll often need to navigate through parent/child relationships and handle various cases. [tree-sitter-grammar.js](mdc:ocamlc2/tree-sitter-grammar.js) contains the full grammar used by the tree sitter parser.
 
 2. **Debugging**: Make extensive use of the `DBGS` macro for debug output to understand the tree structure and track conversion issues.
 
@@ -166,6 +166,8 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
 5. **Error Handling**: Always validate required components before creating AST nodes and provide clear error messages for debugging.
 
 6. **Test Thoroughly**: Use a representative test file with examples of all supported node types to verify correct parsing and AST generation.
+
+7. **Update only what you must**: If we're updating the AST, and your changes work, stop there. We can pick up in the type system or elsewhere later, but just do things one step at a time.
 
 ## Example Implementation Outline
 

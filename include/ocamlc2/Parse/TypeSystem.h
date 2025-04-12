@@ -38,7 +38,6 @@ struct TypeOperator : public TypeExpr {
   inline TypeExpr* at(size_t index) const { return args[index]; }
   consteval static llvm::StringRef getFunctionOperatorName() { return "->"; }
   consteval static llvm::StringRef getTupleOperatorName() { return "*"; }
-  inline TypeExpr *operator[](size_t index) const { return args[index]; }
   inline TypeExpr *back() const { return args.back(); }
 
 private:
@@ -146,6 +145,9 @@ private:
   }
 
   void declare(llvm::StringRef name, TypeExpr* type);
+  inline bool declared(llvm::StringRef name) {
+    return env.count(name) > 0;
+  }
 
   TypeExpr* getType(const llvm::StringRef name);
 
@@ -171,6 +173,8 @@ private:
   inline auto *getUnitType() { return getType("unit"); }
   inline auto *getStringType() { return getType("string"); }
   inline auto *getWildcardType() { return getType("_"); }
+  inline auto *getListType() { return getType("List"); }
+  inline auto *getListOfType(TypeExpr* type) { return createTypeOperator("List", {type}); }
 
   Env env;
   ConcreteTypes concreteTypes;
