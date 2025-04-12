@@ -6,7 +6,7 @@ using namespace llvm;
 
 bool Debug = false;
 bool RunGDB = false;
-
+bool Color = true;
 static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
                                   cl::location(RunGDB));
 
@@ -14,6 +14,10 @@ static cl::opt<std::string> debugger("debugger", cl::desc("The debugger to use")
 
 static cl::opt<bool, true> debug("L", cl::desc("Enable debug mode"),
                            cl::location(Debug));
+
+static cl::opt<bool>
+    noColor("no-color", cl::desc("Disable color output"),
+            cl::cb<void, bool>([](bool value) { Color = !value; }));
 
 void maybeReplaceWithGDB(int argc, char **argv) {
   if (!RunGDB) {

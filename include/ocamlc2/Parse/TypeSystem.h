@@ -161,8 +161,8 @@ private:
     return create<TypeVariable>();
   }
 
-  inline auto *createTypeOperator(llvm::StringRef name) {
-    return create<TypeOperator>(name);
+  inline auto *createTypeOperator(llvm::StringRef name, llvm::ArrayRef<TypeExpr*> args={}) {
+    return create<TypeOperator>(name, args);
   }
 
   inline auto *getBoolType() { return getType("bool"); }

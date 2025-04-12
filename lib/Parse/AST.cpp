@@ -73,8 +73,8 @@ void dumpTSNode(TSNode node, const TSTreeAdaptor &adaptor, int indent = 0) {
     text = "<multiline>";
   }
 
-  std::cerr << indentation << ANSIColors::cyan << nodeType << ANSIColors::reset
-            << ": " << ANSIColors::italic << text << ANSIColors::reset
+  std::cerr << indentation << ANSIColors::cyan() << nodeType << ANSIColors::reset()
+            << ": " << ANSIColors::italic() << text << ANSIColors::reset()
             << std::endl;
 
   uint32_t childCount = ts_node_child_count(node);
@@ -1527,12 +1527,12 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent = 0);
 // Helper to print indentation
 void printIndent(llvm::raw_ostream &os, int indent) {
   for (int i = 0; i < indent; ++i) {
-    os << ANSIColors::faint << "| " << ANSIColors::reset;
+    os << ANSIColors::faint() << "| " << ANSIColors::reset();
   }
 }
 
 llvm::raw_ostream& ocamlc2::operator<<(llvm::raw_ostream &os, const ASTNode &node) {
-  os << ANSIColors::reset;
+  os << ANSIColors::reset();
   dumpASTNode(os, &node);
   return os;
 }

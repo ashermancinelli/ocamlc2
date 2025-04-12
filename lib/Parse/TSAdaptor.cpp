@@ -32,9 +32,9 @@ void print_node(llvm::raw_ostream &os, TSNode node, std::string source, int inde
     text = "";
   }
 
-  os << indentation << ANSIColors::blue << ANSIColors::bold << node_type
-     << ANSIColors::reset << ": " << ANSIColors::italic << text
-     << ANSIColors::reset << "\n";
+  os << indentation << ANSIColors::blue() << ANSIColors::bold() << node_type
+     << ANSIColors::reset() << ": " << ANSIColors::italic() << text
+     << ANSIColors::reset() << "\n";
 
   uint32_t child_count = ts_node_child_count(node);
   for (uint32_t i = 0; i < child_count; ++i) {

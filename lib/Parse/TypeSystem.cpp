@@ -112,10 +112,10 @@ void Unifier::initializeEnvironment() {
   for (auto name : {"int", "float", "bool", "string", "unit", "_"}) {
     declare(name, createTypeOperator(name));
   }
-  auto *T_bool = getType("bool");
-  auto *T_float = getType("float");
-  auto *T_int = getType("int");
-  auto *T_unit = getType("unit");
+  auto *T_bool = getBoolType();
+  auto *T_float = getFloatType();
+  auto *T_int = getIntType();
+  auto *T_unit = getUnitType();
   auto *T1 = createTypeVariable();
   for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
     declare(arithmetic, createFunction({T_int, T_int, T_int}));
@@ -126,6 +126,16 @@ void Unifier::initializeEnvironment() {
   }
   declare("print_int", createFunction({T_int, T_unit}));
   declare("length", createFunction({createTypeVariable(), T_int}));
+
+  // Builtin constructors
+  auto *T = createTypeVariable();
+  auto *Optional = createTypeOperator("Optional", {T});
+  declare("None", createFunction({T_unit, Optional}));
+  declare("Some", createFunction({T, Optional}));
+
+  auto *List = createTypeOperator("List", {T});
+  declare("Nil", createFunction({T_unit, List}));
+  declare("Cons", createFunction({T, List, List}));
 }
 
 #if 0
@@ -261,6 +271,16 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     auto *functionType = createFunction(args);
     unify(functionType, declaredFunctionType);
     return functionType->back();
+  // } else if (auto *cp = llvm::dyn_cast<ConstructorPathAST>(ast)) {
+  //   auto name = getPath(cp->getPath());
+  //   auto *constructorType = getType(name);
+  //   if (constructorType->getArgs().size() != cp->getArguments().size()) {
+  //     llvm::errs() << "Constructor " << name << " expects " << constructorType->getArgs().size() << " arguments, but got " << cp->getArguments().size() << '\n';
+  //     assert(false && "Constructor expects wrong number of arguments");
+  //   }
+  //   auto args = llvm::map_to_vector(ae->getArguments(), [&](auto &arg) {
+  //     return infer(arg.get());
+  //   });
   } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
     return getType(vp->getName());
   } else if (auto *gp = llvm::dyn_cast<GuardedPatternAST>(ast)) {
