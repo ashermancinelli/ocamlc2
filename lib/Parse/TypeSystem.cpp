@@ -140,40 +140,6 @@ void Unifier::initializeEnvironment() {
   declare("Cons", createFunction({T, List, List}));
 }
 
-#if 0
-MatchExpr:
-| Value:
-| | ValuePath: n
-| Cases:
-| | MatchCase:
-| | | Pattern:
-| | | | Number: 0
-| | | Expression:
-| | | | String: "Zero"
-| | MatchCase:
-| | | Pattern:
-| | | | Number: 1
-| | | Expression:
-| | | | String: "One"
-| | MatchCase:
-| | | Pattern:
-| | | | Number: 2
-| | | Expression:
-| | | | String: "Two"
-| | MatchCase:
-| | | Pattern:
-| | | | GuardedPattern:
-| | | | | Pattern:
-| | | | | | ValuePattern: n
-| | | | | Guard:
-| | | | | | InfixExpr: >
-| | | | | | | LHS:
-| | | | | | | | ValuePath: n
-| | | | | | | RHS:
-| | | | | | | | Number: 0
-| | | Expression:
-| | | | String: "Positive"
-#endif
 static std::string getPath(llvm::ArrayRef<std::string> path) {
   return llvm::join(path, ".");
 }
@@ -256,7 +222,7 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     auto *condType = infer(cond);
     unify(condType, getType("bool"));
     auto *thenType = infer(thenAst);
-    auto *elseType = infer(elseAst);
+    auto *elseType = ite->hasElseBranch() ? infer(elseAst) : getUnitType();
     unify(thenType, elseType);
     return thenType;
   } else if (auto *ie = llvm::dyn_cast<InfixExpressionAST>(ast)) {
@@ -275,16 +241,12 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     auto *functionType = createFunction(args);
     unify(functionType, declaredFunctionType);
     return functionType->back();
-  // } else if (auto *cp = llvm::dyn_cast<ConstructorPathAST>(ast)) {
-  //   auto name = getPath(cp->getPath());
-  //   auto *constructorType = getType(name);
-  //   if (constructorType->getArgs().size() != cp->getArguments().size()) {
-  //     llvm::errs() << "Constructor " << name << " expects " << constructorType->getArgs().size() << " arguments, but got " << cp->getArguments().size() << '\n';
-  //     assert(false && "Constructor expects wrong number of arguments");
-  //   }
-  //   auto args = llvm::map_to_vector(ae->getArguments(), [&](auto &arg) {
-  //     return infer(arg.get());
-  //   });
+  } else if (auto *cp = llvm::dyn_cast<ConstructorPathAST>(ast)) {
+    auto name = getPath(cp->getPath());
+    auto *constructorType = getType(name);
+    auto *funcType = createFunction({getUnitType(), createTypeVariable()});
+    unify(funcType, constructorType);
+    return funcType->back();
   } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
     return getType(vp->getName());
   } else if (auto *gp = llvm::dyn_cast<GuardedPatternAST>(ast)) {
