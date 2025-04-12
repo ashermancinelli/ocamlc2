@@ -144,7 +144,7 @@ private:
     return isSubTypeOfAny(type, concreteTypes);
   }
 
-  void declare(llvm::StringRef name, TypeExpr* type);
+  TypeExpr* declare(llvm::StringRef name, TypeExpr* type);
   inline bool declared(llvm::StringRef name) {
     return env.count(name) > 0;
   }
@@ -170,11 +170,14 @@ private:
   inline auto *getBoolType() { return getType("bool"); }
   inline auto *getFloatType() { return getType("float"); }
   inline auto *getIntType() { return getType("int"); }
-  inline auto *getUnitType() { return getType("unit"); }
+  inline auto *getUnitType() { return getType("unit!"); }
   inline auto *getStringType() { return getType("string"); }
   inline auto *getWildcardType() { return getType("_"); }
+  inline auto *getVarargsType() { return getType("varargs!"); }
   inline auto *getListType() { return getType("List"); }
   inline auto *getListOfType(TypeExpr* type) { return createTypeOperator("List", {type}); }
+  bool isVarargs(TypeExpr* type);
+  bool isWildcard(TypeExpr* type);
 
   Env env;
   ConcreteTypes concreteTypes;

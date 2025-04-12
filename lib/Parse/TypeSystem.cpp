@@ -5,6 +5,7 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringExtras.h>
+#include <llvm/ADT/iterator_range.h>
 #include <llvm/Support/raw_ostream.h>
 #include <algorithm>
 #include <sstream>
@@ -23,13 +24,19 @@ struct StringArena {
 };
 static StringArena stringArena;
 
-void Unifier::declare(llvm::StringRef name, TypeExpr* type) {
+TypeExpr* Unifier::declare(llvm::StringRef name, TypeExpr* type) {
   DBGS("Declaring: " << name << " as " << *type << '\n');
+  if (name == getWildcardType()->getName() or name == getUnitType()->getName()) {
+    DBGS("probably declaring a wildcard variable in a constructor pattern or "
+         "assigning to unit, skipping\n");
+    return type;
+  }
   auto str = stringArena.save(name.str());
   if (env.count(str)) {
     assert(false && "Type already declared");
   }
   env.insert(str, type);
+  return type;
 }
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
@@ -109,8 +116,12 @@ TypeExpr* Unifier::infer(const ASTNode* ast) {
 }
 
 void Unifier::initializeEnvironment() {
-  for (auto name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
-    declare(name, createTypeOperator(name));
+  DBGS("Initializing environment\n");
+  // We need to insert these directly because other type initializations require
+  // varargs, wildcard, etc to define themselves.
+  for (auto name : {"int", "float", "bool", "string", "unit!", "_", "•", "varargs!"}) {
+    DBGS("Declaring: " << name << '\n');
+    env.insert(name, createTypeOperator(name));
   }
   auto *T_bool = getBoolType();
   auto *T_float = getFloatType();
@@ -127,6 +138,7 @@ void Unifier::initializeEnvironment() {
   }
   declare("print_int", createFunction({T_int, T_unit}));
   declare("print_string", createFunction({T_string, T_unit}));
+  declare("printf", createFunction({T_string, getType("varargs!"), T_unit}));
 
   // Builtin constructors
   auto *Optional = createTypeOperator("Optional", {(T1 = createTypeVariable())});
@@ -168,7 +180,14 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     for (auto &item : cu->getItems()) {
       last = infer(item.get());
     }
-    return last ? last : getType("unit");
+    return last ? last : getUnitType();
+  } else if (auto *ae = llvm::dyn_cast<ArrayExpressionAST>(ast)) {
+    DBGS("array expression\n");
+    auto *elementType = createTypeVariable();
+    for (auto &element : ae->getElements()) {
+      unify(infer(element.get()), elementType);
+    }
+    return getListOfType(elementType);
   } else if (auto *ei = llvm::dyn_cast<ExpressionItemAST>(ast)) {
     DBGS("expression item\n");
     return infer(ei->getExpression());
@@ -185,7 +204,7 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     return infer(pe->getExpression());
   } else if (auto *vd = llvm::dyn_cast<ValueDefinitionAST>(ast)) {
     DBGS("value definition\n");
-    TypeExpr *result = getType("unit");
+    TypeExpr *result = getUnitType();
     for (auto &binding : vd->getBindings()) {
       result = infer(binding.get());
     }
@@ -287,6 +306,22 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       }
     }
     return ctorType;
+  } else if (auto *cp = llvm::dyn_cast<ConstructorPatternAST>(ast)) {
+    DBGS("constructor pattern\n");
+    auto &args = cp->getArguments();
+    auto *ctorType = getType(getPath(cp->getConstructor()->getPath()));
+    llvm::SmallVector<TypeExpr*> typevars;
+    for (auto &arg : args) {
+      auto *T = createTypeVariable();
+      if (auto *vp = llvm::dyn_cast<ValuePatternAST>(arg.get())) {
+        declare(vp->getName(), T);
+      }
+      typevars.push_back(T);
+    }
+    typevars.push_back(createTypeVariable()); // return type
+    auto *functionType = createFunction({typevars});
+    unify(functionType, ctorType);
+    return functionType->back();
   } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
     DBGS("value pattern\n");
     return getType(vp->getName());
@@ -326,9 +361,9 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     auto *end = infer(fe->getEndExpr());
     unify(end, getType("int"));
     auto *body = infer(fe->getBody());
-    unify(body, getType("unit"));
+    unify(body, getUnitType());
     concreteTypes = savedTypes;
-    return getType("unit");
+    return getUnitType();
   } else {
     DBGS("Unknown AST node: " << ASTNode::getName(*ast) << '\n');
     assert(false && "Unknown AST node");
@@ -336,6 +371,27 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
   return nullptr;
 }
 
+// Try to unify two types based on their structure.
+// See the paper _Basic Polymorphic Typechecking_ by Luca Cardelli
+// for the original unification algorithm.
+//
+// There are a few main differences used to implement features of OCaml that
+// break the original algorithm:
+//
+// 1. Wildcard unification:
+//
+//    The original algorithm only unifies two types if they are exactly equal.
+//    This is problematic for OCaml's wildcard type '_', which is used to
+//    indicate that a type is not important.
+//
+// 2. Varargs:
+//
+//    OCaml allows functions to take a variable number of arguments using the
+//    varargs type 'varargs!'. This is a special type that is used to indicate
+//    that a function can take a variable number of arguments. When two type
+//    operators are found and their sizes don't match, we first check if
+//    one of the subtypes is varargs. If so, we can unify the types if the
+//    other type is a function type.
 void Unifier::unify(TypeExpr* a, TypeExpr* b) {
   a = prune(a);
   b = prune(b);
@@ -353,16 +409,38 @@ void Unifier::unify(TypeExpr* a, TypeExpr* b) {
     if (llvm::isa<TypeVariable>(b)) {
       return unify(b, a);
     } else if (auto *tob = llvm::dyn_cast<TypeOperator>(b)) {
+
       auto *wildcard = getWildcardType();
+
+      // Check if we have any varargs types in the arguments - if so, the forms are allowed
+      // to be different.
+      auto fHasVarargs = [&](TypeExpr* arg) { return isVarargs(arg); };
+      const bool hasVarargs = llvm::any_of(toa->getArgs(), fHasVarargs) or
+                              llvm::any_of(tob->getArgs(), fHasVarargs);
+
       if (toa->getName() == wildcard->getName() or tob->getName() == wildcard->getName()) {
         DBGS("Unifying with wildcard\n");
         return;
       }
-      if (toa->getName() != tob->getName() or toa->getArgs().size() != tob->getArgs().size()) {
+
+      // Usual type checking - if we don't have a special case, then we need operator types to
+      // match in form.
+      const bool sizesMatch = toa->getArgs().size() == tob->getArgs().size() or hasVarargs;
+      if (toa->getName() != tob->getName() or not sizesMatch) {
         llvm::errs() << "Could not unify types: " << *toa << " and " << *tob << '\n';
         assert(false);
       }
+
       for (auto [aa, bb] : llvm::zip(toa->getArgs(), tob->getArgs())) {
+        if (isVarargs(aa) or isVarargs(bb)) {
+          DBGS("Unifying with varargs, unifying return types and giving up\n");
+          unify(toa->back(), tob->back());
+          return;
+        }
+        if (isWildcard(aa) or isWildcard(bb)) {
+          DBGS("Unifying with wildcard, skipping unification for this element type\n");
+          continue;
+        }
         unify(aa, bb);
       }
     }
@@ -399,6 +477,20 @@ TypeExpr* Unifier::prune(TypeExpr* type) {
     }
   }
   return type;
+}
+
+bool Unifier::isVarargs(TypeExpr* type) {
+  if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
+    return op->getName() == getVarargsType()->getName();
+  }
+  return false;
+}
+
+bool Unifier::isWildcard(TypeExpr* type) {
+  if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
+    return op->getName() == getWildcardType()->getName();
+  }
+  return false;
 }
 
 } // namespace ocamlc2

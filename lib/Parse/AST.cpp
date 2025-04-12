@@ -56,6 +56,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_UnitExpression: return "UnitExpression";
     case Node_SignExpression: return "SignExpression";
     case Node_ArrayGetExpression: return "ArrayGetExpression";
+    case Node_ArrayExpression: return "ArrayExpression";
   }
   return "";
 }
@@ -121,6 +122,7 @@ std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TS
 std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
 std::unordered_set<std::string> knownNodeTypes = {
@@ -137,7 +139,7 @@ std::unordered_set<std::string> knownNodeTypes = {
     "when", "guard", "in", "list_expression", "[", "]", "list",
     "fun_expression", "fun", "function_expression", "function", "unit",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
-    "do", "done", "to", "downto", "rec", "array_get_expression", "comment"  // Added "comment" to known node types
+    "do", "done", "to", "downto", "rec", "array_get_expression", "array_expression", "comment"
 };
 
 // Helper functions
@@ -229,6 +231,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertIfExpr(node, adaptor);
   else if (type == "list_expression")
     return convertListExpr(node, adaptor);
+  else if (type == "array_expression")
+    return convertArrayExpr(node, adaptor);
   else if (type == "fun_expression" || type == "fun" || 
            type == "function_expression" || type == "function")
     return convertFunExpr(node, adaptor);
@@ -822,7 +826,7 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
     }
   }
   
-  // First pass: look for name, parameters, and simple expression
+  // First pass: look for name, parameters, unit pattern, and simple expression
   for (auto [type, child] : children) {
     if (type == "value_name") {
       name = getNodeText(child, adaptor);
@@ -841,6 +845,25 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
             }
           }
         }
+      }
+    } else if (type == "unit") {
+      // This is a unit pattern like "let () = ..."
+      hasUnitPattern = true;
+      DBGS("Found unit pattern in let binding\n");
+    } else if (type == "(") {
+      // Check if this might be part of a unit pattern
+      // Look for a closing parenthesis with nothing in between
+      size_t idx = 0;
+      for (size_t i = 0; i < children.size(); i++) {
+        if (children[i].first == type) {
+          idx = i;
+          break;
+        }
+      }
+      
+      if (idx + 1 < children.size() && children[idx + 1].first == ")") {
+        hasUnitPattern = true;
+        DBGS("Found unit pattern (() as LHS in let binding\n");
       }
     } else if (type == "type_constructor_path") {
       returnType = convertTypeConstructorPath(child, adaptor);
@@ -866,7 +889,7 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
     for (auto [type, child] : children) {
       if (type != "value_name" && type != "parameter" && 
           type != ":" && type != "=" && type != "type_constructor_path" && 
-          type != "unit") {
+          type != "unit" && type != "(" && type != ")") {
         auto possibleBody = convertNode(child, adaptor);
         if (possibleBody) {
           body = std::move(possibleBody);
@@ -921,7 +944,7 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
       // Use a special name for unit bindings
       return std::make_unique<LetBindingAST>(
         getLocation(node, adaptor),
-        "_unit", // Special name for unit bindings
+        "unit!", // Special name for unit bindings
         std::move(parameters),
         std::move(returnType),
         std::move(body),
@@ -933,39 +956,40 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
     }
   }
   
-  if (name.empty()) {
+  if (name.empty() && !hasUnitPattern) {
     DBGS("Failed to parse let_binding:\n");
-    DBGS("  Missing name\n");
+    DBGS("  Missing name and not a unit pattern\n");
+    
+    // As a last resort for unit value bindings (let () = ...)
+    bool hasOpenParen = false;
+    bool hasCloseParen = false;
+    for (auto [type, child] : children) {
+      if (type == "(") {
+        hasOpenParen = true;
+      } else if (type == ")") {
+        hasCloseParen = true;
+      }
+    }
+    
+    if (hasOpenParen && hasCloseParen && children.size() <= 5) {
+      // This is likely a unit binding pattern that wasn't detected earlier
+      DBGS("Detected likely unit pattern from parentheses\n");
+      return std::make_unique<LetBindingAST>(
+        getLocation(node, adaptor),
+        "unit!", // Special name for unit bindings
+        std::move(parameters),
+        std::move(returnType),
+        body ? std::move(body) : std::make_unique<UnitExpressionAST>(getLocation(node, adaptor)),
+        isRec
+      );
+    }
+    
     return nullptr;
   }
   
   if (!body) {
     DBGS("Failed to parse let_binding:\n");
     DBGS("  Missing body\n");
-    
-    // As a last resort for unit value bindings (let () = ...)
-    if (name == "(" && parameters.empty()) {
-      // Check if there's a ")" - this might be a unit binding
-      bool hasCloseParen = false;
-      for (auto [type, child] : children) {
-        if (type == ")") {
-          hasCloseParen = true;
-          break;
-        }
-      }
-      
-      if (hasCloseParen) {
-        // This is a unit binding
-        return std::make_unique<LetBindingAST>(
-          getLocation(node, adaptor),
-          "_unit", // Special name for unit bindings
-          std::move(parameters),
-          std::move(returnType),
-          std::make_unique<UnitExpressionAST>(getLocation(node, adaptor))
-        );
-      }
-    }
-    
     return nullptr;
   }
   
@@ -1686,6 +1710,31 @@ std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TS
   );
 }
 
+std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  if (std::string(nodeType) != "array_expression") {
+    return nullptr;
+  }
+  
+  auto children = childrenNodes(node);
+  std::vector<std::unique_ptr<ASTNode>> elements;
+  
+  // Skip array delimiters [| and |] and semicolons ;
+  for (auto [type, child] : children) {
+    if (type != "[|" && type != "|]" && type != ";") {
+      auto element = convertNode(child, adaptor);
+      if (element) {
+        elements.push_back(std::move(element));
+      }
+    }
+  }
+  
+  return std::make_unique<ArrayExpressionAST>(
+    getLocation(node, adaptor),
+    std::move(elements)
+  );
+}
+
 // AST Dump Implementation
 void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent = 0);
 
@@ -2046,6 +2095,32 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       printIndent(os, indent + 1);
       os << "Index:\n";
       dumpASTNode(os, arrayGetExpr->getIndex(), indent + 2);
+      break;
+    }
+    case ASTNode::Node_ArrayExpression: {
+      auto *array = static_cast<const ArrayExpressionAST*>(node);
+      os << "ArrayExpr: [|";
+      bool first = true;
+      for (size_t i = 0; i < array->getNumElements(); ++i) {
+        if (!first) os << "; ";
+        first = false;
+        const auto *element = array->getElement(i);
+        if (auto *numExpr = llvm::dyn_cast<NumberExprAST>(element)) {
+          os << numExpr->getValue();
+        } else if (auto *strExpr = llvm::dyn_cast<StringExprAST>(element)) {
+          os << "\"" << strExpr->getValue() << "\"";
+        } else {
+          os << "...";
+        }
+      }
+      os << "|]\n";
+      if (array->getNumElements() > 0) {
+        printIndent(os, indent + 1);
+        os << "Elements:\n";
+        for (size_t i = 0; i < array->getNumElements(); ++i) {
+          dumpASTNode(os, array->getElement(i), indent + 2);
+        }
+      }
       break;
     }
   }
