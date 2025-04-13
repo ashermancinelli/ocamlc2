@@ -1702,7 +1702,7 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
     // For 'function', we add an implicit parameter (which is matched in the body)
     parameters.push_back(std::make_unique<ValuePatternAST>(
       getLocation(targetNode, adaptor),
-      "_implicit_fun_param" // Use a special name for the implicit parameter
+      "implicit_function_param!" // Use a special name for the implicit parameter
     ));
   }
   

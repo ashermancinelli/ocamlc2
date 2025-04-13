@@ -379,6 +379,43 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       unify(expressionType, resultType);
     }
     return resultType;
+  } else if (auto *td = llvm::dyn_cast<TypeDefinitionAST>(ast)) {
+    DBGS("type definition\n");
+    for (auto &binding : td->getBindings()) {
+      auto typeName = binding->getName();
+      declare(typeName, createTypeOperator(typeName));
+      auto *definition = binding->getDefinition();
+      if (auto *vd = llvm::dyn_cast<VariantDeclarationAST>(definition)) {
+        for (auto &ctor : vd->getConstructors()) {
+          auto ctorName = ctor->getName();
+          llvm::SmallVector<TypeExpr *> args =
+              llvm::map_to_vector(ctor->getOfTypes(), [&](auto &ofType) {
+                return getType(getPath(ofType->getPath()));
+              });
+          args.push_back(getType(typeName));
+          declare(ctorName, createFunction(args));
+        }
+      } else {
+        DBGS("unknown definition: " << *definition << '\n');
+        assert(false && "unknown definition");
+      }
+    }
+    return getUnitType();
+#if 0
+TypeDefinition:
+| TypeBinding: shape
+| | Definition:
+| | | VariantDeclaration:
+| | | | ConstructorDeclaration: Circle of
+| | | | | TypeConstructorPath: float
+| | | | ConstructorDeclaration: Rectangle of
+| | | | | TypeConstructorPath: float
+| | | | | TypeConstructorPath: float
+| | | | ConstructorDeclaration: Triangle of
+| | | | | TypeConstructorPath: float
+| | | | | TypeConstructorPath: float
+| | | | | TypeConstructorPath: float
+#endif
   } else if (auto *fe = llvm::dyn_cast<ForExpressionAST>(ast)) {
     DBGS("for expression\n");
     EnvScope es(env);
