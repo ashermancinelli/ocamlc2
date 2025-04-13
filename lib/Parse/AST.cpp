@@ -602,6 +602,8 @@ std::unique_ptr<MatchExpressionAST> convertMatchExpr(TSNode node, const TSTreeAd
       auto matchCase = convertMatchCase(child, adaptor);
       if (matchCase) {
         cases.push_back(std::move(matchCase));
+      } else {
+        DBGS("failed to convert match case: " << type << '\n');
       }
     }
   }
@@ -1680,6 +1682,7 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
   else if (isFunctionExpr || isFunctionKeyword) {
     // For function expressions, we treat the first match case as the body
     // since 'function' is basically a shorthand for 'fun x -> match x with ...'
+    std::vector<std::unique_ptr<MatchCaseAST>> cases;
     for (auto [type, child] : children) {
       if (type == "function") {
         continue; // Skip 'function' keyword
@@ -1687,11 +1690,16 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
         continue; // Skip '|' token
       } else if (type == "match_case") {
         // Use the first match case as our body
-        if (!body) {
-          body = convertMatchCase(child, adaptor);
+        auto caseAst = convertMatchCase(child, adaptor);
+        if (!caseAst) {
+          DBGS("failed to convert match case: " << type << '\n');
+          return nullptr;
+        } else {
+          cases.push_back(std::move(caseAst));
         }
       } else if (!body && type != "function") {
         // Try to convert any other node as the body
+        assert(cases.size() == 0 && "how did we get here?");
         auto possibleBody = convertNode(child, adaptor);
         if (possibleBody) {
           body = std::move(possibleBody);
@@ -1702,8 +1710,17 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
     // For 'function', we add an implicit parameter (which is matched in the body)
     parameters.push_back(std::make_unique<ValuePatternAST>(
       getLocation(targetNode, adaptor),
-      "implicit_function_param!" // Use a special name for the implicit parameter
+      getImplicitFunctionParameterName().str()
     ));
+
+    body = std::make_unique<MatchExpressionAST>(
+      getLocation(targetNode, adaptor),
+      std::make_unique<ValuePatternAST>(
+        getLocation(targetNode, adaptor),
+        getImplicitFunctionParameterName().str()
+      ),
+      std::move(cases)
+    );
   }
   
   // If we still don't have parameters, check if there are value_pattern nodes directly

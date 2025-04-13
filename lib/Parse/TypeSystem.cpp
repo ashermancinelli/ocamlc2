@@ -369,6 +369,8 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     auto *valueType = infer(value);
     auto *resultType = createTypeVariable();
     for (auto &caseAst : cases) {
+      EnvScope es(env);
+      auto savedTypes = concreteTypes;
       auto *pattern = caseAst->getPattern();
       // inference on a pattern will check the guard, if there is one
       auto *patternType = infer(pattern);
@@ -377,6 +379,7 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       // 
       auto *expressionType = infer(caseAst->getExpression());
       unify(expressionType, resultType);
+      concreteTypes = savedTypes;
     }
     return resultType;
   } else if (auto *td = llvm::dyn_cast<TypeDefinitionAST>(ast)) {

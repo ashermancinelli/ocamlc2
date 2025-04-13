@@ -14,6 +14,9 @@ class ASTNode;
 struct Location;
 struct TypeExpr;
 struct Unifier;
+consteval llvm::StringRef getImplicitFunctionParameterName() {
+  return "implicit_function_param!";
+}
 std::unique_ptr<ASTNode> parse(const std::string &source, const std::string &filename = "<string>");
 std::unique_ptr<ASTNode> parse(const std::filesystem::path &filepath);
 llvm::raw_ostream& operator<<(llvm::raw_ostream &os, const ASTNode &node);
