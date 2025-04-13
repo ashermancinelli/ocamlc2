@@ -3,6 +3,8 @@
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Support/Colors.h"
 #include "ocamlc2/Parse/TSAdaptor.h"
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/SmallSet.h>
 #include <filesystem>
 #include <iostream>
 #include <algorithm>
@@ -57,6 +59,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_SignExpression: return "SignExpression";
     case Node_ArrayGetExpression: return "ArrayGetExpression";
     case Node_ArrayExpression: return "ArrayExpression";
+    case Node_SequenceExpression: return "SequenceExpression";
   }
   return "";
 }
@@ -123,9 +126,10 @@ std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTr
 std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
-std::unordered_set<std::string> knownNodeTypes = {
+llvm::DenseSet<llvm::StringRef> knownNodeTypes = {
     "compilation_unit", "number", "string", "boolean", "true", "false", "value_path", "constructor_path",
     "type_constructor_path", "application_expression", "infix_expression", "sign_expression", "sign_operator",
     "parenthesized_expression", "match_expression", "match_case",
@@ -139,7 +143,8 @@ std::unordered_set<std::string> knownNodeTypes = {
     "when", "guard", "in", "list_expression", "[", "]", "list",
     "fun_expression", "fun", "function_expression", "function", "unit",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
-    "do", "done", "to", "downto", "rec", "array_get_expression", "array_expression", "comment"
+    "do", "done", "to", "downto", "rec", "array_get_expression", "array_expression", "comment",
+    "sequence_expression"
 };
 
 // Helper functions
@@ -160,7 +165,7 @@ std::string getNodeText(TSNode node, const TSTreeAdaptor &adaptor) {
 }
 
 // Map of operator node types to their actual operators
-std::unordered_map<std::string, std::string> operatorMap = {
+llvm::DenseMap<llvm::StringRef, llvm::StringRef> operatorMap = {
     {"add_operator", "+"},
     {"subtract_operator", "-"},
     {"multiply_operator", "*"},
@@ -260,6 +265,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertLetBinding(node, adaptor, false);
   else if (type == "guard" || type == "when")
     return convertGuardedPattern(node, adaptor);
+  else if (type == "sequence_expression")
+    return convertSequenceExpr(node, adaptor);
   else if (type == "rec") {
     // For recursive bindings, we need to look at the parent node
     TSNode parent = ts_node_parent(node);
@@ -1735,6 +1742,37 @@ std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAd
   );
 }
 
+std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  if (std::string(nodeType) != "sequence_expression") {
+    return nullptr;
+  }
+  
+  auto children = childrenNodes(node);
+  std::vector<std::unique_ptr<ASTNode>> expressions;
+  
+  // Process each expression in the sequence, skipping semicolons
+  for (auto [type, child] : children) {
+    if (type != ";") {
+      auto expr = convertNode(child, adaptor);
+      if (expr) {
+        expressions.push_back(std::move(expr));
+      }
+    }
+  }
+  
+  if (expressions.empty()) {
+    DBGS("Failed to parse sequence_expression:\n");
+    DBGS("  No expressions found\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<SequenceExpressionAST>(
+    getLocation(node, adaptor),
+    std::move(expressions)
+  );
+}
+
 // AST Dump Implementation
 void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent = 0);
 
@@ -2120,6 +2158,16 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
         for (size_t i = 0; i < array->getNumElements(); ++i) {
           dumpASTNode(os, array->getElement(i), indent + 2);
         }
+      }
+      break;
+    }
+    case ASTNode::Node_SequenceExpression: {
+      auto *seqExpr = static_cast<const SequenceExpressionAST*>(node);
+      os << "SequenceExpr:\n";
+      printIndent(os, indent + 1);
+      os << "Expressions:\n";
+      for (size_t i = 0; i < seqExpr->getNumExpressions(); ++i) {
+        dumpASTNode(os, seqExpr->getExpression(i), indent + 2);
       }
       break;
     }

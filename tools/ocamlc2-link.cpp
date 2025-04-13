@@ -19,7 +19,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 
-#include "OcamlC2Config.h"
+#include "ocamlc2/OcamlC2Config.h"
 
 #define DEBUG_TYPE "ocamlc2-link"
 #include "ocamlc2/Support/Debug.h.inc"
