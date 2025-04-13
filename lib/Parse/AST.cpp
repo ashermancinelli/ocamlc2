@@ -60,6 +60,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_ArrayGetExpression: return "ArrayGetExpression";
     case Node_ArrayExpression: return "ArrayExpression";
     case Node_SequenceExpression: return "SequenceExpression";
+    case Node_ProductExpression: return "ProductExpression";
   }
   return "";
 }
@@ -127,6 +128,7 @@ std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTr
 std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
 llvm::DenseSet<llvm::StringRef> knownNodeTypes = {
@@ -144,7 +146,7 @@ llvm::DenseSet<llvm::StringRef> knownNodeTypes = {
     "fun_expression", "fun", "function_expression", "function", "unit",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
     "do", "done", "to", "downto", "rec", "array_get_expression", "array_expression", "comment",
-    "sequence_expression"
+    "sequence_expression", "product_expression", ","
 };
 
 // Helper functions
@@ -267,6 +269,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertGuardedPattern(node, adaptor);
   else if (type == "sequence_expression")
     return convertSequenceExpr(node, adaptor);
+  else if (type == "product_expression")
+    return convertProductExpr(node, adaptor);
   else if (type == "rec") {
     // For recursive bindings, we need to look at the parent node
     TSNode parent = ts_node_parent(node);
@@ -1844,6 +1848,43 @@ std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TS
   );
 }
 
+std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  if (std::string(nodeType) != "product_expression") {
+    return nullptr;
+  }
+  
+  // Debug children for diagnosis
+  DBGS("Product expression children:\n");
+  auto children = childrenNodes(node);
+  for (auto [type, child] : children) {
+    DBGS("  Type: " << type.str() << "\n");
+  }
+  
+  std::vector<std::unique_ptr<ASTNode>> elements;
+  
+  // Process each element, skipping commas
+  for (auto [type, child] : children) {
+    if (type != ",") {
+      auto element = convertNode(child, adaptor);
+      if (element) {
+        elements.push_back(std::move(element));
+      }
+    }
+  }
+  
+  if (elements.empty()) {
+    DBGS("Failed to parse product_expression:\n");
+    DBGS("  No elements found\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<ProductExpressionAST>(
+    getLocation(node, adaptor),
+    std::move(elements)
+  );
+}
+
 // AST Dump Implementation
 void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent = 0);
 
@@ -2239,6 +2280,32 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       os << "Expressions:\n";
       for (size_t i = 0; i < seqExpr->getNumExpressions(); ++i) {
         dumpASTNode(os, seqExpr->getExpression(i), indent + 2);
+      }
+      break;
+    }
+    case ASTNode::Node_ProductExpression: {
+      auto *productExpr = static_cast<const ProductExpressionAST*>(node);
+      os << "ProductExpr: (";
+      bool first = true;
+      for (size_t i = 0; i < productExpr->getNumElements(); ++i) {
+        if (!first) os << ", ";
+        first = false;
+        const auto *element = productExpr->getElement(i);
+        if (auto *numExpr = llvm::dyn_cast<NumberExprAST>(element)) {
+          os << numExpr->getValue();
+        } else if (auto *strExpr = llvm::dyn_cast<StringExprAST>(element)) {
+          os << "\"" << strExpr->getValue() << "\"";
+        } else {
+          os << "...";
+        }
+      }
+      os << ")\n";
+      if (productExpr->getNumElements() > 0) {
+        printIndent(os, indent + 1);
+        os << "Elements:\n";
+        for (size_t i = 0; i < productExpr->getNumElements(); ++i) {
+          dumpASTNode(os, productExpr->getElement(i), indent + 2);
+        }
       }
       break;
     }

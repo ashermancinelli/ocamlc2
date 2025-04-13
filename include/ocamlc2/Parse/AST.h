@@ -49,6 +49,7 @@ public:
     Node_ArrayGetExpression,
     Node_ArrayExpression,
     Node_SequenceExpression,
+    Node_ProductExpression,
 
     // Patterns
     Node_ValuePattern,
@@ -666,6 +667,22 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_SequenceExpression;
+  }
+};
+
+/// Product/Tuple expression (e.g., (1, "hello", true))
+class ProductExpressionAST : public ASTNode {
+  std::vector<std::unique_ptr<ASTNode>> elements;
+public:
+  ProductExpressionAST(Location loc, std::vector<std::unique_ptr<ASTNode>> elements)
+    : ASTNode(Node_ProductExpression, std::move(loc)), elements(std::move(elements)) {}
+  
+  const std::vector<std::unique_ptr<ASTNode>>& getElements() const { return elements; }
+  size_t getNumElements() const { return elements.size(); }
+  ASTNode* getElement(size_t index) const { return elements[index].get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ProductExpression;
   }
 };
 
