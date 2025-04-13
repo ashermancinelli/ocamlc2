@@ -150,6 +150,9 @@ void Unifier::initializeEnvironment() {
   declare("Cons", createFunction({T1, List, List}));
   declare("length", createFunction({List, T_int}));
   declare("map", createFunction({createFunction({T1, T1}), List, List}));
+  declare("fold_left",
+          createFunction({createFunction({T1, T1, T1}), T1, List, T1}));
+  declare("fold_right", getType("fold_left"));
 }
 
 static std::string getPath(llvm::ArrayRef<std::string> path) {

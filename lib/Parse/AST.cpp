@@ -99,6 +99,7 @@ std::unique_ptr<NumberExprAST> convertNumber(TSNode node, const TSTreeAdaptor &a
 std::unique_ptr<StringExprAST> convertString(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<BooleanExprAST> convertBoolean(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ConstructorPathAST> convertConstructorPath(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<TypeConstructorPathAST> convertTypeConstructorPath(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ApplicationExprAST> convertApplicationExpr(TSNode node, const TSTreeAdaptor &adaptor);
@@ -146,7 +147,7 @@ llvm::DenseSet<llvm::StringRef> knownNodeTypes = {
     "fun_expression", "fun", "function_expression", "function", "unit",
     ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
     "do", "done", "to", "downto", "rec", "array_get_expression", "array_expression", "comment",
-    "sequence_expression", "product_expression", ","
+    "sequence_expression", "product_expression", ",", "parenthesized_operator"
 };
 
 // Helper functions
@@ -214,6 +215,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertBoolean(node, adaptor);
   else if (type == "value_path")
     return convertValuePath(node, adaptor);
+  else if (type == "parenthesized_operator")
+    return convertParenthesizedOperator(node, adaptor);
   else if (type == "constructor_path")
     return convertConstructorPath(node, adaptor);
   else if (type == "type_constructor_path")
@@ -362,6 +365,22 @@ std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor 
   for (auto [type, child] : children) {
     if (type == "value_name") {
       path.push_back(getNodeText(child, adaptor));
+    } else if (type == "parenthesized_operator") {
+      // Handle parenthesized operators like (+)
+      auto operatorChildren = childrenNodes(child);
+      for (auto [opType, opChild] : operatorChildren) {
+        if (opType != "(" && opType != ")") {
+          // Check if it's an operator we know
+          auto it = operatorMap.find(opType.str());
+          if (it != operatorMap.end()) {
+            path.push_back(std::string(it->second));
+          } else {
+            // Otherwise, get the raw text
+            path.push_back(getNodeText(opChild, adaptor));
+          }
+          break;
+        }
+      }
     }
   }
   
@@ -1883,6 +1902,41 @@ std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTr
     getLocation(node, adaptor),
     std::move(elements)
   );
+}
+
+std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TSTreeAdaptor &adaptor) {
+  const char* nodeType = ts_node_type(node);
+  if (std::string(nodeType) != "parenthesized_operator") {
+    return nullptr;
+  }
+  
+  auto children = childrenNodes(node);
+  std::string operatorText;
+  
+  // Find the operator inside the parentheses
+  for (auto [type, child] : children) {
+    if (type != "(" && type != ")") {
+      // Check if it's an operator we know
+      auto it = operatorMap.find(type.str());
+      if (it != operatorMap.end()) {
+        operatorText = it->second;
+      } else {
+        // Otherwise, get the raw text
+        operatorText = getNodeText(child, adaptor);
+      }
+      break;
+    }
+  }
+  
+  if (operatorText.empty()) {
+    DBGS("Failed to parse parenthesized_operator:\n");
+    DBGS("  Could not find operator text\n");
+    return nullptr;
+  }
+  
+  // Create a ValuePathAST with the operator as the path
+  std::vector<std::string> path = {operatorText};
+  return std::make_unique<ValuePathAST>(getLocation(node, adaptor), std::move(path));
 }
 
 // AST Dump Implementation
