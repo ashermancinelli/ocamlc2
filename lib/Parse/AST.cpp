@@ -1587,6 +1587,12 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
   std::vector<std::unique_ptr<ASTNode>> parameters;
   std::unique_ptr<ASTNode> body = nullptr;
   
+  // Debug children for diagnosis
+  DBGS("Fun expression children:\n");
+  for (auto [type, child] : children) {
+    DBGS("  Type: " << type.str() << "\n");
+  }
+  
   bool foundArrow = false;
   
   // Handle 'fun' expressions (e.g., fun x -> x + 1)
@@ -1601,9 +1607,49 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
         auto param = convertNode(child, adaptor);
         if (param) {
           parameters.push_back(std::move(param));
+        } else {
+          // Try to extract value patterns directly from parameter node
+          auto paramChildren = childrenNodes(child);
+          for (auto [paramType, paramChild] : paramChildren) {
+            if (paramType == "value_pattern" || paramType == "value_name") {
+              std::string paramName = getNodeText(paramChild, adaptor);
+              auto valPattern = std::make_unique<ValuePatternAST>(
+                getLocation(paramChild, adaptor),
+                paramName
+              );
+              parameters.push_back(std::move(valPattern));
+            } else {
+              // Try to convert any other pattern type
+              auto pattern = convertNode(paramChild, adaptor);
+              if (pattern) {
+                parameters.push_back(std::move(pattern));
+              }
+            }
+          }
         }
       } else if (foundArrow && !body) {
         body = convertNode(child, adaptor);
+      }
+    }
+    
+    // If we still don't have a body, try looking for it after the arrow
+    if (!body && foundArrow) {
+      // Find the arrow
+      size_t arrowPos = 0;
+      for (size_t i = 0; i < children.size(); i++) {
+        if (children[i].first == "->") {
+          arrowPos = i;
+          break;
+        }
+      }
+      
+      // Look for the body after the arrow
+      for (size_t i = arrowPos + 1; i < children.size(); i++) {
+        auto possibleBody = convertNode(children[i].second, adaptor);
+        if (possibleBody) {
+          body = std::move(possibleBody);
+          break;
+        }
       }
     }
   }
@@ -1621,6 +1667,12 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
         if (!body) {
           body = convertMatchCase(child, adaptor);
         }
+      } else if (!body && type != "function") {
+        // Try to convert any other node as the body
+        auto possibleBody = convertNode(child, adaptor);
+        if (possibleBody) {
+          body = std::move(possibleBody);
+        }
       }
     }
     
@@ -1630,6 +1682,25 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
       "_implicit_fun_param" // Use a special name for the implicit parameter
     ));
   }
+  
+  // If we still don't have parameters, check if there are value_pattern nodes directly
+  if (parameters.empty()) {
+    for (auto [type, child] : children) {
+      if (type == "value_pattern" || type == "value_name") {
+        std::string paramName = getNodeText(child, adaptor);
+        auto valPattern = std::make_unique<ValuePatternAST>(
+          getLocation(child, adaptor),
+          paramName
+        );
+        parameters.push_back(std::move(valPattern));
+      }
+    }
+  }
+  
+  // Debug what we found
+  DBGS("Parsing fun_expression: \n");
+  DBGS("  Parameters: " << parameters.size() << "\n");
+  DBGS("  Body: " << (body ? "found" : "missing") << "\n");
   
   if (parameters.empty() || !body) {
     DBGS("Failed to parse fun_expression:\n");

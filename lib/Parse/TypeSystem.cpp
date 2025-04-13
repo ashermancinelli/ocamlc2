@@ -33,7 +33,7 @@ TypeExpr* Unifier::declare(llvm::StringRef name, TypeExpr* type) {
   }
   auto str = stringArena.save(name.str());
   if (env.count(str)) {
-    assert(false && "Type already declared");
+    DBGS("Type of " << name << " redeclared\n");
   }
   env.insert(str, type);
   return type;
@@ -149,6 +149,7 @@ void Unifier::initializeEnvironment() {
   declare("Nil", createFunction({List}));
   declare("Cons", createFunction({T1, List, List}));
   declare("length", createFunction({List, T_int}));
+  declare("map", createFunction({createFunction({T1, T1}), List, List}));
 }
 
 static std::string getPath(llvm::ArrayRef<std::string> path) {
@@ -209,6 +210,25 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       result = infer(binding.get());
     }
     return result;
+  } else if (auto *fe = llvm::dyn_cast<FunExpressionAST>(ast)) {
+    DBGS("function expression\n");
+    EnvScope es(env);
+    auto savedTypes = concreteTypes;
+    llvm::SmallVector<TypeExpr *> argTypes = llvm::map_to_vector(
+        fe->getParameters(), [&](auto &param) -> TypeExpr * {
+          auto *vp = llvm::dyn_cast<ValuePatternAST>(param.get());
+          assert(vp && "Expected value pattern");
+          auto *paramType = createTypeVariable();
+          concreteTypes.insert(paramType);
+          declare(vp->getName(), paramType);
+          return paramType;
+    });
+    auto *resultType = createTypeVariable();
+    argTypes.push_back(resultType);
+    auto *functionType = createFunction(argTypes);
+    unify(resultType, infer(fe->getBody()));
+    concreteTypes = savedTypes;
+    return functionType;
   } else if (auto *lb = llvm::dyn_cast<LetBindingAST>(ast)) {
     DBGS("let binding\n");
     if (lb->getParameters().empty()) {
