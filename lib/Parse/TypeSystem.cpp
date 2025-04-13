@@ -247,6 +247,12 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       }
       return functionType;
     }
+  } else if (auto *le = llvm::dyn_cast<ListExpressionAST>(ast)) {
+    auto *elementType = createTypeVariable();
+    for (auto &element : le->getElements()) {
+      unify(infer(element.get()), elementType);
+    }
+    return getListOfType(elementType);
   } else if (auto *ag = llvm::dyn_cast<ArrayGetExpressionAST>(ast)) {
     DBGS("array get\n");
     auto *index = infer(ag->getIndex());
