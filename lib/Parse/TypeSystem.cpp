@@ -8,6 +8,7 @@
 #include <llvm/ADT/iterator_range.h>
 #include <llvm/Support/raw_ostream.h>
 #include <algorithm>
+#include <numeric>
 #include <sstream>
 
 #define DEBUG_TYPE "typesystem"
@@ -38,22 +39,31 @@ static std::string hashPath(std::vector<std::string> path) {
   return llvm::join(path, "MM");
 }
 
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Unifier::Env& env) {
+  for (auto it = env.TopLevelMap.begin(); it != env.TopLevelMap.end(); ++it) {
+    os << it->first << " -> " << *(it->second->getValue()) << '\n';
+  }
+  return os;
+}
+
 void Unifier::pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> modules) {
-  auto path = llvm::map_to_vector(modules, [&](auto &module) -> llvm::StringRef {
-    return stringArena.save(module.str());
-  });
-  moduleSearchPath.push_back(path);
+  auto path = hashPath(modules);
+  DBGS("pushing module search path: " << path << '\n');
+  moduleSearchPath.push_back(stringArena.save(path));
 }
 
 void Unifier::pushModule(llvm::StringRef module) {
+  DBGS("pushing module: " << module << '\n');
   currentModule.push_back(stringArena.save(module.str()));
 }
 
 void Unifier::popModuleSearchPath() {
+  DBGS("popping module search path: " << moduleSearchPath.back() << '\n');
   moduleSearchPath.pop_back();
 }
 
 void Unifier::popModule() {
+  DBGS("popping module: " << currentModule.back() << '\n');
   currentModule.pop_back();
 }
 
@@ -67,17 +77,15 @@ std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
 }
 
 TypeExpr* Unifier::declare(llvm::StringRef name, TypeExpr* type) {
-  DBGS("current module: " << llvm::join(currentModule, ".") << ' ' << currentModule.size() << '\n');
-  auto hashedName = getHashedPath({name});
-  DBGS("Declaring: " << hashedName << " as " << *type << '\n');
+  auto str = stringArena.save(getHashedPath({name}));
+  DBGS("Declaring: " << str << " as " << *type << '\n');
   if (name == getWildcardType()->getName() or name == getUnitType()->getName()) {
     DBGS("probably declaring a wildcard variable in a constructor pattern or "
          "assigning to unit, skipping\n");
     return type;
   }
-  auto str = stringArena.save(name.str());
   if (env.count(str)) {
-    DBGS("Type of " << name << " redeclared\n");
+    DBGS("WARNING: Type of " << name << " redeclared\n");
   }
   env.insert(str, type);
   return type;
@@ -85,25 +93,29 @@ TypeExpr* Unifier::declare(llvm::StringRef name, TypeExpr* type) {
 
 TypeExpr* Unifier::declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* type) {
   auto hashedPath = hashPath(path);
-  DBGS("Declaring: " << getPath(path) << " as " << *type << '\n');
+  DBGS("Declaring path: " << getPath(path) << '(' << hashedPath << ')' << " as " << *type << '\n');
   return declare(hashedPath, type);
 }
 
 TypeExpr* Unifier::getType(std::vector<std::string> path) {
   auto hashedPath = hashPath(path);
-  return getType(hashedPath);
+  return getType(stringArena.save(hashedPath));
 }
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
+  DBGS("Getting type: " << name << '\n');
   if (auto *type = env.lookup(name)) {
+    DBGS("Found type in default env: " << *type << '\n');
     return clone(type);
   }
   for (auto &path : llvm::reverse(moduleSearchPath)) {
-    for (auto &module : path) {
-      auto str = stringArena.save(std::string{module.str()} + "." + name.str());
-      if (auto *type = env.lookup(str)) {
-        return clone(type);
-      }
+    DBGS("Checking module search path: " << path << '\n');
+    auto possiblePath = hashPath(std::vector<std::string>{path.str(), name.str()});
+    auto str = stringArena.save(possiblePath);
+    DBGS("with name: " << str << '\n');
+    if (auto *type = env.lookup(str)) {
+      DBGS("Found type " << *type << " in module search path: " << possiblePath << '\n');
+      return clone(type);
     }
   }
   DBGS("Type not declared: " << name << '\n');
@@ -127,8 +139,12 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op) {
   auto args = op.getArgs();
+  auto name = op.getName().str();
+  if (auto pos = name.find("StdlibMM"); pos != std::string::npos) {
+    name = name.substr(pos + 8);
+  }
   if (args.empty()) {
-    return os << op.getName();
+    return os << name;
   }
   os << '(' << op.getName();
   for (auto *arg : args) {
@@ -177,9 +193,9 @@ void Unifier::initializeEnvironment() {
   // We need to insert these directly because other type initializations require
   // varargs, wildcard, etc to define themselves.
   for (auto name : {"int", "float", "bool", "string", "unit!", "_", "•", "varargs!"}) {
-    auto str = stringArena.save(std::string{"Stdlib."} + name);
+    auto str = stringArena.save(name);
     DBGS("Declaring: " << str << '\n');
-    env.insert(str, createTypeOperator(name));
+    env.insert(str, createTypeOperator(str));
   }
   auto *T_bool = getBoolType();
   auto *T_float = getFloatType();
@@ -188,7 +204,6 @@ void Unifier::initializeEnvironment() {
   auto *T_string = getStringType();
   auto *T1 = createTypeVariable(), *T2 = createTypeVariable();
   {
-    ModuleScope ms(*this, "Stdlib");
     for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
       declare(arithmetic, createFunction({T_int, T_int, T_int}));
       declare(std::string(arithmetic) + ".",
@@ -199,6 +214,7 @@ void Unifier::initializeEnvironment() {
     }
     declare("sqrt", createFunction({T_float, T_float}));
     declare("print_int", createFunction({T_int, T_unit}));
+    declare("print_endline", createFunction({T_string, T_unit}));
     declare("print_string", createFunction({T_string, T_unit}));
     declare("string_of_int", createFunction({T_int, T_string}));
 
@@ -208,19 +224,26 @@ void Unifier::initializeEnvironment() {
     declare("None", createFunction({Optional}));
     declare("Some", createFunction({T1, Optional}));
   }
-  declare("String.concat", createFunction({T_string, getListOf(T_string), T_string}));
-  declare("Printf.printf", createFunction({T_string, getType("varargs!"), T_unit}));
+  declarePath({"String", "concat"}, createFunction({T_string, getListOf(T_string), T_string}));
+  {
+    ModuleScope ms{*this, "Printf"};
+    declare("printf", createFunction({T_string, getType("varargs!"), T_unit}));
+  }
 
   declarePath({"Float", "pi"}, T_float);
 
   auto *List = createTypeOperator("List", {(T1 = createTypeVariable())});
   declare("Nil", createFunction({List}));
   declare("Cons", createFunction({T1, List, List}));
-  declare("Array.length", createFunction({List, T_int}));
-  declare("List.map", createFunction({createFunction({T1, T2}), getListOf(T1), getListOf(T2)}));
-  declare("List.fold_left",
-          createFunction({createFunction({T1, T2, T1}), T1, List, T2}));
-  declare("List.fold_right", getType("List.fold_left"));
+  declarePath({"Array", "length"}, createFunction({List, T_int}));
+  {
+    ModuleScope ms{*this, "List"};
+    declare("map", createFunction({createFunction({T1, T2}), getListOf(T1),
+                                        getListOf(T2)}));
+    declare("fold_left",
+            createFunction({createFunction({T1, T2, T1}), T1, List, T2}));
+    declare("fold_right", getType("fold_left"));
+  }
 }
 
 static llvm::SmallVector<ASTNode*> flattenProductExpression(const ProductExpressionAST* pe) {
@@ -291,6 +314,9 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
   } else if (auto *vp = llvm::dyn_cast<ValuePathAST>(ast)) {
     DBGS("value path\n");
     return getType(vp->getPath());
+  } else if (auto *_ = llvm::dyn_cast<UnitExpressionAST>(ast)) {
+    DBGS("unit expression\n");
+    return getUnitType();
   } else if (auto *cu = llvm::dyn_cast<CompilationUnitAST>(ast)) {
     DBGS("compilation unit\n");
     EnvScope es(env);
@@ -539,7 +565,28 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       }
     }
     assert(false && "sequence expression should have at least one expression");
-  } else if (false) {
+  } else if (auto *mi = llvm::dyn_cast<ModuleImplementationAST>(ast)) {
+    DBGS("module implementation\n");
+    auto &items = mi->getItems();
+    return std::accumulate(
+        items.begin(), items.end(), getUnitType(),
+        [&](auto *_, auto &item) {
+          return infer(item.get());
+        });
+  } else if (auto *md = llvm::dyn_cast<ModuleDefinitionAST>(ast)) {
+    DBGS("module definition\n");
+    ModuleScope ms(*this, md->getName());
+    if (auto *sig = md->getSignature()) {
+      infer(sig);
+    } else if (auto *impl = md->getImplementation()) {
+      infer(impl);
+    } else {
+      assert(false && "module definition must have either a signature or implementation");
+    }
+    auto path = std::vector<std::string>{"Module", md->getName()};
+    auto str = stringArena.save(hashPath(path));
+    DBGS("Declared module: " << str << '\n');
+    return createTypeOperator(str);
   } else if (auto *fe = llvm::dyn_cast<ForExpressionAST>(ast)) {
     DBGS("for expression\n");
     EnvScope es(env);

@@ -12,7 +12,7 @@
 #include <sstream>
 #include <set>
 #include <llvm/Support/Casting.h>
-#include <llvm/ADT/ScopedHashTable.h>
+#include <ocamlc2/Parse/ScopedHashTable.h>
 
 namespace ocamlc2 {
 
@@ -197,9 +197,11 @@ private:
   struct ModuleScope {
     ModuleScope(Unifier& unifier, llvm::StringRef module) : unifier(unifier) {
       unifier.pushModule(module);
+      unifier.pushModuleSearchPath({module});
     }
     ~ModuleScope() {
       unifier.popModule();
+      unifier.popModuleSearchPath();
     }
   private:
     Unifier& unifier;
@@ -208,7 +210,7 @@ private:
   Env env;
   ConcreteTypes concreteTypes;
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
-  llvm::SmallVector<llvm::SmallVector<llvm::StringRef>> moduleSearchPath;
+  llvm::SmallVector<llvm::StringRef> moduleSearchPath;
   llvm::SmallVector<llvm::StringRef> currentModule;
 };
 
