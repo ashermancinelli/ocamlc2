@@ -7,7 +7,7 @@ struct ASTPass {
   virtual void run(CompilationUnitAST *node) = 0;
   virtual ~ASTPass() = default;
 private:
-  void run(ASTNode *node);
+  void runOnNode(ASTNode *node);
 };
 
 struct ASTPassManager {

@@ -142,6 +142,7 @@ private:
   }
 
   TypeExpr* declare(llvm::StringRef name, TypeExpr* type);
+  TypeExpr* declarePatternVariables(const ASTNode* ast, llvm::SmallVector<TypeExpr*>& typevars);
   inline bool declared(llvm::StringRef name) {
     return env.count(name) > 0;
   }

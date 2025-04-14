@@ -254,18 +254,6 @@ std::string getNodeText(TSNode node, const TSTreeAdaptor &adaptor) {
   return adaptor.getSource().substr(start, end - start).str();
 }
 
-// Map of operator node types to their actual operators
-llvm::DenseMap<llvm::StringRef, llvm::StringRef> operatorMap = {
-    {"add_operator", "+"},
-    {"subtract_operator", "-"},
-    {"multiply_operator", "*"},
-    {"division_operator", "/"},
-    {"concat_operator", "^"},
-    {"and_operator", "&&"},
-    {"or_operator", "||"},
-    {"equal_operator", "="}
-};
-
 std::unique_ptr<ASTNode> ocamlc2::parse(const std::string &source, const std::string &filename) {
   TSTreeAdaptor tree(filename, source);
   TSNode rootNode = ts_tree_root_node(tree);
@@ -454,14 +442,7 @@ std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor 
       auto operatorChildren = childrenNodes(child);
       for (auto [opType, opChild] : operatorChildren) {
         if (opType != "(" && opType != ")") {
-          // Check if it's an operator we know
-          auto it = operatorMap.find(opType.str());
-          if (it != operatorMap.end()) {
-            path.push_back(std::string(it->second));
-          } else {
-            // Otherwise, get the raw text
-            path.push_back(getNodeText(opChild, adaptor));
-          }
+          path.push_back(getNodeText(opChild, adaptor));
           break;
         }
       }
@@ -541,14 +522,8 @@ std::unique_ptr<InfixExpressionAST> convertInfixExpr(TSNode node, const TSTreeAd
   auto lhs = convertNode(children[0].second, adaptor);
   
   // Get the operator - handle different operator node types
-  std::string op;
   const auto& [opType, opNode] = children[1];
-  auto it = operatorMap.find(opType.str());
-  if (it != operatorMap.end()) {
-    op = it->second;
-  } else {
-    op = getNodeText(opNode, adaptor);
-  }
+  std::string op = getNodeText(opNode, adaptor);
   
   auto rhs = convertNode(children[2].second, adaptor);
   
@@ -1996,14 +1971,7 @@ std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TS
   // Find the operator inside the parentheses
   for (auto [type, child] : children) {
     if (type != "(" && type != ")") {
-      // Check if it's an operator we know
-      auto it = operatorMap.find(type.str());
-      if (it != operatorMap.end()) {
-        operatorText = it->second;
-      } else {
-        // Otherwise, get the raw text
-        operatorText = getNodeText(child, adaptor);
-      }
+      operatorText = getNodeText(child, adaptor);
       break;
     }
   }

@@ -137,9 +137,10 @@ void Unifier::initializeEnvironment() {
   for (auto comparison : {"=", "!=", "<", "<=", ">", ">="}) {
     declare(comparison, createFunction({T1, T1, T_bool}));
   }
+  declare("sqrt", createFunction({T_float, T_float}));
   declare("print_int", createFunction({T_int, T_unit}));
   declare("print_string", createFunction({T_string, T_unit}));
-  declare("printf", createFunction({T_string, getType("varargs!"), T_unit}));
+  declare("Printf.printf", createFunction({T_string, getType("varargs!"), T_unit}));
 
   // Builtin constructors
   auto *Optional = createTypeOperator("Optional", {(T1 = createTypeVariable())});
@@ -160,24 +161,49 @@ static std::string getPath(llvm::ArrayRef<std::string> path) {
   return llvm::join(path, ".");
 }
 
-llvm::SmallVector<ASTNode*> flattenTuplePattern(const TuplePatternAST* tp) {
-  llvm::SmallVector<ASTNode*> result;
+static llvm::SmallVector<ValuePatternAST*> flattenTuplePattern(const TuplePatternAST* tp) {
+  llvm::SmallVector<ValuePatternAST*> result;
   for (auto &element : tp->getElements()) {
     if (auto *tp = llvm::dyn_cast<TuplePatternAST>(element.get())) {
       auto elements = flattenTuplePattern(tp);
       result.insert(result.end(), elements.begin(), elements.end());
+    } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(element.get())) {
+      result.push_back(vp);
     } else {
-      result.push_back(element.get());
+      DBGS("unknown pattern: " << *element << '\n');
+      assert(false && "unknown pattern");
     }
   }
   return result;
 }
 
+TypeExpr *Unifier::declarePatternVariables(const ASTNode *ast, llvm::SmallVector<TypeExpr*>& typevars) {
+  if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
+    typevars.push_back(createTypeVariable());
+    declare(vp->getName(), typevars.back());
+  } else if (auto *tp = llvm::dyn_cast<TuplePatternAST>(ast)) {
+    auto elements = flattenTuplePattern(tp);
+    auto tupleTypeVars = llvm::map_to_vector(elements, [&](auto *vp) -> TypeExpr* {
+      auto *tv = createTypeVariable();
+      declare(vp->getName(), tv);
+      return tv;
+    });
+    typevars.push_back(createTuple(tupleTypeVars));
+  } else if (auto *pp = llvm::dyn_cast<ParenthesizedPatternAST>(ast)) {
+    return declarePatternVariables(pp->getPattern(), typevars);
+  } else {
+    DBGS("unknown pattern: " << *ast << '\n');
+    assert(false && "unknown pattern");
+  }
+  return createTuple(typevars);
+}
+
 TypeExpr* Unifier::inferType(const ASTNode* ast) {
   DBGS('\n' << *ast << '\n');
-  if (auto *_ = llvm::dyn_cast<NumberExprAST>(ast)) {
+  if (auto *n = llvm::dyn_cast<NumberExprAST>(ast)) {
     DBGS("number\n");
-    return getType("int");
+    llvm::StringRef value = n->getValue();
+    return value.contains('.') ? getType("float") : getType("int");
   } else if (auto *_ = llvm::dyn_cast<StringExprAST>(ast)) {
     DBGS("string\n");
     return getType("string");
@@ -352,22 +378,13 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
   } else if (auto *cp = llvm::dyn_cast<ConstructorPatternAST>(ast)) {
     DBGS("constructor pattern\n");
     auto &args = cp->getArguments();
-    auto *ctorType = getType(getPath(cp->getConstructor()->getPath()));
     llvm::SmallVector<TypeExpr*> typevars;
-    for (auto &arg : args) {
-      auto *T = createTypeVariable();
-      if (auto *vp = llvm::dyn_cast<ValuePatternAST>(arg.get())) {
-        declare(vp->getName(), T);
-      } else if (auto *tp = llvm::dyn_cast<TuplePatternAST>(arg.get())) {
-        auto elements = flattenTuplePattern(tp);
-      } else {
-        DBGS("unknown pattern: " << *arg << '\n');
-        assert(false && "unknown pattern");
-      }
-      typevars.push_back(T);
-    }
+    llvm::for_each(args, [&](auto &arg) {
+      declarePatternVariables(arg.get(), typevars);
+    });
     typevars.push_back(createTypeVariable()); // return type
     auto *functionType = createFunction({typevars});
+    auto *ctorType = getType(getPath(cp->getConstructor()->getPath()));
     unify(functionType, ctorType);
     return functionType->back();
   } else if (auto *vp = llvm::dyn_cast<ValuePatternAST>(ast)) {
@@ -431,6 +448,15 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       }
     }
     return getUnitType();
+  } else if (auto *se = llvm::dyn_cast<SequenceExpressionAST>(ast)) {
+    DBGS("sequence expression\n");
+    for (auto expr : llvm::enumerate(se->getExpressions())) {
+      auto *result = infer(expr.value().get());
+      if (expr.index() == se->getNumExpressions() - 1) {
+        return result;
+      }
+    }
+    assert(false && "sequence expression should have at least one expression");
   } else if (auto *fe = llvm::dyn_cast<ForExpressionAST>(ast)) {
     DBGS("for expression\n");
     EnvScope es(env);

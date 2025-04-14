@@ -16,16 +16,7 @@ void ASTPassManager::addPass(std::unique_ptr<ASTPass> pass) {
   passes.push_back(std::move(pass));
 }
 
-void ASTPass::run(ASTNode *node) {
-  if (auto *cu = llvm::dyn_cast<CompilationUnitAST>(node)) {
-    for (auto &item : cu->getItems()) {
-      run(item.get());
-    }
-  } else if (auto *tp = llvm::dyn_cast<TuplePatternAST>(node)) {
-    for (auto &item : tp->getElements()) {
-      run(item.get());
-    }
-  }
+void ASTPass::runOnNode(ASTNode *node) {
 }
 
 void ASTPassManager::addDefaultPasses() {
