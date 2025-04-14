@@ -1,13 +1,14 @@
-#include "ocamlc2/Parse/AST.h"
-#include "ocamlc2/Parse/TypeSystem.h"
+#include "ocamlc2/CamlParse/AST.h"
+#include "ocamlc2/CamlParse/Parse.h"
 #include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Support/CL.h"
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <llvm/Support/CommandLine.h>
-#define DEBUG_TYPE "ocamlc2-parse2"
+#define DEBUG_TYPE "ocamlc2-camlparse"
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace fs = std::filesystem;
@@ -21,21 +22,13 @@ static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::value_desc("filename"));
 
 int main(int argc, char* argv[]) {
-  llvm::cl::ParseCommandLineOptions(argc, argv, "ocamlc2-parse2");
+  llvm::cl::ParseCommandLineOptions(argc, argv, "ocamlc2-camlparse");
   TRACE();
   fs::path filepath = inputFilename.getValue();
-  std::string source = must(slurpFile(filepath));
-  DBGS("Source:\n" << source << "\n");
-
-  auto ast = ocamlc2::parse(source, filepath.string());
-  DBGS("AST:\n" << *ast << "\n");
-  
-  auto *cu = llvm::cast<CompilationUnitAST>(ast.get());
-  assert(cu && "Compilation unit not found");
-  Unifier unifier;
-  ASTPassManager passManager;
-  passManager.addDefaultPasses();
-  passManager.run(cu);
+  std::ifstream file(filepath);
+  auto ast = ocamlc2::parse(file, filepath.string());
+  assert(ast && "Failed to parse file");
+  llvm::outs() << *ast << "\n";
   
   return 0;
 }

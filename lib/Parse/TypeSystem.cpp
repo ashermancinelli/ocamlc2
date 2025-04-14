@@ -129,6 +129,7 @@ void Unifier::initializeEnvironment() {
   auto *T_unit = getUnitType();
   auto *T_string = getStringType();
   auto *T1 = createTypeVariable();
+  declare("Float.pi", T_float);
   for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
     declare(arithmetic, createFunction({T_int, T_int, T_int}));
     declare(std::string(arithmetic) + ".", createFunction({T_float, T_float, T_float}));
@@ -148,15 +149,28 @@ void Unifier::initializeEnvironment() {
   auto *List = createTypeOperator("List", {(T1 = createTypeVariable())});
   declare("Nil", createFunction({List}));
   declare("Cons", createFunction({T1, List, List}));
-  declare("length", createFunction({List, T_int}));
-  declare("map", createFunction({createFunction({T1, T1}), List, List}));
-  declare("fold_left",
+  declare("Array.length", createFunction({List, T_int}));
+  declare("List.map", createFunction({createFunction({T1, T1}), List, List}));
+  declare("List.fold_left",
           createFunction({createFunction({T1, T1, T1}), T1, List, T1}));
-  declare("fold_right", getType("fold_left"));
+  declare("List.fold_right", getType("List.fold_left"));
 }
 
 static std::string getPath(llvm::ArrayRef<std::string> path) {
   return llvm::join(path, ".");
+}
+
+llvm::SmallVector<ASTNode*> flattenTuplePattern(const TuplePatternAST* tp) {
+  llvm::SmallVector<ASTNode*> result;
+  for (auto &element : tp->getElements()) {
+    if (auto *tp = llvm::dyn_cast<TuplePatternAST>(element.get())) {
+      auto elements = flattenTuplePattern(tp);
+      result.insert(result.end(), elements.begin(), elements.end());
+    } else {
+      result.push_back(element.get());
+    }
+  }
+  return result;
 }
 
 TypeExpr* Unifier::inferType(const ASTNode* ast) {
@@ -344,6 +358,11 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       auto *T = createTypeVariable();
       if (auto *vp = llvm::dyn_cast<ValuePatternAST>(arg.get())) {
         declare(vp->getName(), T);
+      } else if (auto *tp = llvm::dyn_cast<TuplePatternAST>(arg.get())) {
+        auto elements = flattenTuplePattern(tp);
+      } else {
+        DBGS("unknown pattern: " << *arg << '\n');
+        assert(false && "unknown pattern");
       }
       typevars.push_back(T);
     }
@@ -395,8 +414,16 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
               llvm::map_to_vector(ctor->getOfTypes(), [&](auto &ofType) {
                 return getType(getPath(ofType->getPath()));
               });
-          args.push_back(getType(typeName));
-          declare(ctorName, createFunction(args));
+          TypeExpr *ctorType;
+          auto *newTypeType = getType(typeName);
+          if (args.size() > 1) {
+            auto *tupleType = createTuple(args);
+            ctorType = createFunction({tupleType, newTypeType});
+          } else {
+            args.push_back(getType(typeName));
+            ctorType = createFunction(args);
+          }
+          declare(ctorName, ctorType);
         }
       } else {
         DBGS("unknown definition: " << *definition << '\n');
@@ -404,21 +431,6 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       }
     }
     return getUnitType();
-#if 0
-TypeDefinition:
-| TypeBinding: shape
-| | Definition:
-| | | VariantDeclaration:
-| | | | ConstructorDeclaration: Circle of
-| | | | | TypeConstructorPath: float
-| | | | ConstructorDeclaration: Rectangle of
-| | | | | TypeConstructorPath: float
-| | | | | TypeConstructorPath: float
-| | | | ConstructorDeclaration: Triangle of
-| | | | | TypeConstructorPath: float
-| | | | | TypeConstructorPath: float
-| | | | | TypeConstructorPath: float
-#endif
   } else if (auto *fe = llvm::dyn_cast<ForExpressionAST>(ast)) {
     DBGS("for expression\n");
     EnvScope es(env);

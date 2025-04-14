@@ -67,3 +67,4 @@ let () =
   
   Printf.printf "Area of circle (r=5): %f\n" (area (Circle 5.0));
   Printf.printf "Area of rectangle (3x4): %f\n" (area (Rectangle (3.0, 4.0)));
+  Printf.printf "Area of triangle (3,4,5): %f\n" (area (Triangle (3.0, 4.0, 5.0)));

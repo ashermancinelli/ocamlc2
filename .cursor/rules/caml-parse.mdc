@@ -1,0 +1,13 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# caml-parse is a parser for the *output* of `ocamlc -dparsetree file.ml`
+
+This lexer and parser are *NOT* for OCaml source itself, but for parsing the parsetree output of the real ocaml compiler. From this, we will generate an AST so we don't have to do the parsing ourselves.
+
+We will style the lexer and parser after the LLVM MLIR Toy example to create an AST data structure from the string output of `ocamlc -dparsetree file.ml`.
+
+If something is ambiguous, create a test case and look at ocamlc's output.

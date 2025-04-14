@@ -18,6 +18,19 @@
 #define DEBUG_TYPE "ast"
 #include "ocamlc2/Support/Debug.h.inc"
 
+#define FAIL(...)                                                              \
+  do {                                                                         \
+    DBGS("failed to convert node: " << __VA_ARGS__ << '\n');                   \
+    return nullptr;                                                            \
+  } while (0)
+
+#define ORFAIL(COND, ...)                                                      \
+  do {                                                                         \
+    if (!(COND)) {                                                             \
+      FAIL(__VA_ARGS__);                                                       \
+    }                                                                          \
+  } while (0)
+
 using namespace ocamlc2;
 namespace fs = std::filesystem;
 
@@ -61,7 +74,10 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_ArrayExpression: return "ArrayExpression";
     case Node_SequenceExpression: return "SequenceExpression";
     case Node_ProductExpression: return "ProductExpression";
+    case Node_ParenthesizedPattern: return "ParenthesizedPattern";
+    case Node_TuplePattern: return "TuplePattern";
   }
+  assert(false && "Unknown AST node kind");
   return "";
 }
 
@@ -73,7 +89,7 @@ mlir::Location ASTNode::getMLIRLocation(mlir::MLIRContext &context) const {
 // Debugging functions
 void dumpTSNode(TSNode node, const TSTreeAdaptor &adaptor, int indent = 0) {
   std::string indentation(indent * 2, ' ');
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   uint32_t start = ts_node_start_byte(node);
   uint32_t end = ts_node_end_byte(node);
   std::string text = adaptor.getSource().substr(start, end - start).str();
@@ -115,6 +131,8 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
 std::unique_ptr<UnitExpressionAST> convertUnitExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ValuePatternAST> convertValuePattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ConstructorPatternAST> convertConstructorPattern(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ParenthesizedPatternAST> convertParenthesizedPattern(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<TuplePatternAST> convertTuplePattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<TypedPatternAST> convertTypedPattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<TypeDefinitionAST> convertTypeDefinition(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ValueDefinitionAST> convertValueDefinition(TSNode node, const TSTreeAdaptor &adaptor);
@@ -132,23 +150,92 @@ std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TS
 std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
-llvm::DenseSet<llvm::StringRef> knownNodeTypes = {
-    "compilation_unit", "number", "string", "boolean", "true", "false", "value_path", "constructor_path",
-    "type_constructor_path", "application_expression", "infix_expression", "sign_expression", "sign_operator",
-    "parenthesized_expression", "match_expression", "match_case",
-    "value_pattern", "constructor_pattern", "typed_pattern", "type_definition",
-    "value_definition", "expression_item", "type_binding", "variant_declaration",
-    "constructor_declaration", "let_binding", "value_name", "type_constructor",
-    "constructor_name", "add_operator", "subtract_operator", "multiply_operator",
-    "division_operator", "concat_operator", "and_operator", "or_operator",
-    "equal_operator", "parameter", "field_get_expression", "for_expression", 
-    "let_expression", "if_expression", "if", "then", "else", "then_clause", "else_clause",
-    "when", "guard", "in", "list_expression", "[", "]", "list",
-    "fun_expression", "fun", "function_expression", "function", "unit",
-    ";", ";;", "(", ")", ":", "=", "->", "|", "of", "with", "match", "type", "let",
-    "do", "done", "to", "downto", "rec", "array_get_expression", "array_expression", "comment",
-    "sequence_expression", "product_expression", ",", "parenthesized_operator"
-};
+llvm::DenseSet<llvm::StringRef> knownNodeTypes = {"compilation_unit",
+                                                  "number",
+                                                  "string",
+                                                  "boolean",
+                                                  "true",
+                                                  "false",
+                                                  "value_path",
+                                                  "constructor_path",
+                                                  "type_constructor_path",
+                                                  "application_expression",
+                                                  "infix_expression",
+                                                  "sign_expression",
+                                                  "sign_operator",
+                                                  "parenthesized_expression",
+                                                  "match_expression",
+                                                  "match_case",
+                                                  "value_pattern",
+                                                  "constructor_pattern",
+                                                  "typed_pattern",
+                                                  "type_definition",
+                                                  "value_definition",
+                                                  "expression_item",
+                                                  "type_binding",
+                                                  "variant_declaration",
+                                                  "constructor_declaration",
+                                                  "let_binding",
+                                                  "value_name",
+                                                  "type_constructor",
+                                                  "constructor_name",
+                                                  "add_operator",
+                                                  "subtract_operator",
+                                                  "multiply_operator",
+                                                  "division_operator",
+                                                  "concat_operator",
+                                                  "and_operator",
+                                                  "or_operator",
+                                                  "equal_operator",
+                                                  "parameter",
+                                                  "field_get_expression",
+                                                  "for_expression",
+                                                  "let_expression",
+                                                  "if_expression",
+                                                  "if",
+                                                  "then",
+                                                  "else",
+                                                  "then_clause",
+                                                  "else_clause",
+                                                  "when",
+                                                  "guard",
+                                                  "in",
+                                                  "list_expression",
+                                                  "[",
+                                                  "]",
+                                                  "list",
+                                                  "fun_expression",
+                                                  "fun",
+                                                  "function_expression",
+                                                  "function",
+                                                  "unit",
+                                                  ";",
+                                                  ";;",
+                                                  "(",
+                                                  ")",
+                                                  ":",
+                                                  "=",
+                                                  "->",
+                                                  "|",
+                                                  "of",
+                                                  "with",
+                                                  "match",
+                                                  "type",
+                                                  "let",
+                                                  "do",
+                                                  "done",
+                                                  "to",
+                                                  "downto",
+                                                  "rec",
+                                                  "array_get_expression",
+                                                  "array_expression",
+                                                  "comment",
+                                                  "sequence_expression",
+                                                  "product_expression",
+                                                  ",",
+                                                  "parenthesized_operator",
+                                                  "parenthesized_pattern",
+                                                  "tuple_pattern"};
 
 // Helper functions
 Location getLocation(TSNode node, const TSTreeAdaptor &adaptor) {
@@ -198,11 +285,9 @@ std::unique_ptr<ASTNode> ocamlc2::parse(const std::filesystem::path &filepath) {
 }
 
 std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) {
-  if (ts_node_is_null(node)) {
-    return nullptr;
-  }
+  ORFAIL(!ts_node_is_null(node), "null node");
   
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   StringRef type(nodeType);
   
   if (type == "compilation_unit")
@@ -274,6 +359,10 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertSequenceExpr(node, adaptor);
   else if (type == "product_expression")
     return convertProductExpr(node, adaptor);
+  else if (type == "parenthesized_pattern")
+    return convertParenthesizedPattern(node, adaptor);
+  else if (type == "tuple_pattern")
+    return convertTuplePattern(node, adaptor);
   else if (type == "rec") {
     // For recursive bindings, we need to look at the parent node
     TSNode parent = ts_node_parent(node);
@@ -293,30 +382,23 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return nullptr;
   }
   else {
-    if (knownNodeTypes.find(type.str()) == knownNodeTypes.end()) {
-      // Unknown node type, log it for debugging
-      DBGS("Unknown node type: " << type << "\n");
-    }
+    ORFAIL(knownNodeTypes.find(type.str()) != knownNodeTypes.end(), "Unknown node type: " << type.str());
   }
   
   return nullptr;
 }
 
 std::unique_ptr<NumberExprAST> convertNumber(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "number") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(std::string(nodeType) == "number", "Expected number node, got " << nodeType);
   
   std::string value = getNodeText(node, adaptor);
   return std::make_unique<NumberExprAST>(getLocation(node, adaptor), value);
 }
 
 std::unique_ptr<StringExprAST> convertString(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "string") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(std::string(nodeType) == "string", "Expected string node, got " << nodeType);
   
   std::string value = getNodeText(node, adaptor);
   // Remove the quotes from the string literal
@@ -328,14 +410,12 @@ std::unique_ptr<StringExprAST> convertString(TSNode node, const TSTreeAdaptor &a
 }
 
 std::unique_ptr<BooleanExprAST> convertBoolean(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  bool isBool = (std::string(nodeType) == "boolean");
-  bool isTrue = (std::string(nodeType) == "true");
-  bool isFalse = (std::string(nodeType) == "false");
+  std::string nodeType = ts_node_type(node);
+  bool isBool = (nodeType == "boolean");
+  bool isTrue = (nodeType == "true");
+  bool isFalse = (nodeType == "false");
   
-  if (!isBool && !isTrue && !isFalse) {
-    return nullptr;
-  }
+  ORFAIL(isBool || isTrue || isFalse, "Expected boolean node, got " + nodeType);
   
   // If we have the boolean wrapper node, look at its children for the actual value
   if (isBool) {
@@ -343,9 +423,11 @@ std::unique_ptr<BooleanExprAST> convertBoolean(TSNode node, const TSTreeAdaptor 
     for (auto [childType, child] : children) {
       if (childType == "true" || childType == "false") {
         return convertBoolean(child, adaptor);
+      } else {
+        FAIL("Expected boolean node, got " + childType);
       }
     }
-    return nullptr;
+    FAIL("Expected boolean node, got " + nodeType);
   }
   
   // We're directly at a true/false node
@@ -354,10 +436,8 @@ std::unique_ptr<BooleanExprAST> convertBoolean(TSNode node, const TSTreeAdaptor 
 }
 
 std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "value_path") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(std::string(nodeType) == "value_path", "Expected value path node, got " << nodeType);
   
   std::vector<std::string> path;
   auto children = childrenNodes(node);
@@ -365,6 +445,10 @@ std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor 
   for (auto [type, child] : children) {
     if (type == "value_name") {
       path.push_back(getNodeText(child, adaptor));
+    } else if (type == "module_path") {
+      path.push_back(getNodeText(child, adaptor));
+    } else if (type == ".") {
+      // ignore
     } else if (type == "parenthesized_operator") {
       // Handle parenthesized operators like (+)
       auto operatorChildren = childrenNodes(child);
@@ -381,6 +465,8 @@ std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor 
           break;
         }
       }
+    } else {
+      FAIL("failed to convert value path: " + type);
     }
   }
   
@@ -388,10 +474,8 @@ std::unique_ptr<ValuePathAST> convertValuePath(TSNode node, const TSTreeAdaptor 
 }
 
 std::unique_ptr<ConstructorPathAST> convertConstructorPath(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "constructor_path") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(std::string(nodeType) == "constructor_path", "Expected constructor path node, got " << nodeType);
   
   std::vector<std::string> path;
   auto children = childrenNodes(node);
@@ -406,10 +490,8 @@ std::unique_ptr<ConstructorPathAST> convertConstructorPath(TSNode node, const TS
 }
 
 std::unique_ptr<TypeConstructorPathAST> convertTypeConstructorPath(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "type_constructor_path") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(std::string(nodeType) == "type_constructor_path", "Expected type constructor path node, got " << nodeType);
   
   std::vector<std::string> path;
   auto children = childrenNodes(node);
@@ -424,29 +506,22 @@ std::unique_ptr<TypeConstructorPathAST> convertTypeConstructorPath(TSNode node, 
 }
 
 std::unique_ptr<ApplicationExprAST> convertApplicationExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "application_expression") {
-    return nullptr;
-  }
+  std::string nodeType = ts_node_type(node);
+  ORFAIL(std::string(nodeType) == "application_expression", "Expected application expression node, got " << nodeType);
   
   auto children = childrenNodes(node);
-  if (children.empty()) {
-    return nullptr;
-  }
+  ORFAIL(!children.empty(), "Expected application expression node, got " << nodeType);
   
   // First child is the function
   auto function = convertNode(children[0].second, adaptor);
-  if (!function) {
-    return nullptr;
-  }
+  ORFAIL(function, "Expected application expression node, got " << nodeType);
   
   // Remaining children are arguments
   std::vector<std::unique_ptr<ASTNode>> arguments;
   for (size_t i = 1; i < children.size(); ++i) {
     auto arg = convertNode(children[i].second, adaptor);
-    if (arg) {
-      arguments.push_back(std::move(arg));
-    }
+    ORFAIL(arg, "Expected application expression node, got " << nodeType);
+    arguments.push_back(std::move(arg));
   }
   
   return std::make_unique<ApplicationExprAST>(
@@ -457,15 +532,11 @@ std::unique_ptr<ApplicationExprAST> convertApplicationExpr(TSNode node, const TS
 }
 
 std::unique_ptr<InfixExpressionAST> convertInfixExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "infix_expression") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "infix_expression", "Expected infix expression node, got " << nodeType);
   
   auto children = childrenNodes(node);
-  if (children.size() < 3) {
-    return nullptr;
-  }
+  ORFAIL(children.size() >= 3, "Expected infix expression node, got " << nodeType);
   
   auto lhs = convertNode(children[0].second, adaptor);
   
@@ -481,9 +552,7 @@ std::unique_ptr<InfixExpressionAST> convertInfixExpr(TSNode node, const TSTreeAd
   
   auto rhs = convertNode(children[2].second, adaptor);
   
-  if (!lhs || !rhs) {
-    return nullptr;
-  }
+  ORFAIL(lhs && rhs, "Failed to parse infix expression");
   
   return std::make_unique<InfixExpressionAST>(
     getLocation(node, adaptor),
@@ -494,10 +563,8 @@ std::unique_ptr<InfixExpressionAST> convertInfixExpr(TSNode node, const TSTreeAd
 }
 
 std::unique_ptr<ParenthesizedExpressionAST> convertParenthesizedExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "parenthesized_expression") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "parenthesized_expression", "Expected parenthesized expression node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::unique_ptr<ASTNode> expr = nullptr;
@@ -510,9 +577,7 @@ std::unique_ptr<ParenthesizedExpressionAST> convertParenthesizedExpr(TSNode node
     }
   }
   
-  if (!expr) {
-    return nullptr;
-  }
+  ORFAIL(expr, "Failed to parse parenthesized expression");
   
   return std::make_unique<ParenthesizedExpressionAST>(
     getLocation(node, adaptor),
@@ -521,10 +586,8 @@ std::unique_ptr<ParenthesizedExpressionAST> convertParenthesizedExpr(TSNode node
 }
 
 std::unique_ptr<MatchCaseAST> convertMatchCase(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "match_case") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "match_case", "Expected match case node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::unique_ptr<ASTNode> pattern = nullptr;
@@ -579,10 +642,8 @@ std::unique_ptr<MatchCaseAST> convertMatchCase(TSNode node, const TSTreeAdaptor 
 }
 
 std::unique_ptr<MatchExpressionAST> convertMatchExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "match_expression") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "match_expression", "Expected match expression node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::unique_ptr<ASTNode> value = nullptr;
@@ -620,20 +681,16 @@ std::unique_ptr<MatchExpressionAST> convertMatchExpr(TSNode node, const TSTreeAd
 }
 
 std::unique_ptr<ValuePatternAST> convertValuePattern(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "value_pattern") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "value_pattern", "Expected value pattern node, got " << nodeType);
   
   std::string name = getNodeText(node, adaptor);
   return std::make_unique<ValuePatternAST>(getLocation(node, adaptor), name);
 }
 
 std::unique_ptr<ConstructorPatternAST> convertConstructorPattern(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "constructor_pattern") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "constructor_pattern", "Expected constructor pattern node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::unique_ptr<ConstructorPathAST> constructor = nullptr;
@@ -647,6 +704,9 @@ std::unique_ptr<ConstructorPatternAST> convertConstructorPattern(TSNode node, co
       auto arg = convertNode(child, adaptor);
       if (arg) {
         arguments.push_back(std::move(arg));
+      } else {
+        DBGS("failed to convert constructor pattern argument: " << type << '\n');
+        return nullptr;
       }
     }
   }
@@ -663,10 +723,8 @@ std::unique_ptr<ConstructorPatternAST> convertConstructorPattern(TSNode node, co
 }
 
 std::unique_ptr<TypedPatternAST> convertTypedPattern(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "typed_pattern") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "typed_pattern", "Expected typed pattern node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::unique_ptr<ASTNode> pattern = nullptr;
@@ -716,10 +774,8 @@ std::unique_ptr<TypedPatternAST> convertTypedPattern(TSNode node, const TSTreeAd
 }
 
 std::unique_ptr<ConstructorDeclarationAST> convertConstructorDeclaration(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "constructor_declaration") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "constructor_declaration", "Expected constructor declaration node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::string name;
@@ -749,10 +805,8 @@ std::unique_ptr<ConstructorDeclarationAST> convertConstructorDeclaration(TSNode 
 }
 
 std::unique_ptr<VariantDeclarationAST> convertVariantDeclaration(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "variant_declaration") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "variant_declaration", "Expected variant declaration node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::vector<std::unique_ptr<ConstructorDeclarationAST>> constructors;
@@ -777,10 +831,8 @@ std::unique_ptr<VariantDeclarationAST> convertVariantDeclaration(TSNode node, co
 }
 
 std::unique_ptr<TypeBindingAST> convertTypeBinding(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "type_binding") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "type_binding", "Expected type binding node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::string name;
@@ -808,10 +860,8 @@ std::unique_ptr<TypeBindingAST> convertTypeBinding(TSNode node, const TSTreeAdap
 }
 
 std::unique_ptr<TypeDefinitionAST> convertTypeDefinition(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "type_definition") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "type_definition", "Expected type definition node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::vector<std::unique_ptr<TypeBindingAST>> bindings;
@@ -836,10 +886,8 @@ std::unique_ptr<TypeDefinitionAST> convertTypeDefinition(TSNode node, const TSTr
 }
 
 std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor, bool parentIsRec) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "let_binding") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "let_binding", "Expected let binding node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::string name;
@@ -1036,10 +1084,8 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
 }
 
 std::unique_ptr<ValueDefinitionAST> convertValueDefinition(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "value_definition") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "value_definition", "Expected value definition node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::vector<std::unique_ptr<LetBindingAST>> bindings;
@@ -1074,10 +1120,8 @@ std::unique_ptr<ValueDefinitionAST> convertValueDefinition(TSNode node, const TS
 }
 
 std::unique_ptr<ExpressionItemAST> convertExpressionItem(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "expression_item") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "expression_item", "Expected expression item node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::unique_ptr<ASTNode> expression = nullptr;
@@ -1089,9 +1133,7 @@ std::unique_ptr<ExpressionItemAST> convertExpressionItem(TSNode node, const TSTr
     }
   }
   
-  if (!expression) {
-    return nullptr;
-  }
+  ORFAIL(expression, "Failed to parse expression item");
   
   return std::make_unique<ExpressionItemAST>(
     getLocation(node, adaptor),
@@ -1100,10 +1142,8 @@ std::unique_ptr<ExpressionItemAST> convertExpressionItem(TSNode node, const TSTr
 }
 
 std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "compilation_unit") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "compilation_unit", "Expected compilation unit node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::vector<std::unique_ptr<ASTNode>> items;
@@ -1127,10 +1167,8 @@ std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TS
 }
 
 std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "for_expression") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "for_expression", "Expected for expression node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::string loopVar;
@@ -1189,10 +1227,8 @@ std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdapto
 }
 
 std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "let_expression") {
-    return nullptr;
-  }
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "let_expression", "Expected let expression node, got " << nodeType);
   
   auto children = childrenNodes(node);
   std::unique_ptr<ASTNode> binding = nullptr;
@@ -1283,12 +1319,7 @@ std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdapto
   DBGS("  Binding: " << (binding ? "found" : "missing") << "\n");
   DBGS("  Body: " << (body ? "found" : "missing") << "\n");
   
-  if (!binding || !body) {
-    DBGS("Failed to parse let_expression:\n");
-    if (!binding) DBGS("  Missing binding\n");
-    if (!body) DBGS("  Missing body\n");
-    return nullptr;
-  }
+  ORFAIL(binding && body, "Failed to parse let_expression");
   
   return std::make_unique<LetExpressionAST>(
     getLocation(node, adaptor),
@@ -1298,7 +1329,7 @@ std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdapto
 }
 
 std::unique_ptr<IfExpressionAST> convertIfExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   bool isIfExpr = (std::string(nodeType) == "if_expression");
   bool isIfKeyword = (std::string(nodeType) == "if");
   
@@ -1406,13 +1437,11 @@ std::unique_ptr<IfExpressionAST> convertIfExpr(TSNode node, const TSTreeAdaptor 
   DBGS("  Condition: " << (condition ? "found" : "missing") << "\n");
   DBGS("  Then branch: " << (thenBranch ? "found" : "missing") << "\n");
   DBGS("  Else branch: " << (elseBranch ? "found" : "missing") << "\n");
-  
-  if (!condition || !thenBranch) {
-    DBGS("Failed to parse if_expression:\n");
-    if (!condition) DBGS("  Missing condition\n");
-    if (!thenBranch) DBGS("  Missing then branch\n");
-    return nullptr;
-  }
+
+  ORFAIL(condition && thenBranch,
+         "Failed to parse if_expression. Condition: "
+             << (condition ? "found" : "missing")
+             << " Then branch: " << (thenBranch ? "found" : "missing"));
   
   return std::make_unique<IfExpressionAST>(
     getLocation(targetNode, adaptor),
@@ -1423,7 +1452,7 @@ std::unique_ptr<IfExpressionAST> convertIfExpr(TSNode node, const TSTreeAdaptor 
 }
 
 std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   bool isGuard = (std::string(nodeType) == "guard");
   bool isWhen = (std::string(nodeType) == "when");
   
@@ -1504,7 +1533,7 @@ std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTr
 }
 
 std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   bool isSignExpr = (std::string(nodeType) == "sign_expression");
   bool isSignOperator = (std::string(nodeType) == "sign_operator");
   
@@ -1558,7 +1587,7 @@ std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTr
 }
 
 std::unique_ptr<ListExpressionAST> convertListExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   bool isListExpr = (std::string(nodeType) == "list_expression");
   bool isListStart = (std::string(nodeType) == "[");
   
@@ -1592,7 +1621,7 @@ std::unique_ptr<ListExpressionAST> convertListExpr(TSNode node, const TSTreeAdap
 }
 
 std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   bool isFunExpr = (std::string(nodeType) == "fun_expression");
   bool isFunKeyword = (std::string(nodeType) == "fun");
   bool isFunctionExpr = (std::string(nodeType) == "function_expression");
@@ -1699,7 +1728,7 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
         }
       } else if (!body && type != "function") {
         // Try to convert any other node as the body
-        assert(cases.size() == 0 && "how did we get here?");
+        ORFAIL(cases.size() == 0, "how did we get here?");
         auto possibleBody = convertNode(child, adaptor);
         if (possibleBody) {
           body = std::move(possibleBody);
@@ -1757,7 +1786,7 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
 }
 
 std::unique_ptr<UnitExpressionAST> convertUnitExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   if (std::string(nodeType) != "unit") {
     return nullptr;
   }
@@ -1783,7 +1812,7 @@ std::unique_ptr<UnitExpressionAST> convertUnitExpr(TSNode node, const TSTreeAdap
 }
 
 std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   if (std::string(nodeType) != "array_get_expression") {
     return nullptr;
   }
@@ -1829,7 +1858,7 @@ std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TS
 }
 
 std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   if (std::string(nodeType) != "array_expression") {
     return nullptr;
   }
@@ -1854,7 +1883,7 @@ std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAd
 }
 
 std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   if (std::string(nodeType) != "sequence_expression") {
     return nullptr;
   }
@@ -1885,7 +1914,7 @@ std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TS
 }
 
 std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
+  const std::string nodeType = ts_node_type(node);
   if (std::string(nodeType) != "product_expression") {
     return nullptr;
   }
@@ -1921,11 +1950,45 @@ std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTr
   );
 }
 
-std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TSTreeAdaptor &adaptor) {
-  const char* nodeType = ts_node_type(node);
-  if (std::string(nodeType) != "parenthesized_operator") {
-    return nullptr;
+std::unique_ptr<TuplePatternAST> convertTuplePattern(TSNode node, const TSTreeAdaptor &adaptor) {
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "tuple_pattern", "Expected tuple_pattern node, got " << nodeType);
+
+  auto children = childrenNodes(node);
+  std::vector<std::unique_ptr<ASTNode>> elements;
+  
+  // Process each element, skipping commas
+  for (auto [type, child] : children) {
+    if (type != ",") {
+      auto element = convertNode(child, adaptor);
+      ORFAIL(element, "Failed to convert element in tuple_pattern");
+      elements.push_back(std::move(element));
+    }
   }
+
+  return std::make_unique<TuplePatternAST>(getLocation(node, adaptor), std::move(elements));
+}
+
+std::unique_ptr<ParenthesizedPatternAST> convertParenthesizedPattern(TSNode node, const TSTreeAdaptor &adaptor) {
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "parenthesized_pattern", "Expected parenthesized_pattern node, got " << nodeType);
+  
+  auto children = childrenNodes(node);
+  
+  // Find the pattern inside the parentheses
+  auto it = children.begin();
+  ORFAIL(it++->first == "(", "Failed to find opening parenthesis");
+  auto [_, patternNode] = *it++;
+  auto pattern = convertNode(patternNode, adaptor);
+  ORFAIL(it++->first == ")", "Failed to find closing parenthesis");
+  ORFAIL(it == children.end(), "Failed to find pattern inside parentheses");
+  
+  return std::make_unique<ParenthesizedPatternAST>(getLocation(node, adaptor), std::move(pattern));
+}
+
+std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TSTreeAdaptor &adaptor) {
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "parenthesized_operator", "Failed to find parenthesized_operator");
   
   auto children = childrenNodes(node);
   std::string operatorText;
@@ -1945,11 +2008,7 @@ std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TS
     }
   }
   
-  if (operatorText.empty()) {
-    DBGS("Failed to parse parenthesized_operator:\n");
-    DBGS("  Could not find operator text\n");
-    return nullptr;
-  }
+  ORFAIL(!operatorText.empty(), "Failed to parse parenthesized_operator");
   
   // Create a ValuePathAST with the operator as the path
   std::vector<std::string> path = {operatorText};
@@ -2136,10 +2195,24 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       os << "TypedPattern:\n";
       printIndent(os, indent + 1);
       os << "Pattern:\n";
-      dumpASTNode(os, typedPattern->getPattern(), indent + 2);
+      dumpASTNode(os, typedPattern->getPattern(), indent + 1);
       printIndent(os, indent + 1);
       os << "Type:\n";
-      dumpASTNode(os, typedPattern->getType(), indent + 2);
+      dumpASTNode(os, typedPattern->getType(), indent + 1);
+      break;
+    }
+    case ASTNode::Node_ParenthesizedPattern: {
+      auto *parenPattern = static_cast<const ParenthesizedPatternAST*>(node);
+      os << "ParenthesizedPattern:\n";
+      dumpASTNode(os, parenPattern->getPattern(), indent + 1);
+      break;
+    }
+    case ASTNode::Node_TuplePattern: {
+      auto *tuplePattern = static_cast<const TuplePatternAST*>(node);
+      os << "TuplePattern:\n";
+      for (const auto &element : tuplePattern->getElements()) {
+        dumpASTNode(os, element.get(), indent + 1);
+      }
       break;
     }
     case ASTNode::Node_TypeDefinition: {

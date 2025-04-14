@@ -7,7 +7,7 @@
 #include <string>
 
 #include <gc.h>
-#include "OCamlRTConfig.h"
+#include "ocamlc2/OCamlRTConfig.h"
 #include "OCamlRTDebug.h"
 
 template <typename T>

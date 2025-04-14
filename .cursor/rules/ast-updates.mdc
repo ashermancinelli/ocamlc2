@@ -1,5 +1,5 @@
 ---
-description: Update AST generation from Treesitter nodes
+description: 
 globs: 
 alwaysApply: false
 ---

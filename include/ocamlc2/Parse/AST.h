@@ -53,6 +53,8 @@ public:
     Node_ArrayExpression,
     Node_SequenceExpression,
     Node_ProductExpression,
+    Node_ParenthesizedPattern,
+    Node_TuplePattern,
 
     // Patterns
     Node_ValuePattern,
@@ -476,6 +478,35 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_ConstructorPattern;
+  }
+};
+
+/// Parenthesized pattern (e.g., Ctor (a, b, c))
+///                                   ^^^^^^^^^ this part
+class ParenthesizedPatternAST : public ASTNode {
+  std::unique_ptr<ASTNode> pattern;
+public:
+  ParenthesizedPatternAST(Location loc, std::unique_ptr<ASTNode> pattern)
+    : ASTNode(Node_ParenthesizedPattern, std::move(loc)), pattern(std::move(pattern)) {}
+
+  const ASTNode* getPattern() const { return pattern.get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ParenthesizedPattern;
+  }
+};
+
+/// Tuple pattern (e.g., (a, b, c))
+class TuplePatternAST : public ASTNode {
+  std::vector<std::unique_ptr<ASTNode>> elements;
+public:
+  TuplePatternAST(Location loc, std::vector<std::unique_ptr<ASTNode>> elements)
+    : ASTNode(Node_TuplePattern, std::move(loc)), elements(std::move(elements)) {}
+
+  const auto& getElements() const { return elements; }
+
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_TuplePattern;
   }
 };
 

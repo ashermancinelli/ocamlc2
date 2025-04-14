@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ocamlc2/Parse/AST.h"
+#include "ocamlc2/Parse/ASTPasses.h"
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -36,8 +37,8 @@ struct TypeOperator : public TypeExpr {
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Operator; }
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op);
   inline TypeExpr* at(size_t index) const { return args[index]; }
-  consteval static llvm::StringRef getFunctionOperatorName() { return "->"; }
-  consteval static llvm::StringRef getTupleOperatorName() { return "*"; }
+  consteval static llvm::StringRef getFunctionOperatorName() { return "λ"; }
+  consteval static llvm::StringRef getTupleOperatorName() { return "✲"; }
   inline TypeExpr *back() const { return args.back(); }
 
 private:
@@ -85,14 +86,10 @@ template <typename T> struct Scope {
 };
 
 struct Unifier {
-  Unifier() {
-    // rootScope = std::make_unique<Scope<Env>>(&env);
-    // initializeEnvironment();
-  }
+  Unifier() { }
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr*>;
   using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable*>;
-  // std::unique_ptr<EnvScope> rootScope;
   TypeExpr* infer(const ASTNode* ast);
   template <typename T, typename... Args>
   T* create(Args&&... args) {
@@ -182,6 +179,14 @@ private:
   Env env;
   ConcreteTypes concreteTypes;
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
+};
+
+struct TypeCheckingPass : public ASTPass {
+  void run(CompilationUnitAST *node) override {
+    unifier.infer(node);
+  }
+private:
+  Unifier unifier;
 };
 
 }

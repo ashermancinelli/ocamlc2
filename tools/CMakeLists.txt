@@ -10,6 +10,7 @@ function(add_ocamlc2_tool name)
     target_link_libraries(${name} PRIVATE
         LLVMSupport
         Parse
+        CamlParse
         Support
         MLIRIR
     )
@@ -28,6 +29,7 @@ add_ocamlc2_tool(ocamlc2-parse ocamlc2-parse.cpp)
 add_ocamlc2_tool(ocamlc2-tomlir ocamlc2-tomlir.cpp LINK_MLIR_LIBS)
 
 add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp)
+add_ocamlc2_tool(ocamlc2-camlparse ocamlc2-camlparse.cpp)
 add_ocamlc2_tool(ocamlc2-tomlir2 ocamlc2-tomlir2.cpp LINK_MLIR_LIBS)
 
 # Copy the 'c' script to binary directory
