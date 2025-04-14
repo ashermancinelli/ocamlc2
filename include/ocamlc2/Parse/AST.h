@@ -14,12 +14,20 @@ class ASTNode;
 struct Location;
 struct TypeExpr;
 struct Unifier;
+struct TypeExprPointerPrinter;
+
 consteval llvm::StringRef getImplicitFunctionParameterName() {
   return "implicit_function_param!";
 }
+
+struct TypeExprPointerPrinter {
+  TypeExpr *typeExpr;
+};
+
 std::unique_ptr<ASTNode> parse(const std::string &source, const std::string &filename = "<string>");
 std::unique_ptr<ASTNode> parse(const std::filesystem::path &filepath);
 llvm::raw_ostream& operator<<(llvm::raw_ostream &os, const ASTNode &node);
+llvm::raw_ostream& operator<<(llvm::raw_ostream &os, TypeExprPointerPrinter printer);
 
 /// Location in source code
 struct Location {
@@ -86,7 +94,8 @@ public:
   mlir::Location getMLIRLocation(mlir::MLIRContext &context) const;
   static llvm::StringRef getName(ASTNodeKind kind);
   static llvm::StringRef getName(const ASTNode &node);
-  TypeExpr *getTypeExpr() const { return typeExpr; }
+  inline TypeExpr *getTypeExpr() const { return typeExpr; }
+  inline auto getTypePrinter() const { return TypeExprPointerPrinter{typeExpr}; }
   friend struct Unifier;
 
 private:

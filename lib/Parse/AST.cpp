@@ -1,4 +1,5 @@
 #include "ocamlc2/Parse/AST.h"
+#include "ocamlc2/Parse/TypeSystem.h"
 #include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Support/Colors.h"
@@ -33,6 +34,14 @@
 
 using namespace ocamlc2;
 namespace fs = std::filesystem;
+
+namespace ocamlc2 {
+llvm::raw_ostream& operator<<(llvm::raw_ostream &os, TypeExprPointerPrinter printer) {
+  if (printer.typeExpr) {
+    os << ANSIColors::faint() << *printer.typeExpr << ANSIColors::reset();
+  }
+  return os;
+}
 
 llvm::StringRef ASTNode::getName(const ASTNode &node) {
   return getName(node.getKind());
@@ -254,7 +263,7 @@ std::string getNodeText(TSNode node, const TSTreeAdaptor &adaptor) {
   return adaptor.getSource().substr(start, end - start).str();
 }
 
-std::unique_ptr<ASTNode> ocamlc2::parse(const std::string &source, const std::string &filename) {
+std::unique_ptr<ASTNode> parse(const std::string &source, const std::string &filename) {
   TSTreeAdaptor tree(filename, source);
   TSNode rootNode = ts_tree_root_node(tree);
   
@@ -265,7 +274,7 @@ std::unique_ptr<ASTNode> ocamlc2::parse(const std::string &source, const std::st
   return convertNode(rootNode, tree);
 }
 
-std::unique_ptr<ASTNode> ocamlc2::parse(const std::filesystem::path &filepath) {
+std::unique_ptr<ASTNode> parse(const std::filesystem::path &filepath) {
   assert(fs::exists(filepath) && "File does not exist");
   std::string source = must(slurpFile(filepath.string()));
   
@@ -1993,7 +2002,7 @@ void printIndent(llvm::raw_ostream &os, int indent) {
   }
 }
 
-llvm::raw_ostream& ocamlc2::operator<<(llvm::raw_ostream &os, const ASTNode &node) {
+llvm::raw_ostream& operator<<(llvm::raw_ostream &os, const ASTNode &node) {
   os << ANSIColors::reset();
   dumpASTNode(os, &node);
   return os;
@@ -2011,22 +2020,22 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
   switch (node->getKind()) {
     case ASTNode::Node_Number: {
       auto *num = static_cast<const NumberExprAST*>(node);
-      os << "Number: " << num->getValue() << "\n";
+      os << "Number: " << num->getValue() << " " << num->getTypePrinter() << "\n";
       break;
     }
     case ASTNode::Node_String: {
       auto *str = static_cast<const StringExprAST*>(node);
-      os << "String: \"" << str->getValue() << "\"\n";
+      os << "String: \"" << str->getValue() << "\" " << str->getTypePrinter() << "\n";
       break;
     }
     case ASTNode::Node_Boolean: {
       auto *boolean = static_cast<const BooleanExprAST*>(node);
-      os << "Boolean: " << (boolean->getValue() ? "true" : "false") << "\n";
+      os << "Boolean: " << (boolean->getValue() ? "true" : "false") << " " << boolean->getTypePrinter() << "\n";
       break;
     }
     case ASTNode::Node_SignExpression: {
       auto *signExpr = static_cast<const SignExpressionAST*>(node);
-      os << "SignExpr: " << signExpr->getOperator() << "\n";
+      os << "SignExpr: " << signExpr->getOperator() << " " << signExpr->getTypePrinter() << "\n";
       
       printIndent(os, indent + 1);
       os << "Operand:\n";
@@ -2042,7 +2051,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
         os << part;
         first = false;
       }
-      os << "\n";
+      os << " " << valuePath->getTypePrinter() << "\n";
       break;
     }
     case ASTNode::Node_ConstructorPath: {
@@ -2054,7 +2063,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
         os << part;
         first = false;
       }
-      os << "\n";
+      os << " " << ctorPath->getTypePrinter() << "\n";
       break;
     }
     case ASTNode::Node_TypeConstructorPath: {
@@ -2066,12 +2075,12 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
         os << part;
         first = false;
       }
-      os << "\n";
+      os << " " << typePath->getTypePrinter() << "\n";
       break;
     }
     case ASTNode::Node_Application: {
       auto *app = static_cast<const ApplicationExprAST*>(node);
-      os << "ApplicationExpr:\n";
+      os << "ApplicationExpr: " << app->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Function:\n";
       dumpASTNode(os, app->getFunction(), indent + 2);
@@ -2084,7 +2093,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_InfixExpression: {
       auto *infix = static_cast<const InfixExpressionAST*>(node);
-      os << "InfixExpr: " << infix->getOperator() << "\n";
+      os << "InfixExpr: " << infix->getOperator() << " " << infix->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "LHS:\n";
       dumpASTNode(os, infix->getLHS(), indent + 2);
@@ -2095,13 +2104,13 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_ParenthesizedExpression: {
       auto *paren = static_cast<const ParenthesizedExpressionAST*>(node);
-      os << "ParenthesizedExpr:\n";
+      os << "ParenthesizedExpr: " << paren->getTypePrinter() << "\n";
       dumpASTNode(os, paren->getExpression(), indent + 1);
       break;
     }
     case ASTNode::Node_MatchExpression: {
       auto *match = static_cast<const MatchExpressionAST*>(node);
-      os << "MatchExpr:\n";
+      os << "MatchExpr: " << match->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Value:\n";
       dumpASTNode(os, match->getValue(), indent + 2);
@@ -2115,7 +2124,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     case ASTNode::Node_ForExpression: {
       auto *forExpr = static_cast<const ForExpressionAST*>(node);
       os << "ForExpr: " << forExpr->getLoopVar() << " = ";
-      os << (forExpr->getIsDownto() ? "downto" : "to") << "\n";
+      os << (forExpr->getIsDownto() ? "downto" : "to") << " " << forExpr->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Start:\n";
       dumpASTNode(os, forExpr->getStartExpr(), indent + 2);
@@ -2129,7 +2138,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_MatchCase: {
       auto *matchCase = static_cast<const MatchCaseAST*>(node);
-      os << "MatchCase:\n";
+      os << "MatchCase: " << matchCase->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Pattern:\n";
       dumpASTNode(os, matchCase->getPattern(), indent + 2);
@@ -2140,12 +2149,12 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_ValuePattern: {
       auto *valPattern = static_cast<const ValuePatternAST*>(node);
-      os << "ValuePattern: " << valPattern->getName() << "\n";
+      os << "ValuePattern: " << valPattern->getName() << " " << valPattern->getTypePrinter() << "\n";
       break;
     }
     case ASTNode::Node_ConstructorPattern: {
       auto *ctorPattern = static_cast<const ConstructorPatternAST*>(node);
-      os << "ConstructorPattern:\n";
+      os << "ConstructorPattern: " << ctorPattern->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Constructor:\n";
       dumpASTNode(os, ctorPattern->getConstructor(), indent + 2);
@@ -2160,7 +2169,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_TypedPattern: {
       auto *typedPattern = static_cast<const TypedPatternAST*>(node);
-      os << "TypedPattern:\n";
+      os << "TypedPattern: " << typedPattern->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Pattern:\n";
       dumpASTNode(os, typedPattern->getPattern(), indent + 1);
@@ -2171,13 +2180,13 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_ParenthesizedPattern: {
       auto *parenPattern = static_cast<const ParenthesizedPatternAST*>(node);
-      os << "ParenthesizedPattern:\n";
+      os << "ParenthesizedPattern: " << parenPattern->getTypePrinter() << "\n";
       dumpASTNode(os, parenPattern->getPattern(), indent + 1);
       break;
     }
     case ASTNode::Node_TuplePattern: {
       auto *tuplePattern = static_cast<const TuplePatternAST*>(node);
-      os << "TuplePattern:\n";
+      os << "TuplePattern: " << tuplePattern->getTypePrinter() << "\n";
       for (const auto &element : tuplePattern->getElements()) {
         dumpASTNode(os, element.get(), indent + 1);
       }
@@ -2185,7 +2194,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_TypeDefinition: {
       auto *typeDef = static_cast<const TypeDefinitionAST*>(node);
-      os << "TypeDefinition:\n";
+      os << "TypeDefinition: " << typeDef->getTypePrinter() << "\n";
       for (const auto &binding : typeDef->getBindings()) {
         dumpASTNode(os, binding.get(), indent + 1);
       }
@@ -2193,7 +2202,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_ValueDefinition: {
       auto *valueDef = static_cast<const ValueDefinitionAST*>(node);
-      os << "ValueDefinition:\n";
+      os << "ValueDefinition: " << valueDef->getTypePrinter() << "\n";
       for (const auto &binding : valueDef->getBindings()) {
         dumpASTNode(os, binding.get(), indent + 1);
       }
@@ -2201,13 +2210,13 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_ExpressionItem: {
       auto *exprItem = static_cast<const ExpressionItemAST*>(node);
-      os << "ExpressionItem:\n";
+      os << "ExpressionItem: " << exprItem->getTypePrinter() << "\n";
       dumpASTNode(os, exprItem->getExpression(), indent + 1);
       break;
     }
     case ASTNode::Node_TypeBinding: {
       auto *typeBinding = static_cast<const TypeBindingAST*>(node);
-      os << "TypeBinding: " << typeBinding->getName() << "\n";
+      os << "TypeBinding: " << typeBinding->getName() << " " << typeBinding->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Definition:\n";
       dumpASTNode(os, typeBinding->getDefinition(), indent + 2);
@@ -2215,7 +2224,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_VariantDeclaration: {
       auto *variantDecl = static_cast<const VariantDeclarationAST*>(node);
-      os << "VariantDeclaration:\n";
+      os << "VariantDeclaration: " << variantDecl->getTypePrinter() << "\n";
       for (const auto &ctor : variantDecl->getConstructors()) {
         dumpASTNode(os, ctor.get(), indent + 1);
       }
@@ -2237,7 +2246,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     case ASTNode::Node_LetBinding: {
       auto *letBinding = static_cast<const LetBindingAST*>(node);
       os << "LetBinding: " << (letBinding->getIsRecursive() ? "rec " : "")
-         << letBinding->getName() << "\n";
+         << letBinding->getName() << " " << letBinding->getTypePrinter() << "\n";
 
       if (!letBinding->getParameters().empty()) {
         printIndent(os, indent + 1);
@@ -2260,7 +2269,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_CompilationUnit: {
       auto *unit = static_cast<const CompilationUnitAST*>(node);
-      os << "CompilationUnit:\n";
+      os << "CompilationUnit: " << unit->getTypePrinter() << "\n";
       for (const auto &item : unit->getItems()) {
         dumpASTNode(os, item.get(), indent + 1);
       }
@@ -2268,7 +2277,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_LetExpression: {
       auto *letExpr = static_cast<const LetExpressionAST*>(node);
-      os << "LetExpr:\n";
+      os << "LetExpr: " << letExpr->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Binding:\n";
       dumpASTNode(os, letExpr->getBinding(), indent + 2);
@@ -2279,7 +2288,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_IfExpression: {
       auto *ifExpr = static_cast<const IfExpressionAST*>(node);
-      os << "IfExpr:\n";
+      os << "IfExpr: " << ifExpr->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Condition:\n";
       dumpASTNode(os, ifExpr->getCondition(), indent + 2);
@@ -2295,7 +2304,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_GuardedPattern: {
       auto *guarded = static_cast<const GuardedPatternAST*>(node);
-      os << "GuardedPattern:\n";
+      os << "GuardedPattern: " << guarded->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Pattern:\n";
       dumpASTNode(os, guarded->getPattern(), indent + 2);
@@ -2320,7 +2329,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
           os << "...";
         }
       }
-      os << "]\n";
+      os << "] " << list->getTypePrinter() << "\n";
       if (list->getNumElements() > 0) {
         printIndent(os, indent + 1);
         os << "Elements:\n";
@@ -2332,7 +2341,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_FunExpression: {
       auto *fun = static_cast<const FunExpressionAST*>(node);
-      os << "FunExpr:\n";
+      os << "FunExpr: " << fun->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Parameters:\n";
       for (const auto &param : fun->getParameters()) {
@@ -2344,11 +2353,11 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       break;
     }
     case ASTNode::Node_UnitExpression:
-      os << "UnitExpression:\n";
+      os << "UnitExpression: " << node->getTypePrinter() << "\n";
       break;
     case ASTNode::Node_ArrayGetExpression: {
       auto *arrayGetExpr = static_cast<const ArrayGetExpressionAST*>(node);
-      os << "ArrayGetExpr:\n";
+      os << "ArrayGetExpr: " << arrayGetExpr->getTypePrinter() << "\n";
       
       printIndent(os, indent + 1);
       os << "Array:\n";
@@ -2375,7 +2384,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
           os << "...";
         }
       }
-      os << "|]\n";
+      os << "|] " << array->getTypePrinter() << "\n";
       if (array->getNumElements() > 0) {
         printIndent(os, indent + 1);
         os << "Elements:\n";
@@ -2387,7 +2396,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
     }
     case ASTNode::Node_SequenceExpression: {
       auto *seqExpr = static_cast<const SequenceExpressionAST*>(node);
-      os << "SequenceExpr:\n";
+      os << "SequenceExpr: " << seqExpr->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Expressions:\n";
       for (size_t i = 0; i < seqExpr->getNumExpressions(); ++i) {
@@ -2411,7 +2420,7 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
           os << "...";
         }
       }
-      os << ")\n";
+      os << ") " << productExpr->getTypePrinter() << "\n";
       if (productExpr->getNumElements() > 0) {
         printIndent(os, indent + 1);
         os << "Elements:\n";
@@ -2422,4 +2431,6 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       break;
     }
   }
+}
+
 }

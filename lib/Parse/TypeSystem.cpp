@@ -63,23 +63,15 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op) {
-  switch (op.getArgs().size()) {
-    case 0:
-      os << op.getName();
-      break;
-    case 2:
-      // Infix notation if we only have two types
-      os << '(' << *op.getArgs()[0] << ' ' << op.getName() << ' ' << *op.getArgs()[1] << ')';
-      break;
-    default:
-      os << '(' << op.getName() << ' ';
-      for (auto [i, arg] : llvm::enumerate(op.getArgs())) {
-        os << *arg << (i == op.getArgs().size() - 1 ? "" : " ");
-      }
-      os << ')';
-      break;
+  auto args = op.getArgs();
+  if (args.empty()) {
+    return os << op.getName();
   }
-  return os;
+  os << '(' << op.getName();
+  for (auto *arg : args) {
+    os << ' ' << *arg;
+  }
+  return os << ')';
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type) {
@@ -128,7 +120,7 @@ void Unifier::initializeEnvironment() {
   auto *T_int = getIntType();
   auto *T_unit = getUnitType();
   auto *T_string = getStringType();
-  auto *T1 = createTypeVariable();
+  auto *T1 = createTypeVariable(), *T2 = createTypeVariable();
   declare("Float.pi", T_float);
   for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
     declare(arithmetic, createFunction({T_int, T_int, T_int}));
@@ -140,6 +132,8 @@ void Unifier::initializeEnvironment() {
   declare("sqrt", createFunction({T_float, T_float}));
   declare("print_int", createFunction({T_int, T_unit}));
   declare("print_string", createFunction({T_string, T_unit}));
+  declare("string_of_int", createFunction({T_int, T_string}));
+  declare("String.concat", createFunction({T_string, getListOf(T_string), T_string}));
   declare("Printf.printf", createFunction({T_string, getType("varargs!"), T_unit}));
 
   // Builtin constructors
@@ -151,14 +145,27 @@ void Unifier::initializeEnvironment() {
   declare("Nil", createFunction({List}));
   declare("Cons", createFunction({T1, List, List}));
   declare("Array.length", createFunction({List, T_int}));
-  declare("List.map", createFunction({createFunction({T1, T1}), List, List}));
+  declare("List.map", createFunction({createFunction({T1, T2}), getListOf(T1), getListOf(T2)}));
   declare("List.fold_left",
-          createFunction({createFunction({T1, T1, T1}), T1, List, T1}));
+          createFunction({createFunction({T1, T2, T1}), T1, List, T2}));
   declare("List.fold_right", getType("List.fold_left"));
 }
 
 static std::string getPath(llvm::ArrayRef<std::string> path) {
   return llvm::join(path, ".");
+}
+
+static llvm::SmallVector<ASTNode*> flattenProductExpression(const ProductExpressionAST* pe) {
+  llvm::SmallVector<ASTNode*> result;
+  for (auto &element : pe->getElements()) {
+    if (auto *tp = llvm::dyn_cast<ProductExpressionAST>(element.get())) {
+      auto elements = flattenProductExpression(tp);
+      result.insert(result.end(), elements.begin(), elements.end());
+    } else {
+      result.push_back(element.get());
+    }
+  }
+  return result;
 }
 
 static llvm::SmallVector<ValuePatternAST*> flattenTuplePattern(const TuplePatternAST* tp) {
@@ -231,7 +238,7 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     for (auto &element : ae->getElements()) {
       unify(infer(element.get()), elementType);
     }
-    return getListOfType(elementType);
+    return getListOf(elementType);
   } else if (auto *ei = llvm::dyn_cast<ExpressionItemAST>(ast)) {
     DBGS("expression item\n");
     return infer(ei->getExpression());
@@ -315,13 +322,13 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     for (auto &element : le->getElements()) {
       unify(infer(element.get()), elementType);
     }
-    return getListOfType(elementType);
+    return getListOf(elementType);
   } else if (auto *ag = llvm::dyn_cast<ArrayGetExpressionAST>(ast)) {
     DBGS("array get\n");
     auto *index = infer(ag->getIndex());
     unify(index, getIntType());
     auto *inferredListType = infer(ag->getArray());
-    auto *listType = getListOfType(createTypeVariable());
+    auto *listType = getListOf(createTypeVariable());
     unify(inferredListType, listType);
     return listType->at(0);
   } else if (auto *ite = llvm::dyn_cast<IfExpressionAST>(ast)) {
@@ -448,6 +455,13 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
       }
     }
     return getUnitType();
+  } else if (auto *pe = llvm::dyn_cast<ProductExpressionAST>(ast)) {
+    DBGS("product expression\n");
+    auto exprs = flattenProductExpression(pe);
+    auto typevars = llvm::map_to_vector(exprs, [&](auto *expr) -> TypeExpr* {
+      return infer(expr);
+    });
+    return createTuple(typevars);
   } else if (auto *se = llvm::dyn_cast<SequenceExpressionAST>(ast)) {
     DBGS("sequence expression\n");
     for (auto expr : llvm::enumerate(se->getExpressions())) {

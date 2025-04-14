@@ -38,7 +38,7 @@ struct TypeOperator : public TypeExpr {
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op);
   inline TypeExpr* at(size_t index) const { return args[index]; }
   consteval static llvm::StringRef getFunctionOperatorName() { return "λ"; }
-  consteval static llvm::StringRef getTupleOperatorName() { return "✲"; }
+  consteval static llvm::StringRef getTupleOperatorName() { return "*"; }
   inline TypeExpr *back() const { return args.back(); }
 
 private:
@@ -70,11 +70,6 @@ struct TypeVariable : public TypeExpr {
 private:
   int id;
   mutable std::optional<std::string> name = std::nullopt;
-};
-
-struct Function : TypeOperator {
-  Function(TypeExpr* from, TypeExpr* to)
-    : TypeOperator("->", {from, to}) {}
 };
 
 template <typename T> struct Scope {
@@ -173,7 +168,7 @@ private:
   inline auto *getWildcardType() { return getType("_"); }
   inline auto *getVarargsType() { return getType("varargs!"); }
   inline auto *getListType() { return getType("List"); }
-  inline auto *getListOfType(TypeExpr* type) { return createTypeOperator("List", {type}); }
+  inline auto *getListOf(TypeExpr* type) { return createTypeOperator("List", {type}); }
   bool isVarargs(TypeExpr* type);
   bool isWildcard(TypeExpr* type);
 
