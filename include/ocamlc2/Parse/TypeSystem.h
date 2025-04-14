@@ -2,6 +2,7 @@
 
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/ASTPasses.h"
+#include <llvm/ADT/StringRef.h>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -137,12 +138,14 @@ private:
   }
 
   TypeExpr* declare(llvm::StringRef name, TypeExpr* type);
+  TypeExpr* declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* type);
   TypeExpr* declarePatternVariables(const ASTNode* ast, llvm::SmallVector<TypeExpr*>& typevars);
   inline bool declared(llvm::StringRef name) {
     return env.count(name) > 0;
   }
 
   TypeExpr* getType(const llvm::StringRef name);
+  TypeExpr* getType(std::vector<std::string> path);
 
   inline auto *createFunction(llvm::ArrayRef<TypeExpr*> args) {
     return create<FunctionOperator>(args);
@@ -172,9 +175,41 @@ private:
   bool isVarargs(TypeExpr* type);
   bool isWildcard(TypeExpr* type);
 
+  void pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> modules);
+  inline void pushModuleSearchPath(llvm::StringRef module) {
+    pushModuleSearchPath(llvm::ArrayRef{module});
+  }
+  void pushModule(llvm::StringRef module);
+  void popModuleSearchPath();
+  void popModule();
+  std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
+
+  struct ModuleSearchPathScope {
+    ModuleSearchPathScope(Unifier& unifier, llvm::ArrayRef<llvm::StringRef> modules) : unifier(unifier) {
+      unifier.pushModuleSearchPath(modules);
+    }
+    ~ModuleSearchPathScope() {
+      unifier.popModuleSearchPath();
+    }
+  private:
+    Unifier& unifier;
+  };
+  struct ModuleScope {
+    ModuleScope(Unifier& unifier, llvm::StringRef module) : unifier(unifier) {
+      unifier.pushModule(module);
+    }
+    ~ModuleScope() {
+      unifier.popModule();
+    }
+  private:
+    Unifier& unifier;
+  };
+
   Env env;
   ConcreteTypes concreteTypes;
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
+  llvm::SmallVector<llvm::SmallVector<llvm::StringRef>> moduleSearchPath;
+  llvm::SmallVector<llvm::StringRef> currentModule;
 };
 
 struct TypeCheckingPass : public ASTPass {

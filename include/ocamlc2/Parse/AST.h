@@ -80,6 +80,13 @@ public:
     Node_VariantDeclaration,
     Node_ConstructorDeclaration,
     
+    // Module related
+    Node_ModuleDefinition,
+    Node_ModuleImplementation,
+    Node_ModuleSignature,
+    Node_ModuleTypeDefinition,
+    Node_OpenDirective,
+    
     // Others
     Node_MatchCase,
     Node_LetBinding,
@@ -726,6 +733,94 @@ public:
   
   static bool classof(const ASTNode* node) {
     return node->getKind() == Node_ProductExpression;
+  }
+};
+
+/// Module implementation (struct ... end)
+class ModuleImplementationAST : public ASTNode {
+  std::vector<std::unique_ptr<ASTNode>> items;
+public:
+  ModuleImplementationAST(Location loc, std::vector<std::unique_ptr<ASTNode>> items)
+    : ASTNode(Node_ModuleImplementation, std::move(loc)), items(std::move(items)) {}
+  
+  const std::vector<std::unique_ptr<ASTNode>>& getItems() const { return items; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ModuleImplementation;
+  }
+};
+
+/// Module signature (sig ... end)
+class ModuleSignatureAST : public ASTNode {
+  std::vector<std::unique_ptr<ASTNode>> items;
+public:
+  ModuleSignatureAST(Location loc, std::vector<std::unique_ptr<ASTNode>> items)
+    : ASTNode(Node_ModuleSignature, std::move(loc)), items(std::move(items)) {}
+  
+  const std::vector<std::unique_ptr<ASTNode>>& getItems() const { return items; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ModuleSignature;
+  }
+};
+
+/// Module definition (module Name = struct ... end)
+class ModuleDefinitionAST : public ASTNode {
+  std::string name;
+  std::unique_ptr<ModuleSignatureAST> signature;  // Optional
+  std::unique_ptr<ModuleImplementationAST> implementation;
+public:
+  ModuleDefinitionAST(Location loc, 
+                     std::string name,
+                     std::unique_ptr<ModuleImplementationAST> implementation,
+                     std::unique_ptr<ModuleSignatureAST> signature = nullptr)
+    : ASTNode(Node_ModuleDefinition, std::move(loc)),
+      name(std::move(name)),
+      signature(std::move(signature)),
+      implementation(std::move(implementation)) {}
+  
+  const std::string& getName() const { return name; }
+  const ModuleSignatureAST* getSignature() const { return signature.get(); }
+  const ModuleImplementationAST* getImplementation() const { return implementation.get(); }
+  bool hasSignature() const { return signature != nullptr; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ModuleDefinition;
+  }
+};
+
+/// Module type definition (module type Name = sig ... end)
+class ModuleTypeDefinitionAST : public ASTNode {
+  std::string name;
+  std::unique_ptr<ModuleSignatureAST> signature;
+public:
+  ModuleTypeDefinitionAST(Location loc, 
+                         std::string name,
+                         std::unique_ptr<ModuleSignatureAST> signature)
+    : ASTNode(Node_ModuleTypeDefinition, std::move(loc)),
+      name(std::move(name)),
+      signature(std::move(signature)) {}
+  
+  const std::string& getName() const { return name; }
+  const ModuleSignatureAST* getSignature() const { return signature.get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ModuleTypeDefinition;
+  }
+};
+
+/// Open directive (open ModuleName)
+class OpenDirectiveAST : public ASTNode {
+  std::vector<std::string> modulePath;
+public:
+  OpenDirectiveAST(Location loc, std::vector<std::string> modulePath)
+    : ASTNode(Node_OpenDirective, std::move(loc)),
+      modulePath(std::move(modulePath)) {}
+  
+  const std::vector<std::string>& getModulePath() const { return modulePath; }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_OpenDirective;
   }
 };
 

@@ -85,6 +85,11 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_ProductExpression: return "ProductExpression";
     case Node_ParenthesizedPattern: return "ParenthesizedPattern";
     case Node_TuplePattern: return "TuplePattern";
+    case Node_ModuleDefinition: return "ModuleDefinition";
+    case Node_ModuleImplementation: return "ModuleImplementation";
+    case Node_ModuleSignature: return "ModuleSignature";
+    case Node_ModuleTypeDefinition: return "ModuleTypeDefinition";
+    case Node_OpenDirective: return "OpenDirective";
   }
   assert(false && "Unknown AST node kind");
   return "";
@@ -149,7 +154,7 @@ std::unique_ptr<ExpressionItemAST> convertExpressionItem(TSNode node, const TSTr
 std::unique_ptr<TypeBindingAST> convertTypeBinding(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<VariantDeclarationAST> convertVariantDeclaration(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ConstructorDeclarationAST> convertConstructorDeclaration(TSNode node, const TSTreeAdaptor &adaptor);
-std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor, bool parentIsRec = false);
+std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdaptor &adaptor, bool parentIsRec);
 std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTreeAdaptor &adaptor);
@@ -157,6 +162,11 @@ std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TS
 std::unique_ptr<ArrayExpressionAST> convertArrayExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ModuleDefinitionAST> convertModuleDefinition(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ModuleImplementationAST> convertModuleImplementation(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ModuleSignatureAST> convertModuleSignature(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ModuleTypeDefinitionAST> convertModuleTypeDefinition(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<OpenDirectiveAST> convertOpenDirective(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
 llvm::DenseSet<llvm::StringRef> knownNodeTypes = {"compilation_unit",
@@ -244,7 +254,20 @@ llvm::DenseSet<llvm::StringRef> knownNodeTypes = {"compilation_unit",
                                                   ",",
                                                   "parenthesized_operator",
                                                   "parenthesized_pattern",
-                                                  "tuple_pattern"};
+                                                  "tuple_pattern",
+                                                  "module_definition",
+                                                  "module_binding",
+                                                  "module_type_definition",
+                                                  "module_implementation",
+                                                  "module_signature",
+                                                  "module_name",
+                                                  "module_type_name",
+                                                  "module",
+                                                  "open_directive",
+                                                  "sig", 
+                                                  "struct",
+                                                  "structure", 
+                                                  "end"};
 
 // Helper functions
 Location getLocation(TSNode node, const TSTreeAdaptor &adaptor) {
@@ -369,6 +392,16 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
   }
   else if (type == "array_get_expression")
     return convertArrayGetExpr(node, adaptor);
+  else if (type == "module_definition" || type == "module_binding")
+    return convertModuleDefinition(node, adaptor);
+  else if (type == "module_implementation" || type == "struct" || type == "structure")
+    return convertModuleImplementation(node, adaptor);
+  else if (type == "module_signature" || type == "sig")
+    return convertModuleSignature(node, adaptor);
+  else if (type == "module_type_definition")
+    return convertModuleTypeDefinition(node, adaptor);
+  else if (type == "open_directive")
+    return convertOpenDirective(node, adaptor);
   else if (type == "comment") {
     auto str = getNodeText(node, adaptor);
     if (str.contains("AJM")) {
@@ -536,7 +569,7 @@ std::unique_ptr<InfixExpressionAST> convertInfixExpr(TSNode node, const TSTreeAd
   
   auto rhs = convertNode(children[2].second, adaptor);
   
-  ORFAIL(lhs && rhs, "Failed to parse infix expression");
+  ORFAIL(lhs && rhs, "failed to parse infix expression");
   
   return std::make_unique<InfixExpressionAST>(
     getLocation(node, adaptor),
@@ -561,7 +594,7 @@ std::unique_ptr<ParenthesizedExpressionAST> convertParenthesizedExpr(TSNode node
     }
   }
   
-  ORFAIL(expr, "Failed to parse parenthesized expression");
+  ORFAIL(expr, "failed to parse parenthesized expression");
   
   return std::make_unique<ParenthesizedExpressionAST>(
     getLocation(node, adaptor),
@@ -744,7 +777,7 @@ std::unique_ptr<TypedPatternAST> convertTypedPattern(TSNode node, const TSTreeAd
   }
   
   if (!pattern || !type) {
-    DBGS("Failed to parse typed_pattern:\n");
+    DBGS("failed to parse typed_pattern:\n");
     if (!pattern) DBGS("  Missing pattern\n");
     if (!type) DBGS("  Missing type\n");
     return nullptr;
@@ -1015,13 +1048,13 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
         isRec
       );
     } else {
-      DBGS("Failed to parse unit let_binding: missing body\n");
+      DBGS("failed to parse unit let_binding: missing body\n");
       return nullptr;
     }
   }
   
   if (name.empty() && !hasUnitPattern) {
-    DBGS("Failed to parse let_binding:\n");
+    DBGS("failed to parse let_binding:\n");
     DBGS("  Missing name and not a unit pattern\n");
     
     // As a last resort for unit value bindings (let () = ...)
@@ -1052,7 +1085,7 @@ std::unique_ptr<LetBindingAST> convertLetBinding(TSNode node, const TSTreeAdapto
   }
   
   if (!body) {
-    DBGS("Failed to parse let_binding:\n");
+    DBGS("failed to parse let_binding:\n");
     DBGS("  Missing body\n");
     return nullptr;
   }
@@ -1117,7 +1150,7 @@ std::unique_ptr<ExpressionItemAST> convertExpressionItem(TSNode node, const TSTr
     }
   }
   
-  ORFAIL(expression, "Failed to parse expression item");
+  ORFAIL(expression, "failed to parse expression item");
   
   return std::make_unique<ExpressionItemAST>(
     getLocation(node, adaptor),
@@ -1136,6 +1169,9 @@ std::unique_ptr<CompilationUnitAST> convertCompilationUnit(TSNode node, const TS
     if (type == "type_definition" || 
         type == "value_definition" || 
         type == "expression_item" ||
+        type == "module_definition" ||
+        type == "module_type_definition" ||
+        type == "open_directive" ||
         type == "comment") {
       auto item = convertNode(child, adaptor);
       if (item) {
@@ -1192,7 +1228,7 @@ std::unique_ptr<ForExpressionAST> convertForExpr(TSNode node, const TSTreeAdapto
   
   if (loopVar.empty() || !startExpr || !endExpr || !body) {
     // Log what we found for debugging
-    DBGS("Failed to parse for_expression: \n");
+    DBGS("failed to parse for_expression: \n");
     if (loopVar.empty()) DBGS("  Missing loop variable\n");
     if (!startExpr) DBGS("  Missing start expression\n");
     if (!endExpr) DBGS("  Missing end expression\n");
@@ -1303,7 +1339,7 @@ std::unique_ptr<LetExpressionAST> convertLetExpr(TSNode node, const TSTreeAdapto
   DBGS("  Binding: " << (binding ? "found" : "missing") << "\n");
   DBGS("  Body: " << (body ? "found" : "missing") << "\n");
   
-  ORFAIL(binding && body, "Failed to parse let_expression");
+  ORFAIL(binding && body, "failed to parse let_expression");
   
   return std::make_unique<LetExpressionAST>(
     getLocation(node, adaptor),
@@ -1423,7 +1459,7 @@ std::unique_ptr<IfExpressionAST> convertIfExpr(TSNode node, const TSTreeAdaptor 
   DBGS("  Else branch: " << (elseBranch ? "found" : "missing") << "\n");
 
   ORFAIL(condition && thenBranch,
-         "Failed to parse if_expression. Condition: "
+         "failed to parse if_expression. Condition: "
              << (condition ? "found" : "missing")
              << " Then branch: " << (thenBranch ? "found" : "missing"));
   
@@ -1503,7 +1539,7 @@ std::unique_ptr<GuardedPatternAST> convertGuardedPattern(TSNode node, const TSTr
   }
   
   if (!pattern || !guard) {
-    DBGS("Failed to parse guarded_pattern:\n");
+    DBGS("failed to parse guarded_pattern:\n");
     if (!pattern) DBGS("  Missing pattern\n");
     if (!guard) DBGS("  Missing guard expression\n");
     return nullptr;
@@ -1557,7 +1593,7 @@ std::unique_ptr<SignExpressionAST> convertSignExpression(TSNode node, const TSTr
   }
   
   if (op.empty() || !operand) {
-    DBGS("Failed to parse sign_expression:\n");
+    DBGS("failed to parse sign_expression:\n");
     if (op.empty()) DBGS("  Missing operator\n");
     if (!operand) DBGS("  Missing operand\n");
     return nullptr;
@@ -1756,7 +1792,7 @@ std::unique_ptr<FunExpressionAST> convertFunExpr(TSNode node, const TSTreeAdapto
   DBGS("  Body: " << (body ? "found" : "missing") << "\n");
   
   if (parameters.empty() || !body) {
-    DBGS("Failed to parse fun_expression:\n");
+    DBGS("failed to parse fun_expression:\n");
     if (parameters.empty()) DBGS("  Missing parameters\n");
     if (!body) DBGS("  Missing body\n");
     return nullptr;
@@ -1828,7 +1864,7 @@ std::unique_ptr<ArrayGetExpressionAST> convertArrayGetExpr(TSNode node, const TS
   }
   
   if (!array || !index) {
-    DBGS("Failed to parse array_get_expression:\n");
+    DBGS("failed to parse array_get_expression:\n");
     if (!array) DBGS("  Missing array\n");
     if (!index) DBGS("  Missing index\n");
     return nullptr;
@@ -1886,7 +1922,7 @@ std::unique_ptr<SequenceExpressionAST> convertSequenceExpr(TSNode node, const TS
   }
   
   if (expressions.empty()) {
-    DBGS("Failed to parse sequence_expression:\n");
+    DBGS("failed to parse sequence_expression:\n");
     DBGS("  No expressions found\n");
     return nullptr;
   }
@@ -1923,7 +1959,7 @@ std::unique_ptr<ProductExpressionAST> convertProductExpr(TSNode node, const TSTr
   }
   
   if (elements.empty()) {
-    DBGS("Failed to parse product_expression:\n");
+    DBGS("failed to parse product_expression:\n");
     DBGS("  No elements found\n");
     return nullptr;
   }
@@ -1945,7 +1981,7 @@ std::unique_ptr<TuplePatternAST> convertTuplePattern(TSNode node, const TSTreeAd
   for (auto [type, child] : children) {
     if (type != ",") {
       auto element = convertNode(child, adaptor);
-      ORFAIL(element, "Failed to convert element in tuple_pattern");
+      ORFAIL(element, "failed to convert element in tuple_pattern");
       elements.push_back(std::move(element));
     }
   }
@@ -1961,18 +1997,18 @@ std::unique_ptr<ParenthesizedPatternAST> convertParenthesizedPattern(TSNode node
   
   // Find the pattern inside the parentheses
   auto it = children.begin();
-  ORFAIL(it++->first == "(", "Failed to find opening parenthesis");
+  ORFAIL(it++->first == "(", "failed to find opening parenthesis");
   auto [_, patternNode] = *it++;
   auto pattern = convertNode(patternNode, adaptor);
-  ORFAIL(it++->first == ")", "Failed to find closing parenthesis");
-  ORFAIL(it == children.end(), "Failed to find pattern inside parentheses");
+  ORFAIL(it++->first == ")", "failed to find closing parenthesis");
+  ORFAIL(it == children.end(), "failed to find pattern inside parentheses");
   
   return std::make_unique<ParenthesizedPatternAST>(getLocation(node, adaptor), std::move(pattern));
 }
 
 std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TSTreeAdaptor &adaptor) {
   const std::string nodeType = ts_node_type(node);
-  ORFAIL(nodeType == "parenthesized_operator", "Failed to find parenthesized_operator");
+  ORFAIL(nodeType == "parenthesized_operator", "failed to find parenthesized_operator");
   
   auto children = childrenNodes(node);
   std::string operatorText;
@@ -1985,7 +2021,7 @@ std::unique_ptr<ValuePathAST> convertParenthesizedOperator(TSNode node, const TS
     }
   }
   
-  ORFAIL(!operatorText.empty(), "Failed to parse parenthesized_operator");
+  ORFAIL(!operatorText.empty(), "failed to parse parenthesized_operator");
   
   // Create a ValuePathAST with the operator as the path
   std::vector<std::string> path = {operatorText};
@@ -2430,7 +2466,374 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       }
       break;
     }
+    case ASTNode::Node_ModuleDefinition: {
+      auto *moduleDef = static_cast<const ModuleDefinitionAST*>(node);
+      os << "ModuleDefinition: " << moduleDef->getName() << " " << moduleDef->getTypePrinter() << "\n";
+      
+      if (moduleDef->hasSignature()) {
+        printIndent(os, indent + 1);
+        os << "Signature:\n";
+        dumpASTNode(os, moduleDef->getSignature(), indent + 2);
+      }
+      
+      printIndent(os, indent + 1);
+      os << "Implementation:\n";
+      dumpASTNode(os, moduleDef->getImplementation(), indent + 2);
+      break;
+    }
+    case ASTNode::Node_ModuleImplementation: {
+      auto *moduleImpl = static_cast<const ModuleImplementationAST*>(node);
+      os << "ModuleImplementation: " << moduleImpl->getTypePrinter() << "\n";
+      for (const auto &item : moduleImpl->getItems()) {
+        dumpASTNode(os, item.get(), indent + 1);
+      }
+      break;
+    }
+    case ASTNode::Node_ModuleSignature: {
+      auto *moduleSig = static_cast<const ModuleSignatureAST*>(node);
+      os << "ModuleSignature: " << moduleSig->getTypePrinter() << "\n";
+      for (const auto &item : moduleSig->getItems()) {
+        dumpASTNode(os, item.get(), indent + 1);
+      }
+      break;
+    }
+    case ASTNode::Node_ModuleTypeDefinition: {
+      auto *moduleTypeDef = static_cast<const ModuleTypeDefinitionAST*>(node);
+      os << "ModuleTypeDefinition: " << moduleTypeDef->getName() << " " << moduleTypeDef->getTypePrinter() << "\n";
+      
+      printIndent(os, indent + 1);
+      os << "Signature:\n";
+      dumpASTNode(os, moduleTypeDef->getSignature(), indent + 2);
+      break;
+    }
+    case ASTNode::Node_OpenDirective: {
+      auto *openDir = static_cast<const OpenDirectiveAST*>(node);
+      os << "OpenDirective: ";
+      bool first = true;
+      for (const auto &part : openDir->getModulePath()) {
+        if (!first) os << ".";
+        os << part;
+        first = false;
+      }
+      os << " " << openDir->getTypePrinter() << "\n";
+      break;
+    }
   }
+}
+
+std::unique_ptr<ModuleImplementationAST> convertModuleImplementation(TSNode node, const TSTreeAdaptor &adaptor) {
+  const std::string nodeType = ts_node_type(node);
+  bool isImplementation = (std::string(nodeType) == "module_implementation");
+  bool isStruct = (std::string(nodeType) == "struct");
+  bool isStructure = (std::string(nodeType) == "structure");
+  
+  if (!isImplementation && !isStruct && !isStructure) {
+    return nullptr;
+  }
+  
+  // If we have a 'struct' or 'structure' keyword/node, look at its parent if needed
+  TSNode targetNode = node;
+  if ((isStruct || isStructure) && std::string(ts_node_type(ts_node_parent(node))) == "module_binding") {
+    targetNode = node;
+  } else if (isStruct || isStructure) {
+    // This is a standalone struct/structure node
+    targetNode = node;
+  }
+  
+  auto children = childrenNodes(targetNode);
+  std::vector<std::unique_ptr<ASTNode>> items;
+  
+  if (isStructure) {
+    // For structure node, directly process its children
+    for (auto [type, child] : children) {
+      if (type != "struct" && type != "end") {
+        auto item = convertNode(child, adaptor);
+        if (item) {
+          items.push_back(std::move(item));
+        }
+      }
+    }
+  } else {
+    // Original implementation for struct/module_implementation nodes
+    bool foundStart = false;
+    bool foundEnd = false;
+    
+    for (auto [type, child] : children) {
+      if (type == "struct") {
+        foundStart = true;
+        continue;
+      } else if (type == "end") {
+        foundEnd = true;
+        continue;
+      } else if (foundStart && !foundEnd) {
+        // Process items between struct and end
+        auto item = convertNode(child, adaptor);
+        if (item) {
+          items.push_back(std::move(item));
+        }
+      }
+    }
+    
+    // If we didn't find struct/end markers in the parent node, try looking in the current node
+    if (!foundStart && !foundEnd && isStruct) {
+      // This is the 'struct' node itself, so collect everything after it
+      TSNode parent = ts_node_parent(node);
+      if (!ts_node_is_null(parent)) {
+        auto parentChildren = childrenNodes(parent);
+        bool afterStruct = false;
+        for (auto [type, child] : parentChildren) {
+          if (afterStruct && type != "end") {
+            auto item = convertNode(child, adaptor);
+            if (item) {
+              items.push_back(std::move(item));
+            }
+          }
+          if (type == "struct") {
+            afterStruct = true;
+          } else if (type == "end") {
+            break;
+          }
+        }
+      }
+    }
+  }
+  
+  return std::make_unique<ModuleImplementationAST>(
+    getLocation(targetNode, adaptor),
+    std::move(items)
+  );
+}
+
+std::unique_ptr<ModuleSignatureAST> convertModuleSignature(TSNode node, const TSTreeAdaptor &adaptor) {
+  TRACE();
+  const std::string nodeType = ts_node_type(node);
+  bool isSignature = (nodeType == "module_signature");
+  bool isSig = (nodeType == "sig");
+  
+  ORFAIL(isSignature || isSig, "Expected module_signature or sig node, got " << nodeType);
+  
+  
+  // If we have a 'sig' keyword, look at its parent
+  TSNode targetNode = isSig ? ts_node_parent(node) : node;
+  if (ts_node_is_null(targetNode)) {
+    return nullptr;
+  }
+  
+  // For sig, ensure it is a module_signature
+  if (isSig && std::string(ts_node_type(targetNode)) != "module_signature") {
+    targetNode = node;
+  }
+  
+  auto children = childrenNodes(targetNode);
+  std::vector<std::unique_ptr<ASTNode>> items;
+  
+  bool foundStart = false;
+  bool foundEnd = false;
+  
+  for (auto [type, child] : children) {
+    if (type == "sig") {
+      foundStart = true;
+      continue;
+    } else if (type == "end") {
+      foundEnd = true;
+      continue;
+    } else if (foundStart && !foundEnd) {
+      // Process items between sig and end
+      auto item = convertNode(child, adaptor);
+      if (item) {
+        items.push_back(std::move(item));
+      }
+    }
+  }
+  
+  // If we didn't find sig/end markers in the parent node, try looking in the current node
+  if (!foundStart && !foundEnd && isSig) {
+    // This is the 'sig' node itself, so collect everything after it
+    TSNode parent = ts_node_parent(node);
+    if (!ts_node_is_null(parent)) {
+      auto parentChildren = childrenNodes(parent);
+      bool afterSig = false;
+      for (auto [type, child] : parentChildren) {
+        if (afterSig && type != "end") {
+          auto item = convertNode(child, adaptor);
+          if (item) {
+            items.push_back(std::move(item));
+          }
+        }
+        if (type == "sig") {
+          afterSig = true;
+        } else if (type == "end") {
+          break;
+        }
+      }
+    }
+  }
+  
+  return std::make_unique<ModuleSignatureAST>(
+    getLocation(targetNode, adaptor),
+    std::move(items)
+  );
+}
+
+std::unique_ptr<ModuleDefinitionAST> convertModuleDefinition(TSNode node, const TSTreeAdaptor &adaptor) {
+  TRACE();
+  const std::string nodeType = ts_node_type(node);
+  bool isDefinition = (nodeType == "module_definition");
+  bool isBinding = (nodeType == "module_binding");
+  
+  ORFAIL(isDefinition || isBinding, "Expected module_definition or module_binding node, got " << nodeType);
+  
+  TSNode targetNode = node;
+  if (isDefinition) {
+    // Find the module_binding child
+    auto children = childrenNodes(node);
+    for (auto [type, child] : children) {
+      if (type == "module_binding") {
+        targetNode = child;
+        break;
+      }
+    }
+  }
+  
+  auto children = childrenNodes(targetNode);
+  std::string name;
+  std::unique_ptr<ModuleSignatureAST> signature = nullptr;
+  std::unique_ptr<ModuleImplementationAST> implementation = nullptr;
+  
+  // Extract module name
+  for (auto [type, child] : children) {
+    if (type == "module_name") {
+      name = getNodeText(child, adaptor);
+      break;
+    }
+  }
+  
+  // Check for a signature (follows ":" and before "=")
+  bool foundColon = false;
+  for (auto [type, child] : children) {
+    if (type == ":") {
+      foundColon = true;
+    } else if (foundColon && type == "module_signature") {
+      signature = convertModuleSignature(child, adaptor);
+      break;
+    } else if (foundColon && type == "sig") {
+      signature = convertModuleSignature(child, adaptor);
+      break;
+    } else if (type == "=") {
+      break;
+    }
+  }
+  
+  // Find the implementation (follows "=" and is struct/structure)
+  bool foundEquals = false;
+  for (auto [type, child] : children) {
+    if (type == "=") {
+      foundEquals = true;
+    } else if (foundEquals && (type == "module_implementation" || type == "struct" || type == "structure")) {
+      implementation = convertModuleImplementation(child, adaptor);
+      break;
+    }
+  }
+  
+  // If we didn't find an implementation, check if it's directly a child node
+  if (!implementation && foundEquals) {
+    for (auto [type, child] : children) {
+      if (foundEquals && type != "=" && type != ":" && type != "module_name" && 
+          type != "module_signature" && type != "sig") {
+        // Try to convert as a module implementation
+        auto childNode = convertNode(child, adaptor);
+        ORFAIL(childNode, "failed to convert module implementation");
+        std::vector<std::unique_ptr<ASTNode>> items;
+        items.push_back(std::move(childNode));
+          implementation = std::make_unique<ModuleImplementationAST>(
+            getLocation(child, adaptor),
+            std::move(items)
+        );
+        break;
+      }
+    }
+  }
+  
+  ORFAIL(!name.empty() && implementation, "failed to parse module_definition:\n");
+  
+  return std::make_unique<ModuleDefinitionAST>(
+    getLocation(targetNode, adaptor),
+    name,
+    std::move(implementation),
+    std::move(signature)
+  );
+}
+
+std::unique_ptr<ModuleTypeDefinitionAST> convertModuleTypeDefinition(TSNode node, const TSTreeAdaptor &adaptor) {
+  TRACE();
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "module_type_definition", "Expected module_type_definition node, got " << nodeType);
+  
+  auto children = childrenNodes(node);
+  std::string name;
+  std::unique_ptr<ModuleSignatureAST> signature = nullptr;
+  
+  // Extract module type name
+  for (auto [type, child] : children) {
+    if (type == "module_type_name") {
+      name = getNodeText(child, adaptor);
+      break;
+    }
+  }
+  
+  // Find the signature (follows "=")
+  bool foundEquals = false;
+  for (auto [type, child] : children) {
+    if (type == "=") {
+      foundEquals = true;
+    } else if (foundEquals && (type == "module_signature" || type == "sig")) {
+      signature = convertModuleSignature(child, adaptor);
+      break;
+    }
+  }
+  
+  ORFAIL(!name.empty() && signature, "failed to parse module_type_definition:\n");
+  return std::make_unique<ModuleTypeDefinitionAST>(
+    getLocation(node, adaptor),
+    name,
+    std::move(signature)
+  );
+}
+
+std::unique_ptr<OpenDirectiveAST> convertOpenDirective(TSNode node, const TSTreeAdaptor &adaptor) {
+  TRACE();
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "open_directive", "Expected open_directive node, got " << nodeType);
+  
+  auto children = childrenNodes(node);
+  std::vector<std::string> modulePath;
+  
+  // Skip the "open" keyword, find the module path
+  for (auto [type, child] : children) {
+    if (type == "module_path") {
+      // Extract components of the path
+      auto pathParts = childrenNodes(child);
+      for (auto [partType, partNode] : pathParts) {
+        if (partType != ".") {
+          modulePath.push_back(getNodeText(partNode, adaptor));
+        }
+      }
+      break;
+    } else if (type != "open") {
+      // Direct module name
+      modulePath.push_back(getNodeText(child, adaptor));
+    }
+  }
+  
+  if (modulePath.empty()) {
+    DBGS("failed to parse open_directive: Missing module path\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<OpenDirectiveAST>(
+    getLocation(node, adaptor),
+    std::move(modulePath)
+  );
 }
 
 }
