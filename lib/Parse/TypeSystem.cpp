@@ -130,7 +130,7 @@ TypeVariable::TypeVariable() : TypeExpr(Kind::Variable) {
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
   if (var.instantiated()) {
-    os << "tv:" << *var.instance;
+    os << *var.instance;
   } else {
     os << var.getName();
   }
