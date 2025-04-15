@@ -2198,10 +2198,10 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       os << "TypedPattern: " << typedPattern->getTypePrinter() << "\n";
       printIndent(os, indent + 1);
       os << "Pattern:\n";
-      dumpASTNode(os, typedPattern->getPattern(), indent + 1);
+      dumpASTNode(os, typedPattern->getPattern(), indent + 2);
       printIndent(os, indent + 1);
       os << "Type:\n";
-      dumpASTNode(os, typedPattern->getType(), indent + 1);
+      dumpASTNode(os, typedPattern->getType(), indent + 2);
       break;
     }
     case ASTNode::Node_ParenthesizedPattern: {

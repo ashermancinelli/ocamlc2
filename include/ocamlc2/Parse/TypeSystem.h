@@ -110,15 +110,7 @@ private:
 
   TypeExpr* inferType(const ASTNode* ast);
 
-  inline bool isSubType(TypeExpr* a, TypeExpr* b) {
-    b = prune(b);
-    if (auto *op = llvm::dyn_cast<TypeOperator>(b)) {
-      return isSubTypeOfAny(a, op->getArgs());
-    } else if (llvm::isa<TypeVariable>(b)) {
-      return *a == *b;
-    }
-    assert(false && "Unknown type expression");
-  }
+  bool isSubType(TypeExpr* a, TypeExpr* b);
 
   template<typename ITERABLE>
   inline bool isSubTypeOfAny(TypeExpr* type, ITERABLE types) {
@@ -146,6 +138,8 @@ private:
 
   TypeExpr* getType(const llvm::StringRef name);
   TypeExpr* getType(std::vector<std::string> path);
+  llvm::SmallVector<TypeExpr *>
+  getParameterTypes(const std::vector<std::unique_ptr<ASTNode>> &parameters);
 
   inline auto *createFunction(llvm::ArrayRef<TypeExpr*> args) {
     return create<FunctionOperator>(args);

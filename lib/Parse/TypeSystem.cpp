@@ -130,7 +130,7 @@ TypeVariable::TypeVariable() : TypeExpr(Kind::Variable) {
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
   if (var.instantiated()) {
-    os << *var.instance;
+    os << "tv:" << *var.instance;
   } else {
     os << var.getName();
   }
@@ -194,7 +194,7 @@ void Unifier::initializeEnvironment() {
   // varargs, wildcard, etc to define themselves.
   for (auto name : {"int", "float", "bool", "string", "unit!", "_", "•", "varargs!"}) {
     auto str = stringArena.save(name);
-    DBGS("Declaring: " << str << '\n');
+    DBGS("Declaring type operator: " << str << '\n');
     env.insert(str, createTypeOperator(str));
   }
   auto *T_bool = getBoolType();
@@ -244,6 +244,33 @@ void Unifier::initializeEnvironment() {
             createFunction({createFunction({T1, T2, T1}), T1, List, T2}));
     declare("fold_right", getType("fold_left"));
   }
+}
+
+llvm::SmallVector<TypeExpr*> Unifier::getParameterTypes(const std::vector<std::unique_ptr<ASTNode>>& parameters) {
+  llvm::SmallVector<TypeExpr*> result;
+  for (auto &param : parameters) {
+    if (auto *vp = llvm::dyn_cast<ValuePatternAST>(param.get())) {
+      auto id = vp->getName();
+      auto *tv = createTypeVariable();
+      concreteTypes.insert(tv);
+      declare(id, tv);
+      result.push_back(tv);
+    } else if (auto *_ = llvm::dyn_cast<UnitExpressionAST>(param.get())) {
+      result.push_back(getUnitType());
+    } else if (auto *tp = llvm::dyn_cast<TypedPatternAST>(param.get())) {
+      auto *type = getType(tp->getType()->getPath());
+      auto *typeName = tp->getPattern();
+      auto *vp = llvm::dyn_cast<ValuePatternAST>(typeName);
+      assert(vp && "Expected value pattern");
+      auto id = vp->getName();
+      declare(id, type);
+      result.push_back(type);
+    } else {
+      DBGS("unknown parameter:\n" << *param << '\n');
+      assert(false && "unknown parameter");
+    }
+  }
+  return result;
 }
 
 static llvm::SmallVector<ASTNode*> flattenProductExpression(const ProductExpressionAST* pe) {
@@ -321,11 +348,11 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     DBGS("compilation unit\n");
     EnvScope es(env);
     initializeEnvironment();
-    TypeExpr *last = nullptr;
+    TypeExpr *last = getUnitType();
     for (auto &item : cu->getItems()) {
       last = infer(item.get());
     }
-    return last ? last : getUnitType();
+    return last;
   } else if (auto *ae = llvm::dyn_cast<ArrayExpressionAST>(ast)) {
     DBGS("array expression\n");
     auto *elementType = createTypeVariable();
@@ -358,15 +385,7 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     DBGS("function expression\n");
     EnvScope es(env);
     auto savedTypes = concreteTypes;
-    llvm::SmallVector<TypeExpr *> argTypes = llvm::map_to_vector(
-        fe->getParameters(), [&](auto &param) -> TypeExpr * {
-          auto *vp = llvm::dyn_cast<ValuePatternAST>(param.get());
-          assert(vp && "Expected value pattern");
-          auto *paramType = createTypeVariable();
-          concreteTypes.insert(paramType);
-          declare(vp->getName(), paramType);
-          return paramType;
-    });
+    auto argTypes = getParameterTypes(fe->getParameters());
     auto *resultType = createTypeVariable();
     argTypes.push_back(resultType);
     auto *functionType = createFunction(argTypes);
@@ -375,40 +394,35 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
     return functionType;
   } else if (auto *lb = llvm::dyn_cast<LetBindingAST>(ast)) {
     DBGS("let binding\n");
-    if (lb->getParameters().empty()) {
+    const auto &parameters = lb->getParameters();
+    if (parameters.empty()) {
       auto *bodyType = infer(lb->getBody());
       declare(lb->getName(), bodyType);
       return bodyType;
     } else {
       TypeExpr *functionType;
       const bool isRecursive = lb->getIsRecursive();
+      auto name = lb->getName();
       if (isRecursive) {
-        DBGS("Recursive let binding: " << lb->getName() << '\n');
-        declare(lb->getName(), createTypeVariable());
+        DBGS("Recursive let binding: " << name << '\n');
+        declare(name, createTypeVariable());
       }
       {
         EnvScope es(env);
         auto savedTypes = concreteTypes;
-        llvm::SmallVector<TypeExpr *> types = llvm::map_to_vector(
-            lb->getParameters(), [&](auto &param) -> TypeExpr * {
-              auto vp = llvm::dyn_cast<ValuePatternAST>(param.get());
-              assert(vp && "Expected value pattern");
-              auto id = vp->getName();
-              auto *tv = createTypeVariable();
-              concreteTypes.insert(tv);
-              declare(id, tv);
-              return tv;
-            });
+        auto types = getParameterTypes(parameters);
         auto *bodyType = infer(lb->getBody());
         types.push_back(bodyType);
         concreteTypes = savedTypes;
         functionType = createFunction(types);
       }
+      DBGS("declared function type for " << name << ": " << *functionType << '\n');
       if (isRecursive) {
-        unify(functionType, getType(lb->getName()));
+        unify(functionType, getType(name));
       } else {
-        declare(lb->getName(), functionType);
+        declare(name, functionType);
       }
+      DBGS("inferred function type for " << name << ": " << *functionType << '\n');
       return functionType;
     }
   } else if (auto *le = llvm::dyn_cast<ListExpressionAST>(ast)) {
@@ -452,14 +466,16 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
   } else if (auto *ae = llvm::dyn_cast<ApplicationExprAST>(ast)) {
     DBGS("application expression\n");
     auto *declaredFunctionType = infer(ae->getFunction());
-    auto args = llvm::map_to_vector(ae->getArguments(), [&](auto &arg) {
-      return infer(arg.get());
-    });
+    DBGS("declared function type: " << *declaredFunctionType << '\n');
+    llvm::SmallVector<TypeExpr*> args;
+    for (auto &arg : ae->getArguments()) {
+      args.push_back(infer(arg.get()));
+    }
     args.push_back(createTypeVariable()); // return type
     auto *functionType = createFunction(args);
     DBGS("function type: " << *functionType << '\n');
-    DBGS("declared function type: " << *declaredFunctionType << '\n');
-    unify(functionType, declaredFunctionType);
+    unify(declaredFunctionType, functionType);
+    DBGS("function type after unification: " << *functionType << '\n');
     return functionType->back();
   } else if (auto *cp = llvm::dyn_cast<ConstructorPathAST>(ast)) {
     auto name = hashPath(cp->getPath());
@@ -630,16 +646,26 @@ TypeExpr* Unifier::inferType(const ASTNode* ast) {
 //    one of the subtypes is varargs. If so, we can unify the types if the
 //    other type is a function type.
 void Unifier::unify(TypeExpr* a, TypeExpr* b) {
+  static size_t count = 0;
+  auto *wildcard = getWildcardType();
   a = prune(a);
   b = prune(b);
-  DBGS("Unifying: " << *a << " and " << *b << '\n');
+  DBGS("Unifying:" << count++ << ": " << *a << " and " << *b << '\n');
   if (auto *tva = llvm::dyn_cast<TypeVariable>(a)) {
+    if (auto *tvb = llvm::dyn_cast<TypeVariable>(b);
+        tvb && isConcrete(tva, concreteTypes) &&
+        isGeneric(tvb, concreteTypes)) {
+      unify(tvb, tva);
+      return;
+    }
     if (*a != *b) {
+      DBGS("Unifying type variable with different type\n");
       if (isSubType(a, b)) {
         assert(false && "Recursive unification");
       }
       tva->instance = b;
     } else {
+      DBGS("Unifying type variable with itself, fallthrough\n");
       // fallthrough
     }
   } else if (auto *toa = llvm::dyn_cast<TypeOperator>(a)) {
@@ -647,13 +673,12 @@ void Unifier::unify(TypeExpr* a, TypeExpr* b) {
       return unify(b, a);
     } else if (auto *tob = llvm::dyn_cast<TypeOperator>(b)) {
 
-      auto *wildcard = getWildcardType();
-
       // Check if we have any varargs types in the arguments - if so, the forms are allowed
       // to be different.
       auto fHasVarargs = [&](TypeExpr* arg) { return isVarargs(arg); };
       const bool hasVarargs = llvm::any_of(toa->getArgs(), fHasVarargs) or
                               llvm::any_of(tob->getArgs(), fHasVarargs);
+      DBGS("has varargs: " << hasVarargs << '\n');
 
       if (toa->getName() == wildcard->getName() or tob->getName() == wildcard->getName()) {
         DBGS("Unifying with wildcard\n");
@@ -684,34 +709,41 @@ void Unifier::unify(TypeExpr* a, TypeExpr* b) {
   }
 }
 
+static size_t clone_count = 0;
 TypeExpr *Unifier::clone(TypeExpr *type) {
+  DBGS("Cloning type: " << ++clone_count << ": " << *type << '\n');
   llvm::DenseMap<TypeExpr *, TypeExpr *> mapping;
   auto *unifier = this;
   auto recurse = [&](this const auto &recurse, TypeExpr *expr) -> TypeExpr * {
+    DBGS("recursing on type: " << *expr << '\n');
     if (auto *op = llvm::dyn_cast<TypeOperator>(expr)) {
       auto args = llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr* arg) {
-        return recurse(arg);
+        return unifier->clone(arg);
       }));
-      return unifier->create<TypeOperator>(op->getName(), args);
+      DBGS("cloning type operator: " << op->getName() << '\n');
+      return unifier->createTypeOperator(op->getName(), args);
     } else if (auto *tv = llvm::dyn_cast<TypeVariable>(expr)) {
+      DBGS("cloning type variable: " << *tv << '\n');
       if (unifier->isGeneric(tv, concreteTypes)) {
+        DBGS("type variable is generic, cloning\n");
         if (mapping.find(tv) == mapping.end()) {
-          mapping[tv] = unifier->create<TypeVariable>();
+          DBGS("Didn't find mapping for type variable: " << *tv << ", creating new one\n");
+          mapping[tv] = unifier->createTypeVariable();
         }
+        DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
         return mapping[tv];
       }
     }
+    DBGS("cloned type: " << *expr << '\n');
     return expr;
   };
-  return recurse(type);
+  return recurse(prune(type));
 }
 
 TypeExpr* Unifier::prune(TypeExpr* type) {
-  if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
-    if (tv->instantiated()) {
-      tv->instance = prune(tv->instance);
-      return tv->instance;
-    }
+  if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {
+    tv->instance = prune(tv->instance);
+    return tv->instance;
   }
   return type;
 }
@@ -728,6 +760,17 @@ bool Unifier::isWildcard(TypeExpr* type) {
     return op->getName() == getWildcardType()->getName();
   }
   return false;
+}
+
+bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
+  b = prune(b);
+  DBGS("isSubType: " << *a << " and " << *b << '\n');
+  if (auto *op = llvm::dyn_cast<TypeOperator>(b)) {
+    return isSubTypeOfAny(a, op->getArgs());
+  } else if (llvm::isa<TypeVariable>(b)) {
+    return *a == *b;
+  }
+  assert(false && "Unknown type expression");
 }
 
 } // namespace ocamlc2
