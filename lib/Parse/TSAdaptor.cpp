@@ -19,8 +19,8 @@ FailureOr<TSTree *> parseOCaml(const std::string &source) {
 
 void print_node(llvm::raw_ostream &os, TSNode node, std::string source, int indent = 0) {
   std::string indentation = "";
-  for (int i = 0; i < indent * 2; ++i) {
-    indentation += " ";
+  for (int i = 0; i < indent; ++i) {
+    indentation += "| ";
   }
   
   const char* node_type = ts_node_type(node);

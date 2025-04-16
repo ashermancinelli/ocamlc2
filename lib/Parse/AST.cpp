@@ -22,7 +22,7 @@
 #define FAIL(...)                                                              \
   do {                                                                         \
     DBGS("failed to convert node: " << __VA_ARGS__ << '\n');                   \
-    return nullptr;                                                            \
+    assert(false && "failed to convert node");                                 \
   } while (0)
 
 #define ORFAIL(COND, ...)                                                      \
@@ -102,7 +102,11 @@ mlir::Location ASTNode::getMLIRLocation(mlir::MLIRContext &context) const {
 
 // Debugging functions
 void dumpTSNode(TSNode node, const TSTreeAdaptor &adaptor, int indent = 0) {
-  std::string indentation(indent * 2, ' ');
+  std::string indentation = ANSIColors::faint();
+  for (int i = 0; i < indent; ++i) {
+    indentation += "| ";
+  }
+  indentation += ANSIColors::reset();
   const std::string nodeType = ts_node_type(node);
   uint32_t start = ts_node_start_byte(node);
   uint32_t end = ts_node_end_byte(node);
@@ -2597,70 +2601,21 @@ std::unique_ptr<ModuleImplementationAST> convertModuleImplementation(TSNode node
 std::unique_ptr<ModuleSignatureAST> convertModuleSignature(TSNode node, const TSTreeAdaptor &adaptor) {
   TRACE();
   const std::string nodeType = ts_node_type(node);
-  bool isSignature = (nodeType == "module_signature");
-  bool isSig = (nodeType == "sig");
+  bool isSignature = (nodeType == "signature");
+  ORFAIL(isSignature, "Expected signature node, got " << nodeType);
   
-  ORFAIL(isSignature || isSig, "Expected module_signature or sig node, got " << nodeType);
-  
-  
-  // If we have a 'sig' keyword, look at its parent
-  TSNode targetNode = isSig ? ts_node_parent(node) : node;
-  if (ts_node_is_null(targetNode)) {
-    return nullptr;
-  }
-  
-  // For sig, ensure it is a module_signature
-  if (isSig && std::string(ts_node_type(targetNode)) != "module_signature") {
-    targetNode = node;
-  }
-  
-  auto children = childrenNodes(targetNode);
+  auto children = childrenNodes(node);
   std::vector<std::unique_ptr<ASTNode>> items;
-  
-  bool foundStart = false;
-  bool foundEnd = false;
-  
-  for (auto [type, child] : children) {
-    if (type == "sig") {
-      foundStart = true;
-      continue;
-    } else if (type == "end") {
-      foundEnd = true;
-      continue;
-    } else if (foundStart && !foundEnd) {
-      // Process items between sig and end
-      auto item = convertNode(child, adaptor);
-      if (item) {
-        items.push_back(std::move(item));
-      }
-    }
-  }
-  
-  // If we didn't find sig/end markers in the parent node, try looking in the current node
-  if (!foundStart && !foundEnd && isSig) {
-    // This is the 'sig' node itself, so collect everything after it
-    TSNode parent = ts_node_parent(node);
-    if (!ts_node_is_null(parent)) {
-      auto parentChildren = childrenNodes(parent);
-      bool afterSig = false;
-      for (auto [type, child] : parentChildren) {
-        if (afterSig && type != "end") {
-          auto item = convertNode(child, adaptor);
-          if (item) {
-            items.push_back(std::move(item));
-          }
-        }
-        if (type == "sig") {
-          afterSig = true;
-        } else if (type == "end") {
-          break;
-        }
-      }
-    }
+  auto it = children.begin();
+  assert(it++->first == "sig");
+  while (it->first != "end") {
+    auto item = convertNode(it->second, adaptor);
+    ORFAIL(item, "failed to parse module signature:\n");
+    it++;
   }
   
   return std::make_unique<ModuleSignatureAST>(
-    getLocation(targetNode, adaptor),
+    getLocation(node, adaptor),
     std::move(items)
   );
 }
@@ -2669,85 +2624,38 @@ std::unique_ptr<ModuleDefinitionAST> convertModuleDefinition(TSNode node, const 
   TRACE();
   const std::string nodeType = ts_node_type(node);
   bool isDefinition = (nodeType == "module_definition");
-  bool isBinding = (nodeType == "module_binding");
-  
-  ORFAIL(isDefinition || isBinding, "Expected module_definition or module_binding node, got " << nodeType);
-  
-  TSNode targetNode = node;
-  if (isDefinition) {
-    // Find the module_binding child
-    auto children = childrenNodes(node);
-    for (auto [type, child] : children) {
-      if (type == "module_binding") {
-        targetNode = child;
-        break;
-      }
-    }
-  }
-  
-  auto children = childrenNodes(targetNode);
-  std::string name;
+  ORFAIL(isDefinition, "Expected module_definition node, got " << nodeType);
+
+  auto children = childrenNodes(node);
+  auto it = children.begin();
+  assert(it++->first == "module");
+  assert(it->first == "module_binding");
+  auto binding_children = childrenNodes(it->second);
+  it = binding_children.begin();
+  assert(it->first == "module_name");
+  auto name = adaptor.text(&it->second);
+  it++;
   std::unique_ptr<ModuleSignatureAST> signature = nullptr;
   std::unique_ptr<ModuleImplementationAST> implementation = nullptr;
-  
-  // Extract module name
-  for (auto [type, child] : children) {
-    if (type == "module_name") {
-      name = getNodeText(child, adaptor);
-      break;
-    }
+  if (it->first == ":") {
+    it++;
+    signature = convertModuleSignature(it->second, adaptor);
+    ORFAIL(signature, "failed to parse module_definition:\n");
+    it++;
+  }
+  if (it->first == "=") {
+    it++;
+    assert(it->first == "structure");
+    implementation = convertModuleImplementation(it->second, adaptor);
+    ORFAIL(implementation, "failed to parse module_definition:\n");
+    it++;
   }
   
-  // Check for a signature (follows ":" and before "=")
-  bool foundColon = false;
-  for (auto [type, child] : children) {
-    if (type == ":") {
-      foundColon = true;
-    } else if (foundColon && type == "module_signature") {
-      signature = convertModuleSignature(child, adaptor);
-      break;
-    } else if (foundColon && type == "sig") {
-      signature = convertModuleSignature(child, adaptor);
-      break;
-    } else if (type == "=") {
-      break;
-    }
-  }
-  
-  // Find the implementation (follows "=" and is struct/structure)
-  bool foundEquals = false;
-  for (auto [type, child] : children) {
-    if (type == "=") {
-      foundEquals = true;
-    } else if (foundEquals && (type == "module_implementation" || type == "struct" || type == "structure")) {
-      implementation = convertModuleImplementation(child, adaptor);
-      break;
-    }
-  }
-  
-  // If we didn't find an implementation, check if it's directly a child node
-  if (!implementation && foundEquals) {
-    for (auto [type, child] : children) {
-      if (foundEquals && type != "=" && type != ":" && type != "module_name" && 
-          type != "module_signature" && type != "sig") {
-        // Try to convert as a module implementation
-        auto childNode = convertNode(child, adaptor);
-        ORFAIL(childNode, "failed to convert module implementation");
-        std::vector<std::unique_ptr<ASTNode>> items;
-        items.push_back(std::move(childNode));
-          implementation = std::make_unique<ModuleImplementationAST>(
-            getLocation(child, adaptor),
-            std::move(items)
-        );
-        break;
-      }
-    }
-  }
-  
-  ORFAIL(!name.empty() && implementation, "failed to parse module_definition:\n");
+  ORFAIL(it->first == "end", "failed to parse module_definition:");
+  ORFAIL(!name.empty() && implementation, "failed to parse module_definition:");
   
   return std::make_unique<ModuleDefinitionAST>(
-    getLocation(targetNode, adaptor),
+    getLocation(node, adaptor),
     name,
     std::move(implementation),
     std::move(signature)

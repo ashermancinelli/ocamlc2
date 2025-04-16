@@ -74,6 +74,7 @@ public:
     Node_TypeDefinition,
     Node_ValueDefinition,
     Node_ExpressionItem,
+    Node_ValueSpecification,
     
     // Type related
     Node_TypeBinding,
