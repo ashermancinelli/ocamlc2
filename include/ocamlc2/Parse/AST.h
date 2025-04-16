@@ -825,5 +825,23 @@ public:
   }
 };
 
+/// Value specification in a module signature (e.g., val print : unit -> unit)
+class ValueSpecificationAST : public ASTNode {
+  std::string name;
+  std::unique_ptr<TypeConstructorPathAST> type;
+public:
+  ValueSpecificationAST(Location loc, std::string name, 
+                        std::unique_ptr<TypeConstructorPathAST> type)
+    : ASTNode(Node_ValueSpecification, std::move(loc)),
+      name(std::move(name)), type(std::move(type)) {}
+  
+  const std::string& getName() const { return name; }
+  const TypeConstructorPathAST* getType() const { return type.get(); }
+  
+  static bool classof(const ASTNode* node) {
+    return node->getKind() == Node_ValueSpecification;
+  }
+};
+
 } // namespace ocamlc2
 

@@ -90,6 +90,7 @@ llvm::StringRef ASTNode::getName(ASTNodeKind kind) {
     case Node_ModuleSignature: return "ModuleSignature";
     case Node_ModuleTypeDefinition: return "ModuleTypeDefinition";
     case Node_OpenDirective: return "OpenDirective";
+    case Node_ValueSpecification: return "ValueSpecification";
   }
   assert(false && "Unknown AST node kind");
   return "";
@@ -171,6 +172,7 @@ std::unique_ptr<ModuleImplementationAST> convertModuleImplementation(TSNode node
 std::unique_ptr<ModuleSignatureAST> convertModuleSignature(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<ModuleTypeDefinitionAST> convertModuleTypeDefinition(TSNode node, const TSTreeAdaptor &adaptor);
 std::unique_ptr<OpenDirectiveAST> convertOpenDirective(TSNode node, const TSTreeAdaptor &adaptor);
+std::unique_ptr<ValueSpecificationAST> convertValueSpecification(TSNode node, const TSTreeAdaptor &adaptor);
 
 // Set of known/supported node types for better error reporting
 llvm::DenseSet<llvm::StringRef> knownNodeTypes = {"compilation_unit",
@@ -271,7 +273,10 @@ llvm::DenseSet<llvm::StringRef> knownNodeTypes = {"compilation_unit",
                                                   "sig", 
                                                   "struct",
                                                   "structure", 
-                                                  "end"};
+                                                  "end",
+                                                  "value_specification",
+                                                  "val",
+                                                  "function_type"};
 
 // Helper functions
 Location getLocation(TSNode node, const TSTreeAdaptor &adaptor) {
@@ -409,6 +414,8 @@ std::unique_ptr<ASTNode> convertNode(TSNode node, const TSTreeAdaptor &adaptor) 
     return convertModuleTypeDefinition(node, adaptor);
   else if (type == "open_directive")
     return convertOpenDirective(node, adaptor);
+  else if (type == "value_specification")
+    return convertValueSpecification(node, adaptor);
   else if (type == "comment") {
     auto str = getNodeText(node, adaptor);
     if (str.contains("AJM")) {
@@ -2512,6 +2519,14 @@ void dumpASTNode(llvm::raw_ostream &os, const ASTNode *node, int indent) {
       os << " " << openDir->getTypePrinter() << "\n";
       break;
     }
+    case ASTNode::Node_ValueSpecification: {
+      auto *valSpec = static_cast<const ValueSpecificationAST*>(node);
+      os << "ValueSpecification: " << valSpec->getName() << " : " << valSpec->getTypePrinter() << "\n";
+      printIndent(os, indent + 1);
+      os << "Type:\n";
+      dumpASTNode(os, valSpec->getType(), indent + 2);
+      break;
+    }
   }
 }
 
@@ -2606,12 +2621,37 @@ std::unique_ptr<ModuleSignatureAST> convertModuleSignature(TSNode node, const TS
   
   auto children = childrenNodes(node);
   std::vector<std::unique_ptr<ASTNode>> items;
-  auto it = children.begin();
-  assert(it++->first == "sig");
-  while (it->first != "end") {
-    auto item = convertNode(it->second, adaptor);
-    ORFAIL(item, "failed to parse module signature:\n");
-    it++;
+  
+  // Ensure we have at least 'sig' and 'end' keywords
+  ORFAIL(children.size() >= 2, "Not enough children in signature node");
+  
+  // Check for "sig" keyword at the beginning
+  ORFAIL(children[0].first == "sig", "Expected 'sig' keyword, got " << children[0].first);
+  
+  // Process all children between 'sig' and 'end'
+  for (size_t i = 1; i < children.size(); i++) {
+    auto [type, child] = children[i];
+    
+    if (type == "end") {
+      // End of signature
+      break;
+    } else if (type == "value_specification") {
+      // Handle value specifications (val x : t)
+      auto valueSpec = convertValueSpecification(child, adaptor);
+      if (valueSpec) {
+        items.push_back(std::move(valueSpec));
+      } else {
+        DBGS("Failed to convert value specification in module signature\n");
+      }
+    } else if (type != "sig") {
+      // Handle any other signature items
+      auto item = convertNode(child, adaptor);
+      if (item) {
+        items.push_back(std::move(item));
+      } else {
+        DBGS("Failed to convert item of type " << type << " in module signature\n");
+      }
+    }
   }
   
   return std::make_unique<ModuleSignatureAST>(
@@ -2627,32 +2667,49 @@ std::unique_ptr<ModuleDefinitionAST> convertModuleDefinition(TSNode node, const 
   ORFAIL(isDefinition, "Expected module_definition node, got " << nodeType);
 
   auto children = childrenNodes(node);
-  auto it = children.begin();
-  assert(it++->first == "module");
-  assert(it->first == "module_binding");
-  auto binding_children = childrenNodes(it->second);
-  it = binding_children.begin();
-  assert(it->first == "module_name");
-  auto name = adaptor.text(&it->second);
-  it++;
+  
+  // Ensure we have enough children
+  ORFAIL(children.size() >= 2, "Not enough children in module_definition node");
+  
+  // Check for "module" keyword
+  ORFAIL(children[0].first == "module", "Expected 'module' keyword, got " << children[0].first);
+  
+  // Check for module_binding node
+  ORFAIL(children[1].first == "module_binding", "Expected 'module_binding' node, got " << children[1].first);
+  
+  auto bindingNode = children[1].second;
+  auto bindingChildren = childrenNodes(bindingNode);
+  
+  // Ensure binding has enough children
+  ORFAIL(bindingChildren.size() >= 1, "Not enough children in module_binding node");
+  
+  // Variables to store module components
+  std::string name;
   std::unique_ptr<ModuleSignatureAST> signature = nullptr;
   std::unique_ptr<ModuleImplementationAST> implementation = nullptr;
-  if (it->first == ":") {
-    it++;
-    signature = convertModuleSignature(it->second, adaptor);
-    ORFAIL(signature, "failed to parse module_definition:\n");
-    it++;
-  }
-  if (it->first == "=") {
-    it++;
-    assert(it->first == "structure");
-    implementation = convertModuleImplementation(it->second, adaptor);
-    ORFAIL(implementation, "failed to parse module_definition:\n");
-    it++;
+  
+  // Extract module name
+  for (size_t i = 0; i < bindingChildren.size(); i++) {
+    auto [type, child] = bindingChildren[i];
+    
+    if (type == "module_name") {
+      name = getNodeText(child, adaptor);
+    } else if (type == ":" && i + 1 < bindingChildren.size() && bindingChildren[i + 1].first == "signature") {
+      // Handle signature
+      signature = convertModuleSignature(bindingChildren[i + 1].second, adaptor);
+      ORFAIL(signature, "failed to convert module signature");
+    } else if (type == "=" && i + 1 < bindingChildren.size() && 
+               (bindingChildren[i + 1].first == "structure" || 
+                bindingChildren[i + 1].first == "struct")) {
+      // Handle implementation
+      implementation = convertModuleImplementation(bindingChildren[i + 1].second, adaptor);
+      ORFAIL(implementation, "failed to convert module implementation");
+    }
   }
   
-  ORFAIL(it->first == "end", "failed to parse module_definition:");
-  ORFAIL(!name.empty() && implementation, "failed to parse module_definition:");
+  // Validate that we have the required components
+  ORFAIL(!name.empty(), "failed to parse module_definition: missing module name");
+  ORFAIL(implementation, "failed to parse module_definition: missing module implementation");
   
   return std::make_unique<ModuleDefinitionAST>(
     getLocation(node, adaptor),
@@ -2731,6 +2788,61 @@ std::unique_ptr<OpenDirectiveAST> convertOpenDirective(TSNode node, const TSTree
   return std::make_unique<OpenDirectiveAST>(
     getLocation(node, adaptor),
     std::move(modulePath)
+  );
+}
+
+// Implementation of convertValueSpecification function to handle value specifications in module signatures
+std::unique_ptr<ValueSpecificationAST> convertValueSpecification(TSNode node, const TSTreeAdaptor &adaptor) {
+  TRACE();
+  const std::string nodeType = ts_node_type(node);
+  ORFAIL(nodeType == "value_specification", "Expected value_specification node, got " << nodeType);
+  
+  auto children = childrenNodes(node);
+  std::string name;
+  std::unique_ptr<TypeConstructorPathAST> type = nullptr;
+  
+  // Debug children for diagnosis
+  DBGS("Value specification children:\n");
+  for (auto [childType, child] : children) {
+    DBGS("  Type: " << childType.str() << "\n");
+  }
+  
+  for (auto [childType, child] : children) {
+    if (childType == "val") {
+      // Skip 'val' keyword
+      continue;
+    } else if (childType == "value_name") {
+      name = getNodeText(child, adaptor);
+    } else if (childType == ":") {
+      // Skip ':' character
+      continue;
+    } else if (childType == "function_type") {
+      // Function type like "unit -> unit"
+      // Extract the return type from function_type
+      auto functionTypeChildren = childrenNodes(child);
+      for (auto [ftType, ftChild] : functionTypeChildren) {
+        if (ftType == "type_constructor_path") {
+          // Use the last type_constructor_path as the return type
+          type = convertTypeConstructorPath(ftChild, adaptor);
+        }
+      }
+    } else if (childType == "type_constructor_path") {
+      // Direct type like "int"
+      type = convertTypeConstructorPath(child, adaptor);
+    }
+  }
+  
+  if (name.empty() || !type) {
+    DBGS("failed to parse value_specification:\n");
+    if (name.empty()) DBGS("  Missing name\n");
+    if (!type) DBGS("  Missing type\n");
+    return nullptr;
+  }
+  
+  return std::make_unique<ValueSpecificationAST>(
+    getLocation(node, adaptor),
+    std::move(name),
+    std::move(type)
   );
 }
 

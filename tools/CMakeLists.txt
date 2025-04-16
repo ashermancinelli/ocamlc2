@@ -13,6 +13,7 @@ function(add_ocamlc2_tool name)
         CamlParse
         Support
         MLIRIR
+        cpp-tree-sitter
     )
     set_target_properties(${name} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -29,6 +30,7 @@ add_ocamlc2_tool(ocamlc2-parse ocamlc2-parse.cpp)
 add_ocamlc2_tool(ocamlc2-tomlir ocamlc2-tomlir.cpp LINK_MLIR_LIBS)
 
 add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp)
+add_ocamlc2_tool(p3 p3.cpp)
 add_ocamlc2_tool(ocamlc2-camlparse ocamlc2-camlparse.cpp)
 add_ocamlc2_tool(ocamlc2-tomlir2 ocamlc2-tomlir2.cpp LINK_MLIR_LIBS)
 

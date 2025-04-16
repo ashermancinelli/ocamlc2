@@ -28,3 +28,5 @@ add_custom_target(copy_bdwgc_libs ALL
 )
 install(FILES ${CMAKE_BINARY_DIR}/lib/libgc.* DESTINATION lib)
 install(FILES ${CMAKE_BINARY_DIR}/lib/libcord.* DESTINATION lib)
+
+add_subdirectory(cpp-tree-sitter)
