@@ -14,15 +14,19 @@
 #include <llvm/Support/Casting.h>
 #include <ocamlc2/Parse/ScopedHashTable.h>
 #include <ocamlc2/Parse/TypeSystem.h>
+#include <cpp-tree-sitter.h>
 
 namespace ocamlc2 {
 inline namespace ts {
+using namespace ::ts;
 struct Unifier {
+  Unifier(std::string_view source) : source(source) { }
   Unifier() { }
+  llvm::raw_ostream& show(ts::Cursor cursor);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr*>;
   using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable*>;
-  TypeExpr* infer(const ASTNode* ast);
+  TypeExpr* infer(Cursor ast);
   template <typename T, typename... Args>
   T* create(Args&&... args) {
     static_assert(std::is_base_of_v<TypeExpr, T>,
@@ -44,7 +48,7 @@ private:
   // chains of instantiated variables.
   TypeExpr* prune(TypeExpr* type);
 
-  TypeExpr* inferType(const ASTNode* ast);
+  TypeExpr* inferType(Cursor ast);
 
   bool isSubType(TypeExpr* a, TypeExpr* b);
 
@@ -75,7 +79,7 @@ private:
   TypeExpr* getType(const llvm::StringRef name);
   TypeExpr* getType(std::vector<std::string> path);
   llvm::SmallVector<TypeExpr *>
-  getParameterTypes(const std::vector<std::unique_ptr<ASTNode>> &parameters);
+  getParameterTypes(Cursor parameters);
 
   inline auto *createFunction(llvm::ArrayRef<TypeExpr*> args) {
     return create<FunctionOperator>(args);
@@ -137,19 +141,12 @@ private:
     Unifier& unifier;
   };
 
+  std::string_view source;
   Env env;
   ConcreteTypes concreteTypes;
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
   llvm::SmallVector<llvm::StringRef> moduleSearchPath;
   llvm::SmallVector<llvm::StringRef> currentModule;
-};
-
-struct TypeCheckingPass : public ASTPass {
-  void run(CompilationUnitAST *node) override {
-    unifier.infer(node);
-  }
-private:
-  Unifier unifier;
 };
 
 } // namespace ts

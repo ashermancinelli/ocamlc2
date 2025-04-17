@@ -1,0 +1,14 @@
+#pragma once
+
+#include <llvm/Support/raw_ostream.h>
+#include <cpp-tree-sitter.h>
+
+namespace ocamlc2 {
+inline namespace ts {
+using namespace ::ts;
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TSPoint &point);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Extent<Point> &extent);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Cursor &cursor);
+llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source, unsigned indent = 0);
+} // namespace ts
+} // namespace ocamlc2
