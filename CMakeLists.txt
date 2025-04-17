@@ -62,6 +62,7 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 # Add LLVM includes and definitions
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/tpl/cpp-tree-sitter/include)
 add_definitions(${LLVM_DEFINITIONS})
 
 # Disable RTTI

@@ -1,7 +1,7 @@
 #include "ocamlc2/Parse/ASTPasses.h"
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/TypeSystem.h"
-
+#include "ocamlc2/Parse/Unifier.h"
 #define DEBUG_TYPE "ocamlc2-ast-passes"
 #include "ocamlc2/Support/Debug.h.inc"
 

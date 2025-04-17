@@ -48,8 +48,10 @@ static void dump(ts::Cursor cursor, std::string_view source, unsigned indent = 0
   }
   llvm::errs() << " " << range << "\n";
   llvm::errs() << ANSIColors::reset();
-  if (auto child = cursor.copy(); child.gotoFirstChild()) {
-    dump(child.copy(), source, indent + 1);
+  auto node = cursor.getCurrentNode();
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    dump(child.getCursor(), source, indent + 1);
   }
   if (cursor.gotoNextSibling()) {
     dump(cursor.copy(), source, indent);

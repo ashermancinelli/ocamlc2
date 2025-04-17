@@ -1,5 +1,5 @@
 #include "ocamlc2/Parse/TypeSystem.h"
-#include "ocamlc2/Parse/Unifier.h"
+#include "ocamlc2/Parse/TSUnifier.h"
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Support/Utils.h"
 #include <llvm/ADT/STLExtras.h>
@@ -16,6 +16,7 @@
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace ocamlc2 {
+inline namespace ts {
 
 namespace { 
 struct StringArena {
@@ -122,69 +123,6 @@ TypeExpr* Unifier::getType(const llvm::StringRef name) {
   DBGS("Type not declared: " << name << '\n');
   assert(false && "Type not declared");
   return nullptr;
-}
-
-TypeVariable::TypeVariable() : TypeExpr(Kind::Variable) {
-  static int id = 0;
-  this->id = id++;
-}
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
-  if (var.instantiated()) {
-    os << *var.instance;
-  } else {
-    os << var.getName();
-  }
-  return os;
-}
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op) {
-  auto args = op.getArgs();
-  auto name = op.getName().str();
-  if (auto pos = name.find("StdlibMM"); pos != std::string::npos) {
-    name = name.substr(pos + 8);
-  }
-  if (args.empty()) {
-    return os << name;
-  }
-  os << '(' << op.getName();
-  for (auto *arg : args) {
-    os << ' ' << *arg;
-  }
-  return os << ')';
-}
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type) {
-  if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
-    os << *to;
-  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
-    os << *tv;
-  }
-  return os;
-}
-
-bool TypeExpr::operator==(const TypeExpr& other) const {
-  if (auto *to = llvm::dyn_cast<TypeOperator>(this)) {
-    if (auto *toOther = llvm::dyn_cast<TypeOperator>(&other)) {
-      return *to == *toOther;
-    }
-  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(this)) {
-    if (auto *tvOther = llvm::dyn_cast<TypeVariable>(&other)) {
-      return *tv == *tvOther;
-    }
-  }
-  return false;
-}
-
-bool TypeVariable::operator==(const TypeVariable& other) const {
-  return id == other.id;
-}
-
-TypeExpr* Unifier::infer(const ASTNode* ast) {
-  auto *type = inferType(ast);
-  ast->typeExpr = type;
-  DBGS("\nInferred type: " << *type << " for:\n" << *ast << '\n');
-  return type;
 }
 
 void Unifier::initializeEnvironment() {
@@ -774,5 +712,5 @@ bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
   assert(false && "Unknown type expression");
 }
 
+} // namespace ts
 } // namespace ocamlc2
-
