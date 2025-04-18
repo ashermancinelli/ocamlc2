@@ -248,6 +248,50 @@ TypeExpr* Unifier::inferLetBinding(Cursor ast) {
   return funcType;
 }
 
+TypeExpr* Unifier::inferIfExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  auto childCount = node.getNumNamedChildren();
+  auto *condition = infer(node.getNamedChild(0));
+  if (failed(unify(condition, getBoolType()))) {
+    assert(false &&
+           "Failed to unify condition of if expression with bool type");
+    return nullptr;
+  }
+  auto *resultType = createTypeVariable();
+  switch (childCount) {
+    case 3: {
+      auto *thenBranch = infer(node.getNamedChild(1));
+      auto *elseBranch = infer(node.getNamedChild(2));
+      if (failed(unify(thenBranch, resultType))) {
+        assert(false && "Failed to unify then branch of if expression with result type");
+        return nullptr;
+      }
+      if (failed(unify(elseBranch, resultType))) {
+        assert(false && "Failed to unify else branch of if expression with result type");
+        return nullptr;
+      }
+      return resultType;
+    }
+    case 2: {
+      auto *resultType = createTypeVariable();
+      auto *thenBranch = infer(node.getNamedChild(0));
+      if (failed(unify(thenBranch, resultType))) {
+        assert(false && "Failed to unify then branch of if expression with result type");
+        return nullptr;
+      }
+      if (failed(unify(getUnitType(), resultType))) {
+        assert(false && "Failed to unify then branch of if expression with result type");
+        return nullptr;
+      }
+      return resultType;
+    }
+    default: {
+      assert(false && "Expected 2 or 3 children for if expression");
+    }
+  }
+  return nullptr;
+}
+
 TypeExpr* Unifier::declare(Node node, TypeExpr* type) {
   return declare(getText(node, source), type);
 }
@@ -353,6 +397,11 @@ TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
 
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
+  static constexpr std::string_view passthroughTypes[] = {
+    "parenthesized_expression",
+    "then_clause",
+    "else_clause",
+  };
   if (node.getType() == "number") {
     auto text = getText(node, source);
     if (text.contains('.')) {
@@ -373,7 +422,9 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferForExpression(std::move(ast));
   } else if (node.getType() == "infix_expression") {
     return inferInfixExpression(std::move(ast));
-  } else if (node.getType() == "parenthesized_expression") {
+  } else if (node.getType() == "if_expression") {
+    return inferIfExpression(std::move(ast));
+  } else if (llvm::is_contained(passthroughTypes, node.getType())) {
     assert(node.getNumNamedChildren() == 1);
     return infer(node.getNamedChild(0));
   } else if (node.getType() == "value_definition") {

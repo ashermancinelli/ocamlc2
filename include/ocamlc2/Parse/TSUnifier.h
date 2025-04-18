@@ -57,6 +57,7 @@ private:
   TypeExpr* inferCompilationUnit(Cursor ast);
   TypeExpr* inferApplicationExpression(Cursor ast);
   TypeExpr* inferInfixExpression(Cursor ast);
+  TypeExpr* inferIfExpression(Cursor ast);
 
   bool isSubType(TypeExpr* a, TypeExpr* b);
 
