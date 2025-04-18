@@ -42,6 +42,8 @@ int main(int argc, char* argv[]) {
   
   ocamlc2::ts::Unifier unifier{source};
   unifier.show(root.getCursor());
+  auto *te = unifier.infer(root.getCursor());
+  llvm::errs() << "Inferred type: " << *te << '\n';
 
   return 0;
 }

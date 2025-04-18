@@ -16,7 +16,12 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Cursor &cursor) {
   return os << cursor.getCurrentNode().getType();
 }
 
-llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source, unsigned indent) {
+std::string_view getText(const ts::Node &node, std::string_view source) {
+  auto byteRange = node.getByteRange();
+  return source.substr(byteRange.start, byteRange.end - byteRange.start);
+}
+
+llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source, unsigned indent, bool showUnnamed) {
   auto range = cursor.getCurrentNode().getPointRange();
   auto byteRange = cursor.getCurrentNode().getByteRange();
   std::string indentStr;
@@ -34,9 +39,16 @@ llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_vi
   os << " " << range << "\n";
   os << ANSIColors::reset();
   auto node = cursor.getCurrentNode();
-  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    auto child = node.getNamedChild(i);
-    dump(os, child.getCursor(), source, indent + 1);
+  if (showUnnamed) {
+    for (unsigned i = 0; i < node.getNumChildren(); ++i) {
+      auto child = node.getChild(i);
+      dump(os, child.getCursor(), source, indent + 1);
+    }
+  } else {
+    for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+      auto child = node.getNamedChild(i);
+      dump(os, child.getCursor(), source, indent + 1);
+    }
   }
   if (cursor.gotoNextSibling()) {
     dump(os, cursor.copy(), source, indent);

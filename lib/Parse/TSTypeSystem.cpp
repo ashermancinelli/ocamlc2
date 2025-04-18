@@ -18,6 +18,9 @@
 
 namespace ocamlc2 {
 inline namespace ts {
+using namespace ::ts;
+using namespace llvm;
+using std::move;
 
 namespace { 
 struct StringArena {
@@ -106,18 +109,18 @@ TypeExpr* Unifier::getType(std::vector<std::string> path) {
 }
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
-  DBGS("Getting type: " << name << '\n');
+  // DBGS("Getting type: " << name << '\n');
   if (auto *type = env.lookup(name)) {
-    DBGS("Found type in default env: " << *type << '\n');
+    // DBGS("Found type in default env: " << *type << '\n');
     return clone(type);
   }
   for (auto &path : llvm::reverse(moduleSearchPath)) {
-    DBGS("Checking module search path: " << path << '\n');
+    // DBGS("Checking module search path: " << path << '\n');
     auto possiblePath = hashPath(std::vector<std::string>{path.str(), name.str()});
     auto str = stringArena.save(possiblePath);
-    DBGS("with name: " << str << '\n');
+    // DBGS("with name: " << str << '\n');
     if (auto *type = env.lookup(str)) {
-      DBGS("Found type " << *type << " in module search path: " << possiblePath << '\n');
+      // DBGS("Found type " << *type << " in module search path: " << possiblePath << '\n');
       return clone(type);
     }
   }
@@ -137,12 +140,30 @@ void Unifier::initializeEnvironment() {
     DBGS("Declaring type operator: " << str << '\n');
     env.insert(str, createTypeOperator(str));
   }
+
+  pushModule("Stdlib");
+  for (std::string name : {"int", "float", "bool", "string"}) {
+    declare(name, createFunction({createTypeVariable(), getType(name)}));
+  }
+
   auto *T_bool = getBoolType();
   auto *T_float = getFloatType();
   auto *T_int = getIntType();
   auto *T_unit = getUnitType();
   auto *T_string = getStringType();
   auto *T1 = createTypeVariable(), *T2 = createTypeVariable();
+
+  declare("sqrt", createFunction({T_float, T_float}));
+  declare("print_int", createFunction({T_int, T_unit}));
+  declare("print_endline", createFunction({T_string, T_unit}));
+  declare("print_string", createFunction({T_string, T_unit}));
+  declare("print_int", createFunction({T_int, T_unit}));
+  declare("print_float", createFunction({T_float, T_unit}));
+  declare("string_of_int", createFunction({T_int, T_string}));
+  declare("float_of_int", createFunction({T_int, T_float}));
+  declare("int_of_float", createFunction({T_float, T_int}));
+  popModule();
+
   {
     for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
       declare(arithmetic, createFunction({T_int, T_int, T_int}));
@@ -152,11 +173,6 @@ void Unifier::initializeEnvironment() {
     for (auto comparison : {"=", "!=", "<", "<=", ">", ">="}) {
       declare(comparison, createFunction({T1, T1, T_bool}));
     }
-    declare("sqrt", createFunction({T_float, T_float}));
-    declare("print_int", createFunction({T_int, T_unit}));
-    declare("print_endline", createFunction({T_string, T_unit}));
-    declare("print_string", createFunction({T_string, T_unit}));
-    declare("string_of_int", createFunction({T_int, T_string}));
 
     // Builtin constructors
     auto *Optional =
@@ -186,11 +202,191 @@ void Unifier::initializeEnvironment() {
   }
 }
 
-llvm::raw_ostream& Unifier::show(ts::Cursor cursor) {
-  return dump(llvm::errs(), cursor.copy(), source);
+llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed) {
+  return dump(llvm::errs(), cursor.copy(), source, 0, showUnnamed);
+}
+
+TypeExpr* Unifier::infer(ts::Node const& ast) {
+  return infer(ast.getCursor());
+}
+
+TypeExpr* Unifier::infer(ts::Cursor cursor) {
+  DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
+  DBG(show(cursor.copy()));
+  auto *te = inferType(cursor.copy());
+  DBGS("Inferred type: " << *te << '\n');
+  DBG(show(cursor.copy()));
+  return te;
+}
+
+TypeExpr* Unifier::inferLetBinding(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  SmallVector<Node> parameters;
+  std::optional<Node> body;
+  for (unsigned i = 0; i < node.getNumChildren(); ++i) {
+    auto n = node.getChild(i);
+    if (n.getType() == "=") {
+      i++;
+      body = node.getChild(i);
+      assert(i == node.getNumChildren() - 1 && "Expected body after =");
+    } else {
+      parameters.push_back(node.getChild(i));
+    }
+  }
+  if (parameters.empty()) {
+    return infer(*body);
+  }
+  SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
+    auto *tv = createTypeVariable();
+    declare(n, tv);
+    return tv;
+  });
+  auto *returnType = infer(*body);
+  types.push_back(returnType);
+  auto *funcType = createFunction(types);
+  declare(node, funcType);
+  return funcType;
+}
+
+TypeExpr* Unifier::declare(Node node, TypeExpr* type) {
+  return declare(getText(node, source), type);
+}
+
+TypeExpr* Unifier::inferForExpression(Cursor ast) {
+  assert(ast.gotoFirstChild());
+  assert(ast.gotoNextSibling());
+  auto id = ast.getCurrentNode();
+  declare(id, getIntType());
+  assert(ast.gotoNextSibling());
+  assert(ast.getCurrentNode().getType() == "=");
+  assert(ast.gotoNextSibling());
+  auto firstBound = ast.getCurrentNode();
+  assert(ast.gotoNextSibling());
+  assert(ast.getCurrentNode().getType() == "to" or ast.getCurrentNode().getType() == "downto");
+  assert(ast.gotoNextSibling());
+  auto secondBound = ast.getCurrentNode();
+  assert(ast.gotoNextSibling());
+  assert(ast.getCurrentNode().getType() == "do_clause");
+  auto body = ast.getCurrentNode();
+  assert(!ast.gotoNextSibling());
+  if (failed(unify(infer(firstBound), getIntType()))) {
+    assert(false && "Failed to unify first bound");
+    return nullptr;
+  }
+  if (failed(unify(infer(secondBound), getIntType()))) {
+    assert(false && "Failed to unify second bound");
+    return nullptr;
+  }
+  (void)infer(body);
+  return getUnitType();
+}
+
+TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
+  TRACE();
+  EnvScope es(env);
+  initializeEnvironment();
+  auto *t = getUnitType();
+  auto shouldSkip = [](Node node) {
+    static constexpr std::string_view shouldSkip[] = {
+        "comment",
+        ";;",
+    };
+    return llvm::any_of(shouldSkip, [&](auto s) { return node.getType() == s; });
+  };
+  if (ast.gotoFirstChild()) {
+    do {
+      if (!shouldSkip(ast.getCurrentNode())) {
+        t = infer(ast.copy());
+      }
+    } while (ast.gotoNextSibling());
+  }
+  return t;
+}
+
+TypeExpr* Unifier::getType(Node node) {
+  return getType(getText(node, source));
+}
+
+TypeExpr* Unifier::inferValuePath(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "value_path");
+  return getType(getText(node, source));
+}
+
+TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "application_expression");
+  assert(ast.gotoFirstChild());
+  auto id = ast.getCurrentNode();
+  SmallVector<TypeExpr*> args;
+  while (ast.gotoNextSibling()) {
+    args.push_back(infer(ast.getCurrentNode()));
+  }
+  args.push_back(createTypeVariable());
+  auto declaredFuncType = getType(id);
+  auto inferredFuncType = createFunction(args);
+  if (failed(unify(declaredFuncType, inferredFuncType))) {
+    assert(false && "Failed to unify declared and inferred function types");
+    return nullptr;
+  }
+  return inferredFuncType->back();
+}
+
+TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "infix_expression");
+  assert(ast.gotoFirstChild());
+  auto lhsType = infer(ast.getCurrentNode());
+  assert(ast.gotoNextSibling());
+  auto op = ast.getCurrentNode();
+  assert(ast.gotoNextSibling());
+  auto rhsType = infer(ast.getCurrentNode());
+  assert(!ast.gotoNextSibling());
+  auto *opType = getType(op);
+  auto *funcType = createFunction({lhsType, rhsType, createTypeVariable()});
+  if (failed(unify(opType, funcType))) {
+    assert(false && "Failed to unify operator type with function type");
+    return nullptr;
+  }
+  return funcType->back();
 }
 
 TypeExpr* Unifier::inferType(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  if (node.getType() == "number") {
+    auto text = getText(node, source);
+    if (text.contains('.')) {
+      return getType("float");
+    }
+    return getType("int");
+  } else if (node.getType() == "float") {
+    return getType("float");
+  } else if (node.getType() == "string") {
+    return getType("string");
+  } else if (node.getType() == "do_clause") {
+    return infer(node.getNamedChild(0));
+  } else if (node.getType() == "let_binding") {
+    return inferLetBinding(std::move(ast));
+  } else if (node.getType() == "value_path") {
+    return inferValuePath(std::move(ast));
+  } else if (node.getType() == "for_expression") {
+    return inferForExpression(std::move(ast));
+  } else if (node.getType() == "infix_expression") {
+    return inferInfixExpression(std::move(ast));
+  } else if (node.getType() == "parenthesized_expression") {
+    assert(node.getNumNamedChildren() == 1);
+    return infer(node.getNamedChild(0));
+  } else if (node.getType() == "value_definition") {
+    assert(node.getNumNamedChildren() == 1);
+    return infer(node.getNamedChild(0));
+  } else if (node.getType() == "compilation_unit") {
+    return inferCompilationUnit(std::move(ast));
+  } else if (node.getType() == "application_expression") {
+    return inferApplicationExpression(std::move(ast));
+  }
+  llvm::errs() << "Unknown node type: " << node.getType() << '\n';
+  show(ast.copy(), true);
+  assert(false && "Unknown node type");
   return nullptr;
 }
 
@@ -215,7 +411,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
 //    operators are found and their sizes don't match, we first check if
 //    one of the subtypes is varargs. If so, we can unify the types if the
 //    other type is a function type.
-void Unifier::unify(TypeExpr* a, TypeExpr* b) {
+LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
   static size_t count = 0;
   auto *wildcard = getWildcardType();
   a = prune(a);
@@ -225,13 +421,13 @@ void Unifier::unify(TypeExpr* a, TypeExpr* b) {
     if (auto *tvb = llvm::dyn_cast<TypeVariable>(b);
         tvb && isConcrete(tva, concreteTypes) &&
         isGeneric(tvb, concreteTypes)) {
-      unify(tvb, tva);
-      return;
+      return unify(tvb, tva);
     }
     if (*a != *b) {
       DBGS("Unifying type variable with different type\n");
       if (isSubType(a, b)) {
         assert(false && "Recursive unification");
+        return failure();
       }
       tva->instance = b;
     } else {
@@ -252,7 +448,7 @@ void Unifier::unify(TypeExpr* a, TypeExpr* b) {
 
       if (toa->getName() == wildcard->getName() or tob->getName() == wildcard->getName()) {
         DBGS("Unifying with wildcard\n");
-        return;
+        return success();
       }
 
       // Usual type checking - if we don't have a special case, then we need operator types to
@@ -266,45 +462,50 @@ void Unifier::unify(TypeExpr* a, TypeExpr* b) {
       for (auto [aa, bb] : llvm::zip(toa->getArgs(), tob->getArgs())) {
         if (isVarargs(aa) or isVarargs(bb)) {
           DBGS("Unifying with varargs, unifying return types and giving up\n");
-          unify(toa->back(), tob->back());
-          return;
+          if (failed(unify(toa->back(), tob->back()))) {
+            return failure();
+          }
+          return success();
         }
         if (isWildcard(aa) or isWildcard(bb)) {
           DBGS("Unifying with wildcard, skipping unification for this element type\n");
           continue;
         }
-        unify(aa, bb);
+        if (failed(unify(aa, bb))) {
+          return failure();
+        }
       }
     }
   }
+  return success();
 }
 
-static size_t clone_count = 0;
+// static size_t clone_count = 0;
 TypeExpr *Unifier::clone(TypeExpr *type) {
-  DBGS("Cloning type: " << ++clone_count << ": " << *type << '\n');
+  // DBGS("Cloning type: " << ++clone_count << ": " << *type << '\n');
   llvm::DenseMap<TypeExpr *, TypeExpr *> mapping;
   auto *unifier = this;
   auto recurse = [&](this const auto &recurse, TypeExpr *expr) -> TypeExpr * {
-    DBGS("recursing on type: " << *expr << '\n');
+    // DBGS("recursing on type: " << *expr << '\n');
     if (auto *op = llvm::dyn_cast<TypeOperator>(expr)) {
       auto args = llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr* arg) {
         return unifier->clone(arg);
       }));
-      DBGS("cloning type operator: " << op->getName() << '\n');
+      // DBGS("cloning type operator: " << op->getName() << '\n');
       return unifier->createTypeOperator(op->getName(), args);
     } else if (auto *tv = llvm::dyn_cast<TypeVariable>(expr)) {
-      DBGS("cloning type variable: " << *tv << '\n');
+      // DBGS("cloning type variable: " << *tv << '\n');
       if (unifier->isGeneric(tv, concreteTypes)) {
-        DBGS("type variable is generic, cloning\n");
+        // DBGS("type variable is generic, cloning\n");
         if (mapping.find(tv) == mapping.end()) {
-          DBGS("Didn't find mapping for type variable: " << *tv << ", creating new one\n");
+          // DBGS("Didn't find mapping for type variable: " << *tv << ", creating new one\n");
           mapping[tv] = unifier->createTypeVariable();
         }
-        DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
+        // DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
         return mapping[tv];
       }
     }
-    DBGS("cloned type: " << *expr << '\n');
+    // DBGS("cloned type: " << *expr << '\n');
     return expr;
   };
   return recurse(prune(type));

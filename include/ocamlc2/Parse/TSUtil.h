@@ -9,6 +9,7 @@ using namespace ::ts;
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TSPoint &point);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Extent<Point> &extent);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Cursor &cursor);
-llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source, unsigned indent = 0);
+llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source, unsigned indent = 0, bool showUnnamed = false);
+std::string_view getText(const ts::Node &node, std::string_view source);
 } // namespace ts
 } // namespace ocamlc2

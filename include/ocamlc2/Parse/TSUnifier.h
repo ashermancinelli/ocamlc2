@@ -2,6 +2,7 @@
 
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/ASTPasses.h"
+#include "ocamlc2/Support/LLVMCommon.h"
 #include <llvm/ADT/StringRef.h>
 #include <memory>
 #include <string>
@@ -22,11 +23,12 @@ using namespace ::ts;
 struct Unifier {
   Unifier(std::string_view source) : source(source) { }
   Unifier() { }
-  llvm::raw_ostream& show(ts::Cursor cursor);
+  llvm::raw_ostream& show(ts::Cursor cursor, bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr*>;
   using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable*>;
   TypeExpr* infer(Cursor ast);
+  TypeExpr* infer(ts::Node const& ast);
   template <typename T, typename... Args>
   T* create(Args&&... args) {
     static_assert(std::is_base_of_v<TypeExpr, T>,
@@ -37,7 +39,7 @@ struct Unifier {
 private:
   void initializeEnvironment();
 
-  void unify(TypeExpr* a, TypeExpr* b);
+  LogicalResult unify(TypeExpr* a, TypeExpr* b);
 
   // Clone a type expression, replacing generic type variables with new ones
   TypeExpr* clone(TypeExpr* type);
@@ -49,6 +51,12 @@ private:
   TypeExpr* prune(TypeExpr* type);
 
   TypeExpr* inferType(Cursor ast);
+  TypeExpr* inferValuePath(Cursor ast);
+  TypeExpr* inferLetBinding(Cursor ast);
+  TypeExpr* inferForExpression(Cursor ast);
+  TypeExpr* inferCompilationUnit(Cursor ast);
+  TypeExpr* inferApplicationExpression(Cursor ast);
+  TypeExpr* inferInfixExpression(Cursor ast);
 
   bool isSubType(TypeExpr* a, TypeExpr* b);
 
@@ -69,6 +77,7 @@ private:
     return isSubTypeOfAny(type, concreteTypes);
   }
 
+  TypeExpr* declare(Node node, TypeExpr* type);
   TypeExpr* declare(llvm::StringRef name, TypeExpr* type);
   TypeExpr* declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* type);
   TypeExpr* declarePatternVariables(const ASTNode* ast, llvm::SmallVector<TypeExpr*>& typevars);
@@ -76,6 +85,7 @@ private:
     return env.count(name) > 0;
   }
 
+  TypeExpr* getType(Node node);
   TypeExpr* getType(const llvm::StringRef name);
   TypeExpr* getType(std::vector<std::string> path);
   llvm::SmallVector<TypeExpr *>
