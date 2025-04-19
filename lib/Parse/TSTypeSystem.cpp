@@ -439,15 +439,18 @@ TypeExpr* Unifier::getType(Node node) {
 std::vector<std::string> Unifier::getPathParts(Node node) {
   std::vector<std::string> pathParts;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    auto nodeType = node.getNamedChild(i).getType();
-    if (nodeType == "value_path" or nodeType == "module_path" or nodeType == "constructor_path") {
-      auto parts = getPathParts(node.getNamedChild(i));
+    auto child = node.getNamedChild(i);
+    auto childType = child.getType();
+    if (childType == "value_path" or childType == "module_path" or childType == "constructor_path") {
+      auto parts = getPathParts(child);
       pathParts.insert(pathParts.end(), parts.begin(), parts.end());
-    } else if (nodeType == "value_name" or nodeType == "module_name" or nodeType == "constructor_name") {
-      std::string part{getText(node.getNamedChild(i), source)};
+    } else if (childType == "value_name" or childType == "module_name" or childType == "constructor_name") {
+      std::string part{getText(child, source)};
       pathParts.push_back(part);
+    } else if (childType == "parenthesized_operator") {
+      pathParts.push_back(std::string{getText(child.getNamedChild(0), source)});
     } else {
-      assert(false && "Unknown node type");
+      assert(false && "Unknown path part type");
     }
   }
   DBGS("Path parts: " << llvm::join(pathParts, "<join>") << '\n');
@@ -560,13 +563,13 @@ TypeExpr* Unifier::inferListExpression(Cursor ast) {
 
 TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
   auto node = ast.getCurrentNode();
-  assert(node.getType() == "function_expression");
+  assert(node.getType() == "fun_expression");
   SmallVector<TypeExpr*> types;
   detail::Scope scope(this);
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     if (child.getType() == "parameter") {
-      types.push_back(inferPattern(child));
+      types.push_back(inferPattern(child.getNamedChild(0)));
     } else {
       auto body = child.getNamedChild(0);
       assert(i == node.getNumNamedChildren() - 1 && "Expected body after parameters");
@@ -603,7 +606,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferLetBinding(std::move(ast));
   } else if (node.getType() == "let_expression") {
     return inferLetExpression(std::move(ast));
-  } else if (node.getType() == "function_expression") {
+  } else if (node.getType() == "fun_expression") {
     return inferFunctionExpression(std::move(ast));
   } else if (node.getType() == "match_expression") {
     return inferMatchExpression(std::move(ast));
@@ -630,8 +633,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   } else if (node.getType() == "application_expression") {
     return inferApplicationExpression(std::move(ast));
   }
-  llvm::errs() << "Unknown node type: " << node.getType() << '\n';
   show(ast.copy(), true);
+  llvm::errs() << "Unknown node type: " << node.getType() << '\n';
   assert(false && "Unknown node type");
   return nullptr;
 }
