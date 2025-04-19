@@ -225,6 +225,84 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
   return te;
 }
 
+TypeExpr* Unifier::inferPattern(ts::Node node) {
+  static constexpr std::string_view passthroughPatterns[] = {
+    "number", "string",
+  };
+  if (node.getType() == "value_pattern") {
+    auto *type = createTypeVariable();
+    declare(node, type);
+    return type;
+  } else if (llvm::is_contained(passthroughPatterns, node.getType())) {
+    return infer(node);
+  }
+  assert(false && "Unknown pattern type");
+  return nullptr;
+}
+
+TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
+  // Declared variables are only in scope during the body of the match case.
+  EnvScope es(env);
+  const auto namedChildren = node.getNumNamedChildren();
+  const auto hasGuard = namedChildren == 3;
+  const auto bodyNode = hasGuard ? node.getNamedChild(2) : node.getNamedChild(1);
+  auto *matchCaseType = inferPattern(node.getNamedChild(0));
+  if (failed(unify(matchCaseType, matcheeType))) {
+    assert(false && "Failed to unify match case type with matchee type");
+    return nullptr;
+  }
+  if (hasGuard) {
+    auto *guardType = infer(node.getNamedChild(1));
+    if (failed(unify(guardType, getBoolType()))) {
+      assert(false && "Failed to unify guard type with bool type");
+      return nullptr;
+    }
+  }
+  return infer(bodyNode);
+}
+
+TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "match_expression");
+  const auto namedChildren = node.getNumNamedChildren();
+  if (node.getNamedChild(0).getType() != "match_case") {
+    // If we don't get a match-case, we're implicitly creating
+    // a function with the matchee not available as a symbol yet.
+    auto *matcheeType = createTypeVariable();
+    declare(node, matcheeType);
+    SmallVector<TypeExpr*> functionType = {matcheeType};
+    unsigned i = 1;
+    while (i < namedChildren) {
+      auto *type = inferMatchCase(matcheeType, node.getNamedChild(i++));
+      // size .gt. 1, because the implicit matchee is the first element of the case types
+      if (functionType.size() > 1) {
+        if (failed(unify(type, functionType.back()))) {
+          assert(false && "Failed to unify case type with previous case type");
+          return nullptr;
+        }
+      }
+      functionType.push_back(type);
+    }
+    return createFunction(functionType);
+  } else {
+    // Otherwise, we're matching against a value, so we need to infer the type of the
+    // matchee.
+    auto matchee = node.getNamedChild(0);
+    auto *matcheeType = infer(matchee);
+    TypeExpr *resultType = nullptr;
+    unsigned i = 1;
+    while (i < namedChildren) {
+      auto *type = inferMatchCase(matcheeType, node.getNamedChild(i++));
+      if (resultType != nullptr && failed(unify(type, resultType))) {
+        assert(false && "Failed to unify case type with previous case type");
+        return nullptr;
+      }
+      resultType = type;
+    }
+    return resultType;
+  }
+}
+
 TypeExpr* Unifier::inferLetBinding(Cursor ast) {
   auto node = ast.getCurrentNode();
   SmallVector<Node> parameters;
@@ -401,6 +479,17 @@ TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
   return funcType->back();
 }
 
+TypeExpr* Unifier::inferGuard(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "guard");
+  auto *type = infer(node.getNamedChild(0));
+  if (failed(unify(type, getBoolType()))) {
+    assert(false && "Failed to unify guard type with bool type");
+    return nullptr;
+  }
+  return getBoolType();
+}
+
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
   static constexpr std::string_view passthroughTypes[] = {
@@ -418,10 +507,14 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return getType("float");
   } else if (node.getType() == "string") {
     return getType("string");
+  } else if (node.getType() == "guard") {
+    return inferGuard(std::move(ast));
   } else if (node.getType() == "do_clause") {
     return infer(node.getNamedChild(0));
   } else if (node.getType() == "let_binding") {
     return inferLetBinding(std::move(ast));
+  } else if (node.getType() == "match_expression") {
+    return inferMatchExpression(std::move(ast));
   } else if (node.getType() == "value_path") {
     return inferValuePath(std::move(ast));
   } else if (node.getType() == "for_expression") {

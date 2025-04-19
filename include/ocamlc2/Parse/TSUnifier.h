@@ -58,6 +58,10 @@ private:
   TypeExpr* inferApplicationExpression(Cursor ast);
   TypeExpr* inferInfixExpression(Cursor ast);
   TypeExpr* inferIfExpression(Cursor ast);
+  TypeExpr* inferMatchExpression(Cursor ast);
+  TypeExpr* inferMatchCase(TypeExpr* matcheeType, ts::Node node);
+  TypeExpr* inferPattern(ts::Node node);
+  TypeExpr* inferGuard(Cursor ast);
 
   bool isSubType(TypeExpr* a, TypeExpr* b);
 
