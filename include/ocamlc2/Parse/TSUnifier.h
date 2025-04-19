@@ -71,6 +71,7 @@ private:
   TypeExpr *inferPattern(ts::Node node);
   TypeExpr *inferGuard(Cursor ast);
   TypeExpr *inferArrayGetExpression(Cursor ast);
+  TypeExpr *inferListExpression(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 

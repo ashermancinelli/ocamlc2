@@ -180,7 +180,7 @@ void Unifier::initializeEnvironment() {
     declare("None", Optional);
     declare("Some", createFunction({T1, Optional}));
   }
-  declarePath({"String", "concat"}, createFunction({T_string, getListOf(T_string), T_string}));
+  declarePath({"String", "concat"}, createFunction({T_string, getListTypeOf(T_string), T_string}));
   {
     detail::ModuleScope ms{*this, "Printf"};
     declare("printf", createFunction({T_string, getType("varargs!"), T_unit}));
@@ -194,8 +194,8 @@ void Unifier::initializeEnvironment() {
   declarePath({"Array", "length"}, createFunction({List, T_int}));
   {
     detail::ModuleScope ms{*this, "List"};
-    declare("map", createFunction({createFunction({T1, T2}), getListOf(T1),
-                                        getListOf(T2)}));
+    declare("map", createFunction({createFunction({T1, T2}), getListTypeOf(T1),
+                                        getListTypeOf(T2)}));
     declare("fold_left",
             createFunction({createFunction({T1, T2, T1}), T1, List, T2}));
     declare("fold_right", getType("fold_left"));
@@ -543,6 +543,21 @@ TypeExpr* Unifier::inferLetExpression(Cursor ast) {
   return infer(node.getNamedChild(1));
 }
 
+TypeExpr* Unifier::inferListExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "list_expression");
+  SmallVector<TypeExpr*> args;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto *type = infer(node.getNamedChild(i));
+    if (not args.empty() && failed(unify(type, args.back()))) {
+      assert(false && "Failed to unify list element type with previous element type");
+      return nullptr;
+    }
+    args.push_back(type);
+  }
+  return getListTypeOf(args.back());
+}
+
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
   static constexpr std::string_view passthroughTypes[] = {
@@ -580,6 +595,10 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferInfixExpression(std::move(ast));
   } else if (node.getType() == "if_expression") {
     return inferIfExpression(std::move(ast));
+  } else if (node.getType() == "array_get_expression") {
+    return inferArrayGetExpression(std::move(ast));
+  } else if (node.getType() == "list_expression") {
+    return inferListExpression(std::move(ast));
   } else if (llvm::is_contained(passthroughTypes, node.getType())) {
     assert(node.getNumNamedChildren() == 1);
     return infer(node.getNamedChild(0));
