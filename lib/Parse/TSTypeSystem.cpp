@@ -558,6 +558,24 @@ TypeExpr* Unifier::inferListExpression(Cursor ast) {
   return getListTypeOf(args.back());
 }
 
+TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "function_expression");
+  SmallVector<TypeExpr*> types;
+  detail::Scope scope(this);
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    if (child.getType() == "parameter") {
+      types.push_back(inferPattern(child));
+    } else {
+      auto body = child.getNamedChild(0);
+      assert(i == node.getNumNamedChildren() - 1 && "Expected body after parameters");
+      types.push_back(infer(body));
+    }
+  }
+  return createFunction(types);
+}
+
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
   static constexpr std::string_view passthroughTypes[] = {
@@ -585,6 +603,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferLetBinding(std::move(ast));
   } else if (node.getType() == "let_expression") {
     return inferLetExpression(std::move(ast));
+  } else if (node.getType() == "function_expression") {
+    return inferFunctionExpression(std::move(ast));
   } else if (node.getType() == "match_expression") {
     return inferMatchExpression(std::move(ast));
   } else if (node.getType() == "value_path") {
