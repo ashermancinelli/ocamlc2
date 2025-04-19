@@ -487,6 +487,23 @@ TypeExpr* Unifier::inferConstructorPath(Cursor ast) {
   return getType(pathParts);
 }
 
+TypeExpr* Unifier::inferArrayGetExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "array_get_expression");
+  auto inferredArrayType = infer(node.getNamedChild(0));
+  auto indexType = infer(node.getNamedChild(1));
+  if (failed(unify(indexType, getIntType()))) {
+    assert(false && "Failed to unify index type with int type");
+    return nullptr;
+  }
+  auto *arrayType = getArrayType();
+  if (failed(unify(arrayType, inferredArrayType))) {
+    assert(false && "Failed to unify array type with itself");
+    return nullptr;
+  }
+  return arrayType->back();
+}
+
 TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "infix_expression");

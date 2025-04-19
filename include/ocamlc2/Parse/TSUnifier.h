@@ -70,6 +70,7 @@ private:
   TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
   TypeExpr *inferPattern(ts::Node node);
   TypeExpr *inferGuard(Cursor ast);
+  TypeExpr *inferArrayGetExpression(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
@@ -124,10 +125,14 @@ private:
   inline auto *getStringType() { return getType("string"); }
   inline auto *getWildcardType() { return getType("_"); }
   inline auto *getVarargsType() { return getType("varargs!"); }
-  inline auto *getListType() { return getType("List"); }
-  inline auto *getListOf(TypeExpr *type) {
-    return createTypeOperator("List", {type});
+  inline auto *getListTypeOf(TypeExpr *type) {
+    return createTypeOperator(TypeOperator::getListOperatorName(), {type});
   }
+  inline auto *getListType() { return getListTypeOf(createTypeVariable()); }
+  inline auto *getArrayTypeOf(TypeExpr *type) {
+    return createTypeOperator(TypeOperator::getArrayOperatorName(), {type});
+  }
+  inline auto *getArrayType() { return getArrayTypeOf(createTypeVariable()); }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
 
