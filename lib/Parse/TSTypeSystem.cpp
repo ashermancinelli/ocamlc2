@@ -109,18 +109,18 @@ TypeExpr* Unifier::getType(std::vector<std::string> path) {
 }
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
-  // DBGS("Getting type: " << name << '\n');
+  DBGS("Getting type: " << name << '\n');
   if (auto *type = env.lookup(name)) {
-    // DBGS("Found type in default env: " << *type << '\n');
+    DBGS("Found type in default env: " << *type << '\n');
     return clone(type);
   }
   for (auto &path : llvm::reverse(moduleSearchPath)) {
-    // DBGS("Checking module search path: " << path << '\n');
+    DBGS("Checking module search path: " << path << '\n');
     auto possiblePath = hashPath(std::vector<std::string>{path.str(), name.str()});
     auto str = stringArena.save(possiblePath);
-    // DBGS("with name: " << str << '\n');
+    DBGS("with name: " << str << '\n');
     if (auto *type = env.lookup(str)) {
-      // DBGS("Found type " << *type << " in module search path: " << possiblePath << '\n');
+      DBGS("Found type " << *type << " in module search path: " << possiblePath << '\n');
       return clone(type);
     }
   }
@@ -177,12 +177,12 @@ void Unifier::initializeEnvironment() {
     // Builtin constructors
     auto *Optional =
         createTypeOperator("Optional", {(T1 = createTypeVariable())});
-    declare("None", createFunction({Optional}));
+    declare("None", Optional);
     declare("Some", createFunction({T1, Optional}));
   }
   declarePath({"String", "concat"}, createFunction({T_string, getListOf(T_string), T_string}));
   {
-    ModuleScope ms{*this, "Printf"};
+    detail::ModuleScope ms{*this, "Printf"};
     declare("printf", createFunction({T_string, getType("varargs!"), T_unit}));
   }
 
@@ -193,7 +193,7 @@ void Unifier::initializeEnvironment() {
   declare("Cons", createFunction({T1, List, List}));
   declarePath({"Array", "length"}, createFunction({List, T_int}));
   {
-    ModuleScope ms{*this, "List"};
+    detail::ModuleScope ms{*this, "List"};
     declare("map", createFunction({createFunction({T1, T2}), getListOf(T1),
                                         getListOf(T2)}));
     declare("fold_left",
@@ -242,7 +242,7 @@ TypeExpr* Unifier::inferPattern(ts::Node node) {
 
 TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
   // Declared variables are only in scope during the body of the match case.
-  EnvScope es(env);
+  detail::Scope scope(this);
   const auto namedChildren = node.getNumNamedChildren();
   const auto hasGuard = namedChildren == 3;
   const auto bodyNode = hasGuard ? node.getNamedChild(2) : node.getNamedChild(1);
@@ -411,7 +411,7 @@ TypeExpr* Unifier::inferForExpression(Cursor ast) {
 
 TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   TRACE();
-  EnvScope es(env);
+  detail::Scope scope(this);
   initializeEnvironment();
   auto *t = getUnitType();
   auto shouldSkip = [](Node node) {
@@ -432,13 +432,33 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
 }
 
 TypeExpr* Unifier::getType(Node node) {
+  DBGS("Getting type for: " << node.getType() << '\n');
   return getType(getText(node, source));
+}
+
+std::vector<std::string> Unifier::getPathParts(Node node) {
+  std::vector<std::string> pathParts;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto nodeType = node.getNamedChild(i).getType();
+    if (nodeType == "value_path" or nodeType == "module_path" or nodeType == "constructor_path") {
+      auto parts = getPathParts(node.getNamedChild(i));
+      pathParts.insert(pathParts.end(), parts.begin(), parts.end());
+    } else if (nodeType == "value_name" or nodeType == "module_name" or nodeType == "constructor_name") {
+      std::string part{getText(node.getNamedChild(i), source)};
+      pathParts.push_back(part);
+    } else {
+      assert(false && "Unknown node type");
+    }
+  }
+  DBGS("Path parts: " << llvm::join(pathParts, "<join>") << '\n');
+  return pathParts;
 }
 
 TypeExpr* Unifier::inferValuePath(Cursor ast) {
   auto node = ast.getCurrentNode();
-  assert(node.getType() == "value_path");
-  return getType(getText(node, source));
+  assert(node.getType() == "value_path" or node.getType() == "module_path");
+  auto pathParts = getPathParts(node);
+  return getType(pathParts);
 }
 
 TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
@@ -451,13 +471,20 @@ TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
     args.push_back(infer(ast.getCurrentNode()));
   }
   args.push_back(createTypeVariable());
-  auto declaredFuncType = getType(id);
+  auto declaredFuncType = infer(id);
   auto inferredFuncType = createFunction(args);
   if (failed(unify(declaredFuncType, inferredFuncType))) {
     assert(false && "Failed to unify declared and inferred function types");
     return nullptr;
   }
   return inferredFuncType->back();
+}
+
+TypeExpr* Unifier::inferConstructorPath(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "constructor_path");
+  auto pathParts = getPathParts(node);
+  return getType(pathParts);
 }
 
 TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
@@ -490,6 +517,15 @@ TypeExpr* Unifier::inferGuard(Cursor ast) {
   return getBoolType();
 }
 
+TypeExpr* Unifier::inferLetExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "let_expression");
+  assert(node.getNumNamedChildren() == 2);
+  detail::Scope scope(this);
+  infer(node.getNamedChild(0));
+  return infer(node.getNamedChild(1));
+}
+
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
   static constexpr std::string_view passthroughTypes[] = {
@@ -511,8 +547,12 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferGuard(std::move(ast));
   } else if (node.getType() == "do_clause") {
     return infer(node.getNamedChild(0));
+  } else if (node.getType() == "constructor_path") {
+    return inferConstructorPath(std::move(ast));
   } else if (node.getType() == "let_binding") {
     return inferLetBinding(std::move(ast));
+  } else if (node.getType() == "let_expression") {
+    return inferLetExpression(std::move(ast));
   } else if (node.getType() == "match_expression") {
     return inferMatchExpression(std::move(ast));
   } else if (node.getType() == "value_path") {
