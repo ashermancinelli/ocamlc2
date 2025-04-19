@@ -203,7 +203,12 @@ void Unifier::initializeEnvironment() {
 }
 
 llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed) {
-  return dump(llvm::errs(), cursor.copy(), source, 0, showUnnamed);
+  auto showTypes = [this](llvm::raw_ostream &os, ts::Node node) {
+    if (auto *te = nodeToType.lookup(node.getID())) {
+      os << " " << *te;
+    }
+  };
+  return dump(llvm::errs(), cursor.copy(), source, 0, showUnnamed, showTypes);
 }
 
 TypeExpr* Unifier::infer(ts::Node const& ast) {
@@ -216,6 +221,7 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
   auto *te = inferType(cursor.copy());
   DBGS("Inferred type: " << *te << '\n');
   DBG(show(cursor.copy()));
+  nodeToType[cursor.getCurrentNode().getID()] = te;
   return te;
 }
 

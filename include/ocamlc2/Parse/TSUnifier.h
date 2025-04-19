@@ -158,6 +158,7 @@ private:
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
   llvm::SmallVector<llvm::StringRef> moduleSearchPath;
   llvm::SmallVector<llvm::StringRef> currentModule;
+  llvm::DenseMap<ts::NodeID, TypeExpr*> nodeToType;
 };
 
 } // namespace ts

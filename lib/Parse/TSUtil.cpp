@@ -21,7 +21,10 @@ std::string_view getText(const ts::Node &node, std::string_view source) {
   return source.substr(byteRange.start, byteRange.end - byteRange.start);
 }
 
-llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source, unsigned indent, bool showUnnamed) {
+llvm::raw_ostream &
+dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
+     unsigned indent, bool showUnnamed,
+     std::optional<std::function<void(llvm::raw_ostream &, ts::Node)>> dumpNode) {
   auto range = cursor.getCurrentNode().getPointRange();
   auto byteRange = cursor.getCurrentNode().getByteRange();
   std::string indentStr;
@@ -36,7 +39,12 @@ llvm::raw_ostream &dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_vi
   } else {
     os << text;
   }
-  os << " " << range << "\n";
+  os << " " << range;
+  if (dumpNode) {
+    auto callback = *dumpNode;
+    callback(os, cursor.getCurrentNode());
+  }
+  os << "\n";
   os << ANSIColors::reset();
   auto node = cursor.getCurrentNode();
   if (showUnnamed) {
