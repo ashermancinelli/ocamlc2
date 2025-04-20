@@ -611,7 +611,8 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   if (structure) {
     inferModuleStructure(structure->getCursor());
   }
-  return getUnitType();
+  return createTypeOperator(
+      hashPath(ArrayRef<StringRef>{"Module", getText(name, source)}), {});
 }
 
 TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
@@ -632,6 +633,32 @@ TypeExpr* Unifier::inferModuleStructure(Cursor ast) {
     infer(child);
   }
   return getUnitType();
+}
+
+TypeExpr* Unifier::inferTypeExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "function_type");
+  SmallVector<TypeExpr*> args;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    args.push_back(infer(child));
+  }
+  return createFunction(args);
+}
+
+TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "value_specification");
+  auto name = node.getChildByFieldName("value_name");
+  if (auto functionType = node.getChildByFieldName("function_type");
+      !functionType.isNull()) {
+    auto *type = inferTypeExpression(functionType.getCursor());
+    declare(name, type);
+    return type;
+  }
+  show(ast.copy(), true);
+  assert(false && "Unknown value specification type");
+  return nullptr;
 }
 
 TypeExpr* Unifier::inferType(Cursor ast) {
@@ -691,6 +718,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferApplicationExpression(std::move(ast));
   } else if (node.getType() == "module_definition") {
     return inferModuleDefinition(std::move(ast));
+  } else if (node.getType() == "value_specification") {
+    return inferValueSpecification(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';

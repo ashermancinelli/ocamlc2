@@ -77,6 +77,8 @@ private:
   TypeExpr *inferModuleBinding(Cursor ast);
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);
+  TypeExpr *inferValueSpecification(Cursor ast);
+  TypeExpr *inferTypeExpression(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
