@@ -73,6 +73,10 @@ private:
   TypeExpr *inferArrayGetExpression(Cursor ast);
   TypeExpr *inferListExpression(Cursor ast);
   TypeExpr *inferFunctionExpression(Cursor ast);
+  TypeExpr *inferModuleDefinition(Cursor ast);
+  TypeExpr *inferModuleBinding(Cursor ast);
+  TypeExpr *inferModuleSignature(Cursor ast);
+  TypeExpr *inferModuleStructure(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 

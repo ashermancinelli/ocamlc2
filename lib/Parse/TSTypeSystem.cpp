@@ -579,6 +579,61 @@ TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
   return createFunction(types);
 }
 
+TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "module_definition");
+  return inferModuleBinding(node.getNamedChild(0).getCursor());
+}
+
+TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "module_binding");
+  auto name = node.getChildByFieldName("name");
+  detail::ModuleScope ms{*this, getText(name, source)};
+  const auto numChildren = node.getNumNamedChildren();
+  std::optional<Node> signature;
+  std::optional<Node> structure;
+  for (unsigned i = 1; i < numChildren; ++i) {
+    auto child = node.getNamedChild(i);
+    show(child.getCursor(), true);
+    if (child.getType() == "signature") {
+      signature = child;
+    } else if (child.getType() == "structure") {
+      structure = child;
+    } else {
+      show(child.getCursor(), true);
+      assert(false && "Unknown module binding child type");
+    }
+  }
+  if (signature) {
+    inferModuleSignature(signature->getCursor());
+  }
+  if (structure) {
+    inferModuleStructure(structure->getCursor());
+  }
+  return getUnitType();
+}
+
+TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "signature");
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    infer(child);
+  }
+  return getUnitType();
+}
+
+TypeExpr* Unifier::inferModuleStructure(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "structure");
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    infer(child);
+  }
+  return getUnitType();
+}
+
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
   static constexpr std::string_view passthroughTypes[] = {
@@ -594,6 +649,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return getType("int");
   } else if (node.getType() == "float") {
     return getType("float");
+  } else if (node.getType() == "unit") {
+    return getUnitType();
   } else if (node.getType() == "string") {
     return getType("string");
   } else if (node.getType() == "guard") {
@@ -632,6 +689,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferCompilationUnit(std::move(ast));
   } else if (node.getType() == "application_expression") {
     return inferApplicationExpression(std::move(ast));
+  } else if (node.getType() == "module_definition") {
+    return inferModuleDefinition(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';
