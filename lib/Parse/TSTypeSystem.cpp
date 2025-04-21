@@ -217,11 +217,11 @@ TypeExpr* Unifier::infer(ts::Node const& ast) {
 
 TypeExpr* Unifier::infer(ts::Cursor cursor) {
   DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
-  DBG(show(cursor.copy()));
+  DBG(show(cursor.copy(), true));
   auto *te = inferType(cursor.copy());
   DBGS("Inferred type:\n");
   nodeToType[cursor.getCurrentNode().getID()] = te;
-  DBG(show(cursor.copy()));
+  DBG(show(cursor.copy(), true));
   return te;
 }
 
@@ -303,9 +303,75 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
   }
 }
 
+static bool isLetBindingRecursive(Cursor ast) {
+  DBGS("Checking: " << ast.getCurrentNode().getType() << '\n');
+  auto node = ast.getCurrentNode();
+  auto maybeRecKeyword = node.getPreviousSibling();
+  if (!maybeRecKeyword.isNull() && maybeRecKeyword.getType() == "rec") {
+    return true;
+  }
+  return false;
+}
+
+TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> parameters, Node body) {
+  DBGS("non-recursive let binding, inferring body type\n");
+  auto [returnType, types] = [&]() { 
+    detail::Scope scope(this);
+    SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
+      if (n.getType() == "unit") {
+        return getUnitType();
+      }
+      auto *tv = createTypeVariable();
+      declare(n, tv);
+      return tv;
+    });
+    auto *returnType = infer(body);
+    return std::make_pair(returnType, types);
+  }();
+  types.push_back(returnType);
+  auto *funcType = createFunction(types);
+  declare(name, funcType);
+  return funcType;
+}
+
+TypeExpr *Unifier::inferLetBindingRecursiveFunction(Node name, SmallVector<Node> parameters, Node body) {
+  DBGS("recursive let binding, declaring function type before body\n");
+  auto *tv = createTypeVariable();
+  declare(name, tv);
+  auto *funcType = [&]() -> TypeExpr* {
+    detail::Scope scope(this);
+    SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
+      if (n.getType() == "unit") {
+        return getUnitType();
+      }
+      auto *tv = createTypeVariable();
+      declare(n, tv);
+      return tv;
+    });
+    auto *bodyType = infer(body);
+    types.push_back(bodyType);
+    return createFunction(types);
+  }();
+  if (failed(unify(funcType, tv))) {
+    assert(false && "Failed to unify function type with type variable");
+    return nullptr;
+  }
+  return funcType;
+}
+
+TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
+  DBGS("variable let binding, no parameters\n");
+  auto *bodyType = infer(body);
+  declare(name, bodyType);
+  return bodyType;
+}
+
+
 TypeExpr* Unifier::inferLetBinding(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   SmallVector<Node> parameters;
+  const bool isRecursive = isLetBindingRecursive(ast.copy());
   auto name = node.getNamedChild(0),
        body = node.getNamedChild(node.getNumNamedChildren() - 1);
   for (unsigned i = 1; i < node.getNumNamedChildren() - 1; ++i) {
@@ -314,24 +380,13 @@ TypeExpr* Unifier::inferLetBinding(Cursor ast) {
     parameters.push_back(n.getNamedChild(0));
   }
   if (parameters.empty()) {
-    DBGS("variable let binding, no parameters\n");
-    auto *bodyType = infer(body);
-    declare(name, bodyType);
-    return bodyType;
+    assert(!isRecursive && "Expected non-recursive let binding for non-function");
+    return inferLetBindingValue(name, body);
+  } else if (isRecursive) {
+    return inferLetBindingRecursiveFunction(name, parameters, body);
+  } else {
+    return inferLetBindingFunction(name, parameters, body);
   }
-  SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
-    if (n.getType() == "unit") {
-      return getUnitType();
-    }
-    auto *tv = createTypeVariable();
-    declare(n, tv);
-    return tv;
-  });
-  auto *returnType = infer(body);
-  types.push_back(returnType);
-  auto *funcType = createFunction(types);
-  declare(name, funcType);
-  return funcType;
 }
 
 TypeExpr* Unifier::inferIfExpression(Cursor ast) {
@@ -593,6 +648,16 @@ TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
   return createFunction(types);
 }
 
+TypeExpr* Unifier::inferSequenceExpression(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  auto *last = getUnitType();
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    last = infer(node.getNamedChild(i));
+  }
+  return last;
+}
+
 TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_definition");
@@ -609,7 +674,6 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   std::optional<Node> structure;
   for (unsigned i = 1; i < numChildren; ++i) {
     auto child = node.getNamedChild(i);
-    show(child.getCursor(), true);
     if (child.getType() == "signature") {
       signature = child;
     } else if (child.getType() == "structure") {
@@ -688,6 +752,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     "parenthesized_expression",
     "then_clause",
     "else_clause",
+    "value_definition",
+    "expression_item",
   };
   if (node.getType() == "number") {
     auto text = getText(node, source);
@@ -730,9 +796,6 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   } else if (llvm::is_contained(passthroughTypes, node.getType())) {
     assert(node.getNumNamedChildren() == 1);
     return infer(node.getNamedChild(0));
-  } else if (node.getType() == "value_definition") {
-    assert(node.getNumNamedChildren() == 1);
-    return infer(node.getNamedChild(0));
   } else if (node.getType() == "compilation_unit") {
     return inferCompilationUnit(std::move(ast));
   } else if (node.getType() == "application_expression") {
@@ -743,6 +806,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferValueSpecification(std::move(ast));
   } else if (node.getType() == "type_constructor_path") {
     return inferTypeConstructorPath(std::move(ast));
+  } else if (node.getType() == "sequence_expression") {
+    return inferSequenceExpression(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';
@@ -839,36 +904,37 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
   }
   return success();
 }
-
-// static size_t clone_count = 0;
 TypeExpr *Unifier::clone(TypeExpr *type) {
-  // DBGS("Cloning type: " << ++clone_count << ": " << *type << '\n');
   llvm::DenseMap<TypeExpr *, TypeExpr *> mapping;
-  auto *unifier = this;
-  auto recurse = [&](this const auto &recurse, TypeExpr *expr) -> TypeExpr * {
-    // DBGS("recursing on type: " << *expr << '\n');
-    if (auto *op = llvm::dyn_cast<TypeOperator>(expr)) {
-      auto args = llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr* arg) {
-        return unifier->clone(arg);
-      }));
-      // DBGS("cloning type operator: " << op->getName() << '\n');
-      return unifier->createTypeOperator(op->getName(), args);
-    } else if (auto *tv = llvm::dyn_cast<TypeVariable>(expr)) {
-      // DBGS("cloning type variable: " << *tv << '\n');
-      if (unifier->isGeneric(tv, concreteTypes)) {
-        // DBGS("type variable is generic, cloning\n");
-        if (mapping.find(tv) == mapping.end()) {
-          // DBGS("Didn't find mapping for type variable: " << *tv << ", creating new one\n");
-          mapping[tv] = unifier->createTypeVariable();
-        }
-        // DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
-        return mapping[tv];
+  return clone(type, mapping);
+}
+
+TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
+  DBGS("Cloning type: " << *type << '\n');
+  type = prune(type);
+  DBGS("recursing on type: " << *type << '\n');
+  if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
+    auto args =
+        llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr *arg) {
+          return clone(arg, mapping);
+        }));
+    DBGS("cloning type operator: " << op->getName() << '\n');
+    return createTypeOperator(op->getName(), args);
+  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
+    DBGS("cloning type variable: " << *tv << '\n');
+    if (isGeneric(tv, concreteTypes)) {
+      DBGS("type variable is generic, cloning\n");
+      if (mapping.find(tv) == mapping.end()) {
+        DBGS("Didn't find mapping for type variable: "
+             << *tv << ", creating new one\n");
+        mapping[tv] = createTypeVariable();
       }
+      DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
+      return mapping[tv];
     }
-    // DBGS("cloned type: " << *expr << '\n');
-    return expr;
-  };
-  return recurse(prune(type));
+  }
+  DBGS("cloned type: " << *type << '\n');
+  return type;
 }
 
 TypeExpr* Unifier::prune(TypeExpr* type) {

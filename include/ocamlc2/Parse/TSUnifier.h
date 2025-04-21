@@ -48,6 +48,7 @@ private:
 
   // Clone a type expression, replacing generic type variables with new ones
   TypeExpr *clone(TypeExpr *type);
+  TypeExpr *clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
 
   // The function Prune is used whenever a type expression has to be inspected:
   // it will always return a type expression which is either an uninstantiated
@@ -60,6 +61,9 @@ private:
   TypeExpr *inferValuePath(Cursor ast);
   TypeExpr *inferConstructorPath(Cursor ast);
   TypeExpr *inferLetBinding(Cursor ast);
+  TypeExpr *inferLetBindingFunction(Node name, SmallVector<Node> parameters, Node body);
+  TypeExpr *inferLetBindingRecursiveFunction(Node name, SmallVector<Node> parameters, Node body);
+  TypeExpr *inferLetBindingValue(Node name, Node body);
   TypeExpr *inferLetExpression(Cursor ast);
   TypeExpr *inferForExpression(Cursor ast);
   TypeExpr *inferCompilationUnit(Cursor ast);
@@ -80,6 +84,7 @@ private:
   TypeExpr *inferValueSpecification(Cursor ast);
   TypeExpr *inferTypeExpression(Cursor ast);
   TypeExpr *inferTypeConstructorPath(Cursor ast);
+  TypeExpr *inferSequenceExpression(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
