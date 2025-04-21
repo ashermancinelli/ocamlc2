@@ -79,6 +79,7 @@ private:
   TypeExpr *inferModuleStructure(Cursor ast);
   TypeExpr *inferValueSpecification(Cursor ast);
   TypeExpr *inferTypeExpression(Cursor ast);
+  TypeExpr *inferTypeConstructorPath(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
@@ -129,7 +130,7 @@ private:
   inline auto *getBoolType() { return getType("bool"); }
   inline auto *getFloatType() { return getType("float"); }
   inline auto *getIntType() { return getType("int"); }
-  inline auto *getUnitType() { return getType("unit!"); }
+  inline auto *getUnitType() { return getType("unit"); }
   inline auto *getStringType() { return getType("string"); }
   inline auto *getWildcardType() { return getType("_"); }
   inline auto *getVarargsType() { return getType("varargs!"); }

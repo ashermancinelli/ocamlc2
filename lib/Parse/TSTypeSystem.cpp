@@ -135,7 +135,7 @@ void Unifier::initializeEnvironment() {
 
   // We need to insert these directly because other type initializations require
   // varargs, wildcard, etc to define themselves.
-  for (auto name : {"int", "float", "bool", "string", "unit!", "_", "•", "varargs!"}) {
+  for (auto name : {"int", "float", "bool", "string", "unit", "_", "•", "varargs!"}) {
     auto str = stringArena.save(name);
     DBGS("Declaring type operator: " << str << '\n');
     env.insert(str, createTypeOperator(str));
@@ -205,7 +205,7 @@ void Unifier::initializeEnvironment() {
 llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed) {
   auto showTypes = [this](llvm::raw_ostream &os, ts::Node node) {
     if (auto *te = nodeToType.lookup(node.getID())) {
-      os << " " << *te;
+      os << ANSIColors::magenta() << " " << *te << ANSIColors::reset();
     }
   };
   return dump(llvm::errs(), cursor.copy(), source, 0, showUnnamed, showTypes);
@@ -219,9 +219,9 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
   DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
   DBG(show(cursor.copy()));
   auto *te = inferType(cursor.copy());
-  DBGS("Inferred type: " << *te << '\n');
-  DBG(show(cursor.copy()));
+  DBGS("Inferred type:\n");
   nodeToType[cursor.getCurrentNode().getID()] = te;
+  DBG(show(cursor.copy()));
   return te;
 }
 
@@ -306,29 +306,31 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
 TypeExpr* Unifier::inferLetBinding(Cursor ast) {
   auto node = ast.getCurrentNode();
   SmallVector<Node> parameters;
-  std::optional<Node> body;
-  for (unsigned i = 0; i < node.getNumChildren(); ++i) {
-    auto n = node.getChild(i);
-    if (n.getType() == "=") {
-      i++;
-      body = node.getChild(i);
-      assert(i == node.getNumChildren() - 1 && "Expected body after =");
-    } else {
-      parameters.push_back(node.getChild(i));
-    }
+  auto name = node.getNamedChild(0),
+       body = node.getNamedChild(node.getNumNamedChildren() - 1);
+  for (unsigned i = 1; i < node.getNumNamedChildren() - 1; ++i) {
+    auto n = node.getNamedChild(i);
+    assert(n.getType() == "parameter" && "Expected parameter");
+    parameters.push_back(n.getNamedChild(0));
   }
   if (parameters.empty()) {
-    return infer(*body);
+    DBGS("variable let binding, no parameters\n");
+    auto *bodyType = infer(body);
+    declare(name, bodyType);
+    return bodyType;
   }
   SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
+    if (n.getType() == "unit") {
+      return getUnitType();
+    }
     auto *tv = createTypeVariable();
     declare(n, tv);
     return tv;
   });
-  auto *returnType = infer(*body);
+  auto *returnType = infer(body);
   types.push_back(returnType);
   auto *funcType = createFunction(types);
-  declare(node, funcType);
+  declare(name, funcType);
   return funcType;
 }
 
@@ -438,13 +440,25 @@ TypeExpr* Unifier::getType(Node node) {
 
 std::vector<std::string> Unifier::getPathParts(Node node) {
   std::vector<std::string> pathParts;
+  static constexpr std::string_view pathTypes[] = {
+    "value_path",
+    "module_path",
+    "constructor_path",
+    "type_constructor_path",
+  };
+  static constexpr std::string_view nameTypes[] = {
+    "value_name",
+    "module_name",
+    "constructor_name",
+    "type_constructor",
+  };
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     auto childType = child.getType();
-    if (childType == "value_path" or childType == "module_path" or childType == "constructor_path") {
+    if (llvm::is_contained(pathTypes, childType)) {
       auto parts = getPathParts(child);
       pathParts.insert(pathParts.end(), parts.begin(), parts.end());
-    } else if (childType == "value_name" or childType == "module_name" or childType == "constructor_name") {
+    } else if (llvm::is_contained(nameTypes, childType)) {
       std::string part{getText(child, source)};
       pathParts.push_back(part);
     } else if (childType == "parenthesized_operator") {
@@ -649,16 +663,23 @@ TypeExpr* Unifier::inferTypeExpression(Cursor ast) {
 TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "value_specification");
-  auto name = node.getChildByFieldName("value_name");
-  if (auto functionType = node.getChildByFieldName("function_type");
-      !functionType.isNull()) {
-    auto *type = inferTypeExpression(functionType.getCursor());
+  auto name = node.getNamedChild(0);
+  auto specification = node.getNamedChild(1);
+  if (specification.getType() == "function_type") {
+    auto *type = inferTypeExpression(specification.getCursor());
     declare(name, type);
     return type;
   }
   show(ast.copy(), true);
   assert(false && "Unknown value specification type");
   return nullptr;
+}
+
+TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "type_constructor_path");
+  auto pathParts = getPathParts(node);
+  return getType(pathParts);
 }
 
 TypeExpr* Unifier::inferType(Cursor ast) {
@@ -720,6 +741,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferModuleDefinition(std::move(ast));
   } else if (node.getType() == "value_specification") {
     return inferValueSpecification(std::move(ast));
+  } else if (node.getType() == "type_constructor_path") {
+    return inferTypeConstructorPath(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';

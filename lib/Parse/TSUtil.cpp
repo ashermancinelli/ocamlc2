@@ -50,16 +50,16 @@ dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
   if (showUnnamed) {
     for (unsigned i = 0; i < node.getNumChildren(); ++i) {
       auto child = node.getChild(i);
-      dump(os, child.getCursor(), source, indent + 1);
+      dump(os, child.getCursor(), source, indent + 1, showUnnamed, dumpNode);
     }
   } else {
     for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
       auto child = node.getNamedChild(i);
-      dump(os, child.getCursor(), source, indent + 1);
+      dump(os, child.getCursor(), source, indent + 1, showUnnamed, dumpNode);
     }
   }
   if (cursor.gotoNextSibling()) {
-    dump(os, cursor.copy(), source, indent);
+    dump(os, cursor.copy(), source, indent, showUnnamed, dumpNode);
   }
   return os;
 }

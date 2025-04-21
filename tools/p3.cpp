@@ -36,12 +36,9 @@ int main(int argc, char* argv[]) {
   auto tree = parser.parseString(source);
   auto root = tree.getRootNode();
   
-  // Use the new pretty printer
-  llvm::errs() << "AST:\n";
-  dump(llvm::errs(), root.getCursor(), source);
-  
   ocamlc2::ts::Unifier unifier{source};
-  unifier.show(root.getCursor());
+  llvm::errs() << "AST:\n";
+  unifier.show(root.getCursor(), true);
   auto *te = unifier.infer(root.getCursor());
   llvm::errs() << "Inferred type: " << *te << '\n';
 
