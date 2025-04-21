@@ -29,8 +29,21 @@ struct StringArena {
     auto [it, _] = pool.insert(str);
     return *it;
   }
+  llvm::StringRef save(std::string_view str) {
+    return save(std::string(str));
+  }
+  llvm::StringRef save(const char *str) {
+    return save(std::string_view(str));
+  }
 };
 static StringArena stringArena;
+
+static constexpr std::string_view pathTypes[] = {
+    "value_path",
+    "module_path",
+    "constructor_path",
+    "type_constructor_path",
+};
 } // namespace
 
 static std::string getPath(llvm::ArrayRef<llvm::StringRef> path) {
@@ -107,6 +120,9 @@ TypeExpr* Unifier::getType(std::vector<std::string> path) {
   auto hashedPath = hashPath(path);
   return getType(stringArena.save(hashedPath));
 }
+TypeExpr* Unifier::getType(const std::string_view name) {
+  return getType(stringArena.save(name));
+}
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
   DBGS("Getting type: " << name << '\n');
@@ -135,14 +151,14 @@ void Unifier::initializeEnvironment() {
 
   // We need to insert these directly because other type initializations require
   // varargs, wildcard, etc to define themselves.
-  for (auto name : {"int", "float", "bool", "string", "unit", "_", "•", "varargs!"}) {
+  for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•", "varargs!"}) {
     auto str = stringArena.save(name);
     DBGS("Declaring type operator: " << str << '\n');
     env.insert(str, createTypeOperator(str));
   }
 
   pushModule("Stdlib");
-  for (std::string name : {"int", "float", "bool", "string"}) {
+  for (std::string_view name : {"int", "float", "bool", "string"}) {
     declare(name, createFunction({createTypeVariable(), getType(name)}));
   }
 
@@ -183,7 +199,7 @@ void Unifier::initializeEnvironment() {
   declarePath({"String", "concat"}, createFunction({T_string, getListTypeOf(T_string), T_string}));
   {
     detail::ModuleScope ms{*this, "Printf"};
-    declare("printf", createFunction({T_string, getType("varargs!"), T_unit}));
+    declare("printf", createFunction({T_string, getType(std::string_view("varargs!")), T_unit}));
   }
 
   declarePath({"Float", "pi"}, T_float);
@@ -198,7 +214,7 @@ void Unifier::initializeEnvironment() {
                                         getListTypeOf(T2)}));
     declare("fold_left",
             createFunction({createFunction({T1, T2, T1}), T1, List, T2}));
-    declare("fold_right", getType("fold_left"));
+    declare("fold_right", getType(std::string_view("fold_left")));
   }
 }
 
@@ -233,9 +249,14 @@ TypeExpr* Unifier::inferPattern(ts::Node node) {
     auto *type = createTypeVariable();
     declare(node, type);
     return type;
+  } else if (node.getType() == "constructor_path") {
+    auto *type = getType(getText(node, source));
+    assert(false);
+    return type;
   } else if (llvm::is_contained(passthroughPatterns, node.getType())) {
     return infer(node);
   }
+  DBGS("Unknown pattern type: " << node.getType() << '\n');
   assert(false && "Unknown pattern type");
   return nullptr;
 }
@@ -488,19 +509,20 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   return t;
 }
 
+TypeExpr* Unifier::getType(const char *name) {
+  return getType(stringArena.save(name));
+}
+
 TypeExpr* Unifier::getType(Node node) {
   DBGS("Getting type for: " << node.getType() << '\n');
-  return getType(getText(node, source));
+  if (llvm::is_contained(pathTypes, node.getType())) {
+    return getType(getPathParts(node));
+  }
+  return getType(stringArena.save(getText(node, source)));
 }
 
 std::vector<std::string> Unifier::getPathParts(Node node) {
   std::vector<std::string> pathParts;
-  static constexpr std::string_view pathTypes[] = {
-    "value_path",
-    "module_path",
-    "constructor_path",
-    "type_constructor_path",
-  };
   static constexpr std::string_view nameTypes[] = {
     "value_name",
     "module_name",
@@ -725,6 +747,7 @@ TypeExpr* Unifier::inferTypeExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "value_specification");
   auto name = node.getNamedChild(0);
@@ -739,11 +762,85 @@ TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
   return nullptr;
 }
 
+TypeExpr* Unifier::inferRecordDeclaration(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "record_declaration");
+  SmallVector<llvm::StringRef> fieldNames;
+  SmallVector<TypeExpr*> fieldTypes;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    assert(child.getType() == "field_declaration");
+    auto name = child.getNamedChild(0);
+    auto type = infer(child.getNamedChild(1));
+    auto text = getText(name, source);
+    fieldNames.push_back(stringArena.save(text));
+    fieldTypes.push_back(type);
+  }
+  auto recordName = getText(node.getNamedChild(0), source);
+  recordTypeFieldOrder[stringArena.save(recordName)] = fieldNames;
+  return getRecordType(fieldTypes);
+}
+
 TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_constructor_path");
   auto pathParts = getPathParts(node);
   return getType(pathParts);
+}
+
+TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "type_definition");
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    inferTypeBinding(child.getCursor());
+  }
+  return getUnitType();
+}
+
+TypeExpr* Unifier::inferVariantConstructor(TypeExpr* variantType, Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "constructor_declaration");
+  auto name = node.getNamedChild(0);
+  if (node.getNumNamedChildren() == 1) {
+    return declare(name, variantType);
+  }
+  auto parameters = [&] {
+    SmallVector<TypeExpr*> types;
+    for (unsigned i = 1; i < node.getNumNamedChildren(); ++i) {
+      types.push_back(infer(node.getNamedChild(i)));
+    }
+    return types;
+  }();
+  parameters.push_back(variantType);
+  auto *functionType = createFunction(parameters);
+  declare(name, functionType);
+  return functionType;
+}
+
+TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "type_binding");
+  assert(node.getNumNamedChildren() == 2);
+  auto name = node.getNamedChild(0);
+  auto *variantType = createTypeOperator(getText(name, source), {});
+  declare(name, variantType);
+  auto body = node.getNamedChild(1);
+  if (body.getType() == "variant_declaration") {
+    for (unsigned i = 0; i < body.getNumNamedChildren(); ++i) {
+      auto child = body.getNamedChild(i);
+      inferVariantConstructor(variantType, child.getCursor());
+    }
+  } else {
+    show(body.getCursor(), true);
+    assert(false && "Unknown type binding type");
+  }
+  return getUnitType();
 }
 
 TypeExpr* Unifier::inferType(Cursor ast) {
@@ -806,8 +903,12 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferValueSpecification(std::move(ast));
   } else if (node.getType() == "type_constructor_path") {
     return inferTypeConstructorPath(std::move(ast));
+  } else if (node.getType() == "record_declaration") {
+    return inferRecordDeclaration(std::move(ast));
   } else if (node.getType() == "sequence_expression") {
     return inferSequenceExpression(std::move(ast));
+  } else if (node.getType() == "type_definition") {
+    return inferTypeDefinition(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';
@@ -968,6 +1069,41 @@ bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
     return *a == *b;
   }
   assert(false && "Unknown type expression");
+}
+
+TypeExpr *Unifier::getBoolType() { 
+  static TypeExpr *type = getType("bool");
+  return type;
+}
+
+TypeExpr *Unifier::getFloatType() { 
+  static TypeExpr *type = getType("float");
+  return type;
+}
+
+TypeExpr *Unifier::getIntType() { 
+  static TypeExpr *type = getType("int");
+  return type;
+}
+
+TypeExpr *Unifier::getUnitType() { 
+  static TypeExpr *type = getType("unit");
+  return type;
+}
+
+TypeExpr *Unifier::getStringType() { 
+  static TypeExpr *type = getType("string");
+  return type;
+}
+
+TypeExpr *Unifier::getWildcardType() { 
+  static TypeExpr *type = getType("_");
+  return type;
+}
+
+TypeExpr *Unifier::getVarargsType() { 
+  static TypeExpr *type = getType("varargs!");
+  return type;
 }
 
 } // namespace ts

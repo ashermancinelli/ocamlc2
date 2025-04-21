@@ -85,6 +85,10 @@ private:
   TypeExpr *inferTypeExpression(Cursor ast);
   TypeExpr *inferTypeConstructorPath(Cursor ast);
   TypeExpr *inferSequenceExpression(Cursor ast);
+  TypeExpr *inferTypeDefinition(Cursor ast);
+  TypeExpr *inferTypeBinding(Cursor ast);
+  TypeExpr *inferVariantConstructor(TypeExpr *variantType, Cursor ast);
+  TypeExpr *inferRecordDeclaration(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
@@ -114,7 +118,9 @@ private:
 
   TypeExpr *getType(Node node);
   TypeExpr *getType(const llvm::StringRef name);
+  TypeExpr *getType(std::string_view name);
   TypeExpr *getType(std::vector<std::string> path);
+  TypeExpr *getType(const char *name);
   llvm::SmallVector<TypeExpr *> getParameterTypes(Cursor parameters);
 
   inline auto *createFunction(llvm::ArrayRef<TypeExpr *> args) {
@@ -132,13 +138,13 @@ private:
     return create<TypeOperator>(name, args);
   }
 
-  inline auto *getBoolType() { return getType("bool"); }
-  inline auto *getFloatType() { return getType("float"); }
-  inline auto *getIntType() { return getType("int"); }
-  inline auto *getUnitType() { return getType("unit"); }
-  inline auto *getStringType() { return getType("string"); }
-  inline auto *getWildcardType() { return getType("_"); }
-  inline auto *getVarargsType() { return getType("varargs!"); }
+  TypeExpr *getBoolType();
+  TypeExpr *getFloatType();
+  TypeExpr *getIntType();
+  TypeExpr *getUnitType();
+  TypeExpr *getStringType();
+  TypeExpr *getWildcardType();
+  TypeExpr *getVarargsType();
   inline auto *getListTypeOf(TypeExpr *type) {
     return createTypeOperator(TypeOperator::getListOperatorName(), {type});
   }
@@ -147,6 +153,9 @@ private:
     return createTypeOperator(TypeOperator::getArrayOperatorName(), {type});
   }
   inline auto *getArrayType() { return getArrayTypeOf(createTypeVariable()); }
+  inline auto *getRecordType(ArrayRef<TypeExpr *> fields) {
+    return createTypeOperator(TypeOperator::getRecordOperatorName(), fields);
+  }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
 
@@ -167,6 +176,7 @@ private:
   llvm::SmallVector<llvm::StringRef> moduleSearchPath;
   llvm::SmallVector<llvm::StringRef> currentModule;
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
+  llvm::DenseMap<StringRef, SmallVector<StringRef>> recordTypeFieldOrder;
   friend struct detail::ModuleSearchPathScope;
   friend struct detail::ModuleScope;
   friend struct detail::Scope;

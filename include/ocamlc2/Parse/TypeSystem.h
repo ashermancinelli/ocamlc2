@@ -43,6 +43,7 @@ struct TypeOperator : public TypeExpr {
   consteval static llvm::StringRef getConstructorOperatorName() { return "V"; }
   consteval static llvm::StringRef getListOperatorName() { return "List"; }
   consteval static llvm::StringRef getArrayOperatorName() { return "Array"; }
+  consteval static llvm::StringRef getRecordOperatorName() { return "Record"; }
   inline TypeExpr *back() const { return args.back(); }
 
 private:
