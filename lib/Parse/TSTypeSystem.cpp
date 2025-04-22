@@ -189,6 +189,13 @@ void Unifier::initializeEnvironment() {
     for (auto comparison : {"=", "!=", "<", "<=", ">", ">="}) {
       declare(comparison, createFunction({T1, T1, T_bool}));
     }
+  }
+  {
+    auto *concatLHS = createFunction({T1, T2});
+    auto *concatType = createFunction({concatLHS, T1, T2});
+    declare("@@", concatType);
+  }
+  {
 
     // Builtin constructors
     auto *Optional =
@@ -231,14 +238,76 @@ TypeExpr* Unifier::infer(ts::Node const& ast) {
   return infer(ast.getCursor());
 }
 
+TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
+  nodeToType[node.getID()] = type;
+  return type;
+}
+
 TypeExpr* Unifier::infer(ts::Cursor cursor) {
   DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
   DBG(show(cursor.copy(), true));
   auto *te = inferType(cursor.copy());
   DBGS("Inferred type:\n");
-  nodeToType[cursor.getCurrentNode().getID()] = te;
+  setType(cursor.getCurrentNode(), te);
   DBG(show(cursor.copy(), true));
   return te;
+}
+
+TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "constructor_pattern");
+  auto *ctorType = [&] {
+    auto name = node.getNamedChild(0);
+    auto *ctorType = inferConstructorPath(name.getCursor());
+    auto *ctorTypeOperator = llvm::dyn_cast<TypeOperator>(ctorType);
+    assert(ctorTypeOperator && "Expected constructor type operator");
+    return ctorTypeOperator;
+  }();
+  auto declaredArgs = SmallVector<TypeExpr*>(ctorType->getArgs());
+  if (declaredArgs.empty()) {
+    // If we get an empty type operator, we're matching against a constructor
+    // with no arguments, so we can just return the type operator directly
+    // and there's nothing to unify.
+    return ctorType;
+  }
+  // Otherwise, we have a function mapping the variant constructor arguments to the variant type
+  // itself, so we drop the return type to get the pattern arguments to match against.
+  auto *varaintType = declaredArgs.pop_back_val();
+  auto argsType = [&] {
+    auto ctorArgumentsPattern = node.getNamedChild(1);
+    auto *argsType = infer(ctorArgumentsPattern);
+    return argsType;
+  }();
+  if (declaredArgs.size() == 1) {
+    // If we have a single argument, matches will be directly against it and not wrapped
+    // in a tuple type.
+    if (failed(unify(argsType, declaredArgs[0]))) {
+      assert(false && "Failed to unify constructor pattern argument with constructor type operator argument");
+      return nullptr;
+    }
+    return varaintType;
+  } else {
+    auto args = llvm::cast<TypeOperator>(argsType)->getArgs();
+    assert(args.size() == declaredArgs.size() && "Expected constructor pattern to have the same number of "
+                      "arguments as the constructor type operator");
+    for (auto [arg, declaredArg] : llvm::zip(args, declaredArgs)) {
+      if (failed(unify(arg, declaredArg))) {
+        assert(false && "Failed to unify constructor pattern argument with "
+                        "constructor type operator argument");
+        return nullptr;
+      }
+    }
+    return varaintType;
+  }
+}
+
+TypeExpr* Unifier::inferTuplePattern(ts::Node node) {
+  SmallVector<TypeExpr*> types;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    types.push_back(infer(node.getNamedChild(i)));
+  }
+  return createTuple(types);
 }
 
 TypeExpr* Unifier::inferPattern(ts::Node node) {
@@ -250,12 +319,17 @@ TypeExpr* Unifier::inferPattern(ts::Node node) {
     declare(node, type);
     return type;
   } else if (node.getType() == "constructor_path") {
-    auto *type = getType(getText(node, source));
-    assert(false);
-    return type;
+    return inferConstructorPath(node.getCursor());
+  } else if (node.getType() == "parenthesized_pattern") {
+    return infer(node.getNamedChild(0));
+  } else if (node.getType() == "constructor_pattern") {
+    return inferConstructorPattern(node.getCursor());
+  } else if (node.getType() == "tuple_pattern") {
+    return inferTuplePattern(node);
   } else if (llvm::is_contained(passthroughPatterns, node.getType())) {
     return infer(node);
   }
+  show(node.getCursor(), true);
   DBGS("Unknown pattern type: " << node.getType() << '\n');
   assert(false && "Unknown pattern type");
   return nullptr;
@@ -264,10 +338,11 @@ TypeExpr* Unifier::inferPattern(ts::Node node) {
 TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
   // Declared variables are only in scope during the body of the match case.
   detail::Scope scope(this);
+  assert(node.getType() == "match_case");
   const auto namedChildren = node.getNumNamedChildren();
   const auto hasGuard = namedChildren == 3;
   const auto bodyNode = hasGuard ? node.getNamedChild(2) : node.getNamedChild(1);
-  auto *matchCaseType = inferPattern(node.getNamedChild(0));
+  auto *matchCaseType = infer(node.getNamedChild(0));
   if (failed(unify(matchCaseType, matcheeType))) {
     assert(false && "Failed to unify match case type with matchee type");
     return nullptr;
@@ -279,14 +354,18 @@ TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
       return nullptr;
     }
   }
-  return infer(bodyNode);
+  auto *bodyType = infer(bodyNode);
+  setType(bodyNode, bodyType);
+  return bodyType;
 }
 
 TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "match_expression");
+  auto matchee = node.getNamedChild(0);
   const auto namedChildren = node.getNumNamedChildren();
-  if (node.getNamedChild(0).getType() != "match_case") {
+  if (matchee.getType() == "match_case") {
+    assert(false && "NYI");
     // If we don't get a match-case, we're implicitly creating
     // a function with the matchee not available as a symbol yet.
     auto *matcheeType = createTypeVariable();
@@ -308,12 +387,12 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
   } else {
     // Otherwise, we're matching against a value, so we need to infer the type of the
     // matchee.
-    auto matchee = node.getNamedChild(0);
     auto *matcheeType = infer(matchee);
     TypeExpr *resultType = nullptr;
     unsigned i = 1;
     while (i < namedChildren) {
-      auto *type = inferMatchCase(matcheeType, node.getNamedChild(i++));
+      auto caseNode = node.getNamedChild(i++);
+      auto *type = inferMatchCase(matcheeType, caseNode);
       if (resultType != nullptr && failed(unify(type, resultType))) {
         assert(false && "Failed to unify case type with previous case type");
         return nullptr;
@@ -528,6 +607,7 @@ std::vector<std::string> Unifier::getPathParts(Node node) {
     "module_name",
     "constructor_name",
     "type_constructor",
+    "type_variable",
   };
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
@@ -555,7 +635,9 @@ TypeExpr* Unifier::inferValuePath(Cursor ast) {
   return getType(pathParts);
 }
 
+// TODO: currying
 TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "application_expression");
   assert(ast.gotoFirstChild());
@@ -660,7 +742,7 @@ TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     if (child.getType() == "parameter") {
-      types.push_back(inferPattern(child.getNamedChild(0)));
+      types.push_back(infer(child.getNamedChild(0)));
     } else {
       auto body = child.getNamedChild(0);
       assert(i == node.getNumNamedChildren() - 1 && "Expected body after parameters");
@@ -826,11 +908,18 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_binding");
-  assert(node.getNumNamedChildren() == 2);
-  auto name = node.getNamedChild(0);
-  auto *variantType = createTypeOperator(getText(name, source), {});
+  unsigned childIndex = 0;
+  SmallVector<TypeExpr*> typeVars;
+  while (node.getNamedChild(childIndex).getType() == "type_variable") {
+    typeVars.push_back(createTypeVariable());
+    declare(node.getNamedChild(childIndex), typeVars.back());
+    ++childIndex;
+  }
+  auto name = node.getNamedChild(childIndex++);
+  auto *variantType = createTypeOperator(getText(name, source), typeVars);
   declare(name, variantType);
-  auto body = node.getNamedChild(1);
+  auto body = node.getNamedChild(childIndex++);
+  assert(childIndex == node.getNumNamedChildren());
   if (body.getType() == "variant_declaration") {
     for (unsigned i = 0; i < body.getNumNamedChildren(); ++i) {
       auto child = body.getNamedChild(i);
@@ -841,6 +930,35 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     assert(false && "Unknown type binding type");
   }
   return getUnitType();
+}
+
+TypeExpr* Unifier::inferConstructedType(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "constructed_type");
+  SmallVector<TypeExpr*> args;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    args.push_back(infer(node.getNamedChild(i)));
+  }
+  auto *typeBeingConstructed = args.pop_back_val();
+  auto *typeOperator = llvm::dyn_cast<TypeOperator>(typeBeingConstructed);
+  assert(typeOperator && "Type being constructed is not a type operator");
+  auto typeOperatorName = typeOperator->getName();
+  auto *inferredType = createTypeOperator(typeOperatorName, args);
+  if (failed(unify(inferredType, typeBeingConstructed))) {
+    assert(false && "Failed to unify inferred type with type being constructed");
+    return nullptr;
+  }
+  return inferredType;
+}
+
+TypeExpr *Unifier::inferValuePattern(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "value_pattern");
+  auto text = getText(node, source);
+  if (text == "_") {
+    return getWildcardType();
+  }
+  return declare(node, createTypeVariable());
 }
 
 TypeExpr* Unifier::inferType(Cursor ast) {
@@ -854,10 +972,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   };
   if (node.getType() == "number") {
     auto text = getText(node, source);
-    if (text.contains('.')) {
-      return getType("float");
-    }
-    return getType("int");
+    return text.contains('.') ? getType("float") : getType("int");
   } else if (node.getType() == "float") {
     return getType("float");
   } else if (node.getType() == "unit") {
@@ -909,6 +1024,20 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferSequenceExpression(std::move(ast));
   } else if (node.getType() == "type_definition") {
     return inferTypeDefinition(std::move(ast));
+  } else if (node.getType() == "value_pattern") {
+    return inferValuePattern(std::move(ast));
+  } else if (node.getType() == "constructor_path") {
+    return inferConstructorPath(node.getCursor());
+  } else if (node.getType() == "parenthesized_pattern") {
+    return infer(node.getNamedChild(0));
+  } else if (node.getType() == "constructor_pattern") {
+    return inferConstructorPattern(std::move(ast));
+  } else if (node.getType() == "tuple_pattern") {
+    return inferTuplePattern(node);
+  } else if (node.getType() == "type_variable") {
+    return getType(node);
+  } else if (node.getType() == "constructed_type") {
+    return inferConstructedType(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';
@@ -1011,30 +1140,30 @@ TypeExpr *Unifier::clone(TypeExpr *type) {
 }
 
 TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
-  DBGS("Cloning type: " << *type << '\n');
+  // DBGS("Cloning type: " << *type << '\n');
   type = prune(type);
-  DBGS("recursing on type: " << *type << '\n');
+  // DBGS("recursing on type: " << *type << '\n');
   if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
     auto args =
         llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr *arg) {
           return clone(arg, mapping);
         }));
-    DBGS("cloning type operator: " << op->getName() << '\n');
+    // DBGS("cloning type operator: " << op->getName() << '\n');
     return createTypeOperator(op->getName(), args);
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
-    DBGS("cloning type variable: " << *tv << '\n');
+    // DBGS("cloning type variable: " << *tv << '\n');
     if (isGeneric(tv, concreteTypes)) {
-      DBGS("type variable is generic, cloning\n");
+      // DBGS("type variable is generic, cloning\n");
       if (mapping.find(tv) == mapping.end()) {
-        DBGS("Didn't find mapping for type variable: "
-             << *tv << ", creating new one\n");
+        // DBGS("Didn't find mapping for type variable: "
+            //  << *tv << ", creating new one\n");
         mapping[tv] = createTypeVariable();
       }
-      DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
+      // DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
       return mapping[tv];
     }
   }
-  DBGS("cloned type: " << *type << '\n');
+  // DBGS("cloned type: " << *type << '\n');
   return type;
 }
 

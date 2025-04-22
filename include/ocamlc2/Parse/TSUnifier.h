@@ -68,11 +68,15 @@ private:
   TypeExpr *inferForExpression(Cursor ast);
   TypeExpr *inferCompilationUnit(Cursor ast);
   TypeExpr *inferApplicationExpression(Cursor ast);
+  TypeExpr *inferConcatExpression(Cursor ast);
   TypeExpr *inferInfixExpression(Cursor ast);
   TypeExpr *inferIfExpression(Cursor ast);
   TypeExpr *inferMatchExpression(Cursor ast);
   TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
   TypeExpr *inferPattern(ts::Node node);
+  TypeExpr *inferTuplePattern(ts::Node node);
+  TypeExpr *inferValuePattern(Cursor ast);
+  TypeExpr *inferConstructorPattern(Cursor ast);
   TypeExpr *inferGuard(Cursor ast);
   TypeExpr *inferArrayGetExpression(Cursor ast);
   TypeExpr *inferListExpression(Cursor ast);
@@ -89,6 +93,7 @@ private:
   TypeExpr *inferTypeBinding(Cursor ast);
   TypeExpr *inferVariantConstructor(TypeExpr *variantType, Cursor ast);
   TypeExpr *inferRecordDeclaration(Cursor ast);
+  TypeExpr *inferConstructedType(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
@@ -121,6 +126,7 @@ private:
   TypeExpr *getType(std::string_view name);
   TypeExpr *getType(std::vector<std::string> path);
   TypeExpr *getType(const char *name);
+  TypeExpr *setType(Node node, TypeExpr *type);
   llvm::SmallVector<TypeExpr *> getParameterTypes(Cursor parameters);
 
   inline auto *createFunction(llvm::ArrayRef<TypeExpr *> args) {
