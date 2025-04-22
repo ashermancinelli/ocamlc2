@@ -36,3 +36,19 @@ let describe_shape s =
 
 (* Last expression to test *)
 let result = compose (fun x -> x * 2) (fun y -> y + 1) 5;; 
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: x : int
+CHECK: let: y : int
+CHECK: let: add : (λ int int int)
+CHECK: let: z : int
+CHECK: let: id : (λ 't17 't17)
+CHECK: let: a : int
+CHECK: let: b : bool
+CHECK: let: apply : (λ (λ 't23 't24) 't23 't24)
+CHECK: let: compose : (λ (λ 't28 't29) (λ 't27 't28) 't27 't29)
+CHECK: let: factorial : (λ int int)
+CHECK: let: describe_shape : (λ shape string)
+CHECK: let: result : int
+*)

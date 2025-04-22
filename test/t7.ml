@@ -5,6 +5,11 @@ let bval : l = B 2 in
 let x = match bval with
   | A -> 0
   | _ -> 1
-  in
-  x
+  in x
   ;;
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: bval : l
+CHECK: let: x : int
+*)

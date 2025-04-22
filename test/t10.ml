@@ -9,3 +9,9 @@ let test x =
     "negative or zero"
 
 let () = print_string (test 7) 
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: test : (λ int string)
+CHECK: let: () : unit
+*)

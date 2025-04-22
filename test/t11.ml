@@ -1,5 +1,3 @@
-
-(* AJM: warning constructors with no arguments is bug in treesitter *)
 let find_index item arr =
   let rec aux i =
     if i >= Array.length arr then (None)
@@ -14,3 +12,12 @@ let () =
   match index with
   | Some i -> Printf.printf "Index of 3: %d\n" i
   | None -> Printf.printf "3 not found in array\n"
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: aux : (λ int (Optional int))
+CHECK: let: find_index : (λ 't12 (Array 't12) (Optional int))
+CHECK: let: arr : (Array int)
+CHECK: let: index : (Optional int)
+CHECK: let: () : unit
+*)
