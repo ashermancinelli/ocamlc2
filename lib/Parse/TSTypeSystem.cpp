@@ -211,10 +211,11 @@ void Unifier::initializeEnvironment() {
 
   declarePath({"Float", "pi"}, T_float);
 
-  auto *List = createTypeOperator("List", {(T1 = createTypeVariable())});
+  auto *Array = getArrayType();
+  auto *List = getListType();
   declare("Nil", getFunctionType({List}));
-  declare("Cons", getFunctionType({T1, List, List}));
-  declarePath({"Array", "length"}, getFunctionType({List, T_int}));
+  declare("Cons", getFunctionType({List->back(), List, List}));
+  declarePath({"Array", "length"}, getFunctionType({Array, T_int}));
   {
     detail::ModuleScope ms{*this, "List"};
     declare("map", getFunctionType({getFunctionType({T1, T2}), getListTypeOf(T1),
@@ -421,6 +422,12 @@ static bool isLetBindingRecursive(Cursor ast) {
   return false;
 }
 
+TypeExpr *Unifier::declareConcrete(Node node) {
+  auto *type = createTypeVariable();
+  concreteTypes.insert(type);
+  return declare(node, type);
+}
+
 TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> parameters, Node body) {
   DBGS("non-recursive let binding, inferring body type\n");
   auto [returnType, types] = [&]() { 
@@ -429,9 +436,7 @@ TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> paramete
       if (n.getType() == "unit") {
         return getUnitType();
       }
-      auto *tv = createTypeVariable();
-      declare(n, tv);
-      return tv;
+      return declareConcrete(n);
     });
     auto *returnType = infer(body);
     return std::make_pair(returnType, types);
@@ -452,9 +457,7 @@ TypeExpr *Unifier::inferLetBindingRecursiveFunction(Node name, SmallVector<Node>
       if (n.getType() == "unit") {
         return getUnitType();
       }
-      auto *tv = createTypeVariable();
-      declare(n, tv);
-      return tv;
+      return declareConcrete(n);
     });
     auto *bodyType = infer(body);
     types.push_back(bodyType);
@@ -498,47 +501,39 @@ TypeExpr* Unifier::inferLetBinding(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferIfExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   auto childCount = node.getNumNamedChildren();
+  DBGS("ternary with " << childCount << " children\n");
   auto *condition = infer(node.getNamedChild(0));
   if (failed(unify(condition, getBoolType()))) {
     assert(false &&
            "Failed to unify condition of if expression with bool type");
     return nullptr;
   }
-  auto *resultType = createTypeVariable();
   switch (childCount) {
     case 3: {
       auto *thenBranch = infer(node.getNamedChild(1));
       auto *elseBranch = infer(node.getNamedChild(2));
-      if (failed(unify(thenBranch, resultType))) {
-        assert(false && "Failed to unify then branch of if expression with result type");
+      if (failed(unify(thenBranch, elseBranch))) {
+        assert(false && "Failed to unify then branch of if expression with else branch");
         return nullptr;
       }
-      if (failed(unify(elseBranch, resultType))) {
-        assert(false && "Failed to unify else branch of if expression with result type");
-        return nullptr;
-      }
-      return resultType;
+      return thenBranch;
     }
     case 2: {
-      auto *resultType = createTypeVariable();
       auto *thenBranch = infer(node.getNamedChild(0));
-      if (failed(unify(thenBranch, resultType))) {
-        assert(false && "Failed to unify then branch of if expression with result type");
+      if (failed(unify(getUnitType(), thenBranch))) {
+        assert(false && "Failed to unify then branch of if expression with unit type");
         return nullptr;
       }
-      if (failed(unify(getUnitType(), resultType))) {
-        assert(false && "Failed to unify then branch of if expression with result type");
-        return nullptr;
-      }
-      return resultType;
+      return thenBranch;
     }
     default: {
       assert(false && "Expected 2 or 3 children for if expression");
+      return nullptr;
     }
   }
-  return nullptr;
 }
 
 TypeExpr* Unifier::declare(Node node, TypeExpr* type) {
@@ -724,6 +719,7 @@ TypeExpr* Unifier::inferArrayGetExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "infix_expression");
   assert(ast.gotoFirstChild());
@@ -743,6 +739,7 @@ TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferGuard(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "guard");
   auto *type = infer(node.getNamedChild(0));
@@ -754,6 +751,7 @@ TypeExpr* Unifier::inferGuard(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferLetExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "let_expression");
   assert(node.getNumNamedChildren() == 2);
@@ -763,6 +761,7 @@ TypeExpr* Unifier::inferLetExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferListExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "list_expression");
   SmallVector<TypeExpr*> args;
@@ -778,6 +777,7 @@ TypeExpr* Unifier::inferListExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "fun_expression");
   SmallVector<TypeExpr*> types;
@@ -785,8 +785,10 @@ TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     if (child.getType() == "parameter") {
-      types.push_back(infer(child.getNamedChild(0)));
+      auto *type = declareConcrete(child.getNamedChild(0));
+      types.push_back(type);
     } else {
+      detail::Scope scope(this);
       auto body = child.getNamedChild(0);
       assert(i == node.getNumNamedChildren() - 1 && "Expected body after parameters");
       types.push_back(infer(body));
@@ -806,12 +808,14 @@ TypeExpr* Unifier::inferSequenceExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_definition");
   return inferModuleBinding(node.getNamedChild(0).getCursor());
 }
 
 TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_binding");
   auto name = node.getChildByFieldName("name");
@@ -841,6 +845,7 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "signature");
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
@@ -851,6 +856,7 @@ TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferModuleStructure(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "structure");
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
@@ -861,6 +867,7 @@ TypeExpr* Unifier::inferModuleStructure(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferTypeExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "function_type");
   SmallVector<TypeExpr*> args;

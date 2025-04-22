@@ -118,6 +118,7 @@ private:
   }
 
   TypeExpr *declare(Node node, TypeExpr *type);
+  TypeExpr *declareConcrete(Node node);
   TypeExpr *declare(llvm::StringRef name, TypeExpr *type);
   TypeExpr *declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
   TypeExpr *declarePatternVariables(const ASTNode *ast,
