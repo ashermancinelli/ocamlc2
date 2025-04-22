@@ -285,6 +285,14 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
   return te;
 }
 
+TypeExpr* Unifier::inferOpenModule(Cursor ast) {
+  TRACE();
+  auto name = ast.getCurrentNode().getNamedChild(0);
+  auto path = getPathParts(name);
+  pushModuleSearchPath(hashPath(path));
+  return getUnitType();
+}
+
 TypeExpr* Unifier::inferFunctionType(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "function_type");
@@ -470,15 +478,26 @@ TypeExpr *Unifier::declareConcrete(Node node) {
   return declare(node, type);
 }
 
+TypeExpr *Unifier::declareFunctionParameter(Node node) {
+  if (node.getType() == "unit") {
+    return getUnitType();
+  } else if (node.getType() == "typed_pattern") {
+    auto name = node.getNamedChild(0);
+    auto *type = infer(node.getNamedChild(1));
+    return declare(name, type);
+  } else {
+    auto *type = createTypeVariable();
+    concreteTypes.insert(type);
+    return declare(node, type);
+  }
+}
+
 TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> parameters, Node body) {
   DBGS("non-recursive let binding, inferring body type\n");
   auto [returnType, types] = [&]() { 
     detail::Scope scope(this);
     SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
-      if (n.getType() == "unit") {
-        return getUnitType();
-      }
-      return declareConcrete(n);
+      return declareFunctionParameter(n);
     });
     auto *returnType = infer(body);
     return std::make_pair(returnType, types);
@@ -496,10 +515,7 @@ TypeExpr *Unifier::inferLetBindingRecursiveFunction(Node name, SmallVector<Node>
   auto *funcType = [&]() -> TypeExpr* {
     detail::Scope scope(this);
     SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
-      if (n.getType() == "unit") {
-        return getUnitType();
-      }
-      return declareConcrete(n);
+      return declareFunctionParameter(n);
     });
     auto *bodyType = infer(body);
     types.push_back(bodyType);
@@ -1278,6 +1294,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return text.contains('.') ? getType("float") : getType("int");
   } else if (node.getType() == "float") {
     return getType("float");
+  } else if (node.getType() == "boolean") {
+    return getBoolType();
   } else if (node.getType() == "unit") {
     return getUnitType();
   } else if (node.getType() == "string") {
@@ -1347,6 +1365,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferProductExpression(std::move(ast));
   } else if (node.getType() == "function_type") {
     return inferFunctionType(std::move(ast));
+  } else if (node.getType() == "open_module") {
+    return inferOpenModule(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';

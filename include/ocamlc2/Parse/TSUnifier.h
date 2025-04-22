@@ -99,6 +99,8 @@ private:
   TypeExpr *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferConstructedType(Cursor ast);
   TypeExpr *inferFunctionType(Cursor ast);
+  TypeExpr *inferOpenModule(Cursor ast);
+  TypeExpr *declareFunctionParameter(Node node);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
