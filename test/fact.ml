@@ -6,3 +6,10 @@ let rec factorial n =
 
 let x = factorial 10
     in (print_int x; print_endline "");;
+
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: factorial : (λ int int)
+CHECK: let: x : int
+*)

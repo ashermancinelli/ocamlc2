@@ -68,3 +68,21 @@ let () =
   Printf.printf "Area of circle (r=5): %f\n" (area (Circle 5.0));
   Printf.printf "Area of rectangle (3x4): %f\n" (area (Rectangle (3.0, 4.0)));
   Printf.printf "Area of triangle (3,4,5): %f\n" (area (Triangle (3.0, 4.0, 5.0)));
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: x : int
+CHECK: let: greeting : string
+CHECK: let: add : (λ int int int)
+CHECK: let: factorial : (λ int int)
+CHECK: let: describe_number : (λ int string)
+CHECK: let: aux : (λ int (Optional int))
+CHECK: let: find_index : (λ '[[T:.+]] (Array '[[T]]) (Optional int))
+CHECK: let: my_list : (List int)
+CHECK: let: doubled : (List int)
+CHECK: let: sum : int
+CHECK: let: s : float
+CHECK: let: area : (λ shape float)
+CHECK: let: test_array : (Array int)
+CHECK: let: () : unit
+*)

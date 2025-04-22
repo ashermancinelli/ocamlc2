@@ -1,3 +1,4 @@
+#include "ocamlc2/Support/CL.h"
 #include "ocamlc2/Parse/TypeSystem.h"
 #include "ocamlc2/Parse/TSUnifier.h"
 #include "ocamlc2/Parse/TSUtil.h"
@@ -244,12 +245,22 @@ TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
   return type;
 }
 
+void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
+  if (!DumpTypes) {
+    return;
+  }
+  if (node.getType() == "let_binding") {
+    llvm::outs() << "let: " << getText(node.getNamedChild(0), source) << " : " << *type << '\n';
+  }
+}
+
 TypeExpr* Unifier::infer(ts::Cursor cursor) {
   DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
   DBG(show(cursor.copy(), true));
   auto *te = inferType(cursor.copy());
   DBGS("Inferred type:\n");
   setType(cursor.getCurrentNode(), te);
+  maybeDumpTypes(cursor.getCurrentNode(), te);
   DBG(show(cursor.copy(), true));
   return te;
 }
@@ -866,7 +877,7 @@ TypeExpr* Unifier::inferModuleStructure(Cursor ast) {
   return getUnitType();
 }
 
-TypeExpr* Unifier::inferTypeExpression(Cursor ast) {
+TypeExpr* Unifier::inferFunctionSpecification(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "function_type");
@@ -885,7 +896,10 @@ TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
   auto name = node.getNamedChild(0);
   auto specification = node.getNamedChild(1);
   if (specification.getType() == "function_type") {
-    auto *type = inferTypeExpression(specification.getCursor());
+    auto *type = [&] {
+      detail::Scope scope(this);
+      return inferFunctionSpecification(specification.getCursor());
+    }();
     declare(name, type);
     return type;
   }

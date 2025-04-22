@@ -5,3 +5,8 @@ let f lb ub =
         for i = x to y do
             print_int i
         done;;
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: f : (λ int int unit)
+*)

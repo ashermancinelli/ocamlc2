@@ -16,3 +16,7 @@ let compose f g x = f (g x);;
 
 (* Function application *)
 let result = compose (fun x -> x * 2) (fun y -> y + 1) 5;; 
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+*)

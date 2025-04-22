@@ -5,3 +5,9 @@ let () =
   done
 
 let foo () = 1 + 2;;
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: () : unit
+CHECK: let: foo : (λ unit int)
+*)

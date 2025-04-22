@@ -37,10 +37,12 @@ int main(int argc, char* argv[]) {
   auto root = tree.getRootNode();
   
   ocamlc2::ts::Unifier unifier{source};
-  llvm::errs() << "AST:\n";
-  unifier.show(root.getCursor(), true);
+  DBG(
+    llvm::errs() << "AST:\n";
+    unifier.show(root.getCursor(), true);
+  )
   auto *te = unifier.infer(root.getCursor());
-  llvm::errs() << "Inferred type: " << *te << '\n';
+  DBGS("Inferred type: " << *te << '\n');
 
   return 0;
 }

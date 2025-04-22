@@ -7,6 +7,7 @@ using namespace llvm;
 bool Debug = false;
 bool RunGDB = false;
 bool Color = true;
+bool DumpTypes = false;
 static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
                                   cl::location(RunGDB));
 
@@ -14,6 +15,9 @@ static cl::opt<std::string> debugger("debugger", cl::desc("The debugger to use")
 
 static cl::opt<bool, true> debug("L", cl::desc("Enable debug mode"),
                            cl::location(Debug));
+
+static cl::opt<bool, true> dumpTypes("dump-types", cl::desc("Dump types"),
+                                     cl::location(DumpTypes));
 
 static cl::opt<bool>
     noColor("no-color", cl::desc("Disable color output"),

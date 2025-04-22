@@ -7,3 +7,8 @@ let area (s : shape) : int =
     ;;
 
 print_int (area (A));;
+
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: area : (λ shape int)
+*)

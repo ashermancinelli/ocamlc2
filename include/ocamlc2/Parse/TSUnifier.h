@@ -89,6 +89,7 @@ private:
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);
   TypeExpr *inferValueSpecification(Cursor ast);
+  TypeExpr *inferFunctionSpecification(Cursor ast);
   TypeExpr *inferTypeExpression(Cursor ast);
   TypeExpr *inferTypeConstructorPath(Cursor ast);
   TypeExpr *inferSequenceExpression(Cursor ast);
@@ -131,6 +132,15 @@ private:
   TypeExpr *getType(std::vector<std::string> path);
   TypeExpr *getType(const char *name);
   TypeExpr *setType(Node node, TypeExpr *type);
+
+  // Does not error on missing typevariable because TVs are introduced implicitly
+  // in value specifications and we need to create them on-demand, different from
+  // function parameters. e.g. the following declaration does not declare the TV
+  // before using it.
+  //
+  // val access : 'a list -> 'a
+  TypeExpr *getTypeVariable(const llvm::StringRef name);
+
   llvm::SmallVector<TypeExpr *> getParameterTypes(Cursor parameters);
 
   inline auto *createTypeVariable() { return create<TypeVariable>(); }
@@ -178,7 +188,7 @@ private:
   void popModule();
   std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
   std::vector<std::string> getPathParts(Node node);
-  TypeExpr *collapseTuplePattern(TypeExpr *type);
+  void maybeDumpTypes(Node node, TypeExpr *type);
 
   std::string_view source;
   Env env;
