@@ -57,13 +57,20 @@ struct FunctionOperator : public TypeOperator {
 
 struct TupleOperator : public TypeOperator {
   TupleOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(TypeOperator::getTupleOperatorName(), args) {}
+  static inline bool classof(const TypeExpr *expr) {
+    if (expr->getKind() == Kind::Operator) {
+      auto *op = llvm::cast<TypeOperator>(expr);
+      return op->getName() == TypeOperator::getTupleOperatorName();
+    }
+    return false;
+  }
 };
 
 struct TypeVariable : public TypeExpr {
   TypeVariable();
   inline llvm::StringRef getName() const override { 
     if (not name) {
-      name = std::string("T" + std::to_string(id));
+      name = std::string("'t" + std::to_string(id));
     }
     return *name;
   }

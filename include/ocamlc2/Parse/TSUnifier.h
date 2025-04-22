@@ -75,10 +75,12 @@ private:
   TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
   TypeExpr *inferPattern(ts::Node node);
   TypeExpr *inferTuplePattern(ts::Node node);
+  TypeExpr *inferProductExpression(Cursor ast);
   TypeExpr *inferValuePattern(Cursor ast);
   TypeExpr *inferParenthesizedPattern(Cursor ast);
   TypeExpr *inferConstructorPattern(Cursor ast);
   TypeExpr *inferGuard(Cursor ast);
+  TypeExpr *inferArrayExpression(Cursor ast);
   TypeExpr *inferArrayGetExpression(Cursor ast);
   TypeExpr *inferListExpression(Cursor ast);
   TypeExpr *inferFunctionExpression(Cursor ast);
@@ -130,19 +132,19 @@ private:
   TypeExpr *setType(Node node, TypeExpr *type);
   llvm::SmallVector<TypeExpr *> getParameterTypes(Cursor parameters);
 
-  inline auto *createFunction(llvm::ArrayRef<TypeExpr *> args) {
-    return create<FunctionOperator>(args);
-  }
-
-  inline auto *createTuple(llvm::ArrayRef<TypeExpr *> args) {
-    return create<TupleOperator>(args);
-  }
-
   inline auto *createTypeVariable() { return create<TypeVariable>(); }
 
   inline auto *createTypeOperator(llvm::StringRef name,
                                   llvm::ArrayRef<TypeExpr *> args = {}) {
     return create<TypeOperator>(name, args);
+  }
+
+  inline auto *getFunctionType(llvm::ArrayRef<TypeExpr *> args) {
+    return create<FunctionOperator>(args);
+  }
+
+  inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
+    return createTypeOperator(TypeOperator::getTupleOperatorName(), args);
   }
 
   TypeExpr *getBoolType();

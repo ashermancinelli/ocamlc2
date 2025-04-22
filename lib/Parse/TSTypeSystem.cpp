@@ -159,7 +159,7 @@ void Unifier::initializeEnvironment() {
 
   pushModule("Stdlib");
   for (std::string_view name : {"int", "float", "bool", "string"}) {
-    declare(name, createFunction({createTypeVariable(), getType(name)}));
+    declare(name, getFunctionType({createTypeVariable(), getType(name)}));
   }
 
   auto *T_bool = getBoolType();
@@ -169,30 +169,30 @@ void Unifier::initializeEnvironment() {
   auto *T_string = getStringType();
   auto *T1 = createTypeVariable(), *T2 = createTypeVariable();
 
-  declare("sqrt", createFunction({T_float, T_float}));
-  declare("print_int", createFunction({T_int, T_unit}));
-  declare("print_endline", createFunction({T_string, T_unit}));
-  declare("print_string", createFunction({T_string, T_unit}));
-  declare("print_int", createFunction({T_int, T_unit}));
-  declare("print_float", createFunction({T_float, T_unit}));
-  declare("string_of_int", createFunction({T_int, T_string}));
-  declare("float_of_int", createFunction({T_int, T_float}));
-  declare("int_of_float", createFunction({T_float, T_int}));
+  declare("sqrt", getFunctionType({T_float, T_float}));
+  declare("print_int", getFunctionType({T_int, T_unit}));
+  declare("print_endline", getFunctionType({T_string, T_unit}));
+  declare("print_string", getFunctionType({T_string, T_unit}));
+  declare("print_int", getFunctionType({T_int, T_unit}));
+  declare("print_float", getFunctionType({T_float, T_unit}));
+  declare("string_of_int", getFunctionType({T_int, T_string}));
+  declare("float_of_int", getFunctionType({T_int, T_float}));
+  declare("int_of_float", getFunctionType({T_float, T_int}));
   popModule();
 
   {
     for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
-      declare(arithmetic, createFunction({T_int, T_int, T_int}));
+      declare(arithmetic, getFunctionType({T_int, T_int, T_int}));
       declare(std::string(arithmetic) + ".",
-              createFunction({T_float, T_float, T_float}));
+              getFunctionType({T_float, T_float, T_float}));
     }
     for (auto comparison : {"=", "!=", "<", "<=", ">", ">="}) {
-      declare(comparison, createFunction({T1, T1, T_bool}));
+      declare(comparison, getFunctionType({T1, T1, T_bool}));
     }
   }
   {
-    auto *concatLHS = createFunction({T1, T2});
-    auto *concatType = createFunction({concatLHS, T1, T2});
+    auto *concatLHS = getFunctionType({T1, T2});
+    auto *concatType = getFunctionType({concatLHS, T1, T2});
     declare("@@", concatType);
   }
   {
@@ -201,26 +201,26 @@ void Unifier::initializeEnvironment() {
     auto *Optional =
         createTypeOperator("Optional", {(T1 = createTypeVariable())});
     declare("None", Optional);
-    declare("Some", createFunction({T1, Optional}));
+    declare("Some", getFunctionType({T1, Optional}));
   }
-  declarePath({"String", "concat"}, createFunction({T_string, getListTypeOf(T_string), T_string}));
+  declarePath({"String", "concat"}, getFunctionType({T_string, getListTypeOf(T_string), T_string}));
   {
     detail::ModuleScope ms{*this, "Printf"};
-    declare("printf", createFunction({T_string, getType(std::string_view("varargs!")), T_unit}));
+    declare("printf", getFunctionType({T_string, getType(std::string_view("varargs!")), T_unit}));
   }
 
   declarePath({"Float", "pi"}, T_float);
 
   auto *List = createTypeOperator("List", {(T1 = createTypeVariable())});
-  declare("Nil", createFunction({List}));
-  declare("Cons", createFunction({T1, List, List}));
-  declarePath({"Array", "length"}, createFunction({List, T_int}));
+  declare("Nil", getFunctionType({List}));
+  declare("Cons", getFunctionType({T1, List, List}));
+  declarePath({"Array", "length"}, getFunctionType({List, T_int}));
   {
     detail::ModuleScope ms{*this, "List"};
-    declare("map", createFunction({createFunction({T1, T2}), getListTypeOf(T1),
+    declare("map", getFunctionType({getFunctionType({T1, T2}), getListTypeOf(T1),
                                         getListTypeOf(T2)}));
     declare("fold_left",
-            createFunction({createFunction({T1, T2, T1}), T1, List, T2}));
+            getFunctionType({getFunctionType({T1, T2, T1}), T1, List, T2}));
     declare("fold_right", getType(std::string_view("fold_left")));
   }
 }
@@ -315,7 +315,7 @@ TypeExpr* Unifier::inferTuplePattern(ts::Node node) {
       types.push_back(childType);
     }
   }
-  return createTuple(types);
+  return getTupleType(types);
 }
 
 TypeExpr* Unifier::inferPattern(ts::Node node) {
@@ -391,7 +391,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
       }
       functionType.push_back(type);
     }
-    return createFunction(functionType);
+    return getFunctionType(functionType);
   } else {
     // Otherwise, we're matching against a value, so we need to infer the type of the
     // matchee.
@@ -437,7 +437,7 @@ TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> paramete
     return std::make_pair(returnType, types);
   }();
   types.push_back(returnType);
-  auto *funcType = createFunction(types);
+  auto *funcType = getFunctionType(types);
   declare(name, funcType);
   return funcType;
 }
@@ -458,7 +458,7 @@ TypeExpr *Unifier::inferLetBindingRecursiveFunction(Node name, SmallVector<Node>
     });
     auto *bodyType = infer(body);
     types.push_back(bodyType);
-    return createFunction(types);
+    return getFunctionType(types);
   }();
   if (failed(unify(funcType, tv))) {
     assert(false && "Failed to unify function type with type variable");
@@ -656,7 +656,7 @@ TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
   }
   args.push_back(createTypeVariable());
   auto declaredFuncType = infer(id);
-  auto inferredFuncType = createFunction(args);
+  auto inferredFuncType = getFunctionType(args);
   if (failed(unify(declaredFuncType, inferredFuncType))) {
     assert(false && "Failed to unify declared and inferred function types");
     return nullptr;
@@ -671,7 +671,42 @@ TypeExpr* Unifier::inferConstructorPath(Cursor ast) {
   return getType(pathParts);
 }
 
+TypeExpr* Unifier::inferArrayExpression(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "array_expression");
+  auto *elementType = createTypeVariable();
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    auto *childType = infer(child);
+    if (failed(unify(childType, elementType))) {
+      assert(false && "Failed to unify array element type with itself");
+      return nullptr;
+    }
+  }
+  return getArrayTypeOf(elementType);
+}
+
+TypeExpr* Unifier::inferProductExpression(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "product_expression");
+  SmallVector<TypeExpr*> types;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    auto *childType = infer(child);
+    if (auto *tupleType = llvm::dyn_cast<TupleOperator>(childType)) {
+      std::copy(tupleType->getArgs().begin(), tupleType->getArgs().end(),
+                std::back_inserter(types));
+    } else {
+      types.push_back(childType);
+    }
+  }
+  return getTupleType(types);
+}
+
 TypeExpr* Unifier::inferArrayGetExpression(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "array_get_expression");
   auto inferredArrayType = infer(node.getNamedChild(0));
@@ -699,7 +734,7 @@ TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
   auto rhsType = infer(ast.getCurrentNode());
   assert(!ast.gotoNextSibling());
   auto *opType = getType(op);
-  auto *funcType = createFunction({lhsType, rhsType, createTypeVariable()});
+  auto *funcType = getFunctionType({lhsType, rhsType, createTypeVariable()});
   if (failed(unify(opType, funcType))) {
     assert(false && "Failed to unify operator type with function type");
     return nullptr;
@@ -757,7 +792,7 @@ TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
       types.push_back(infer(body));
     }
   }
-  return createFunction(types);
+  return getFunctionType(types);
 }
 
 TypeExpr* Unifier::inferSequenceExpression(Cursor ast) {
@@ -833,7 +868,7 @@ TypeExpr* Unifier::inferTypeExpression(Cursor ast) {
     auto child = node.getNamedChild(i);
     args.push_back(infer(child));
   }
-  return createFunction(args);
+  return getFunctionType(args);
 }
 
 TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
@@ -906,8 +941,14 @@ TypeExpr* Unifier::inferVariantConstructor(TypeExpr* variantType, Cursor ast) {
     }
     return types;
   }();
-  parameters.push_back(variantType);
-  auto *functionType = createFunction(parameters);
+  auto *functionType = [&] {
+    if (parameters.size() == 1) {
+      parameters.push_back(variantType);
+      return getFunctionType(parameters);
+    }
+    auto *tupleType = getTupleType(parameters);
+    return getFunctionType({tupleType, variantType});
+  }();
   declare(name, functionType);
   return functionType;
 }
@@ -978,90 +1019,6 @@ TypeExpr *Unifier::inferValuePattern(Cursor ast) {
     return getWildcardType();
   }
   return declare(node, createTypeVariable());
-}
-
-TypeExpr* Unifier::inferType(Cursor ast) {
-  auto node = ast.getCurrentNode();
-  static constexpr std::string_view passthroughTypes[] = {
-    "parenthesized_expression",
-    "then_clause",
-    "else_clause",
-    "value_definition",
-    "expression_item",
-  };
-  if (node.getType() == "number") {
-    auto text = getText(node, source);
-    return text.contains('.') ? getType("float") : getType("int");
-  } else if (node.getType() == "float") {
-    return getType("float");
-  } else if (node.getType() == "unit") {
-    return getUnitType();
-  } else if (node.getType() == "string") {
-    return getType("string");
-  } else if (node.getType() == "guard") {
-    return inferGuard(std::move(ast));
-  } else if (node.getType() == "do_clause") {
-    return infer(node.getNamedChild(0));
-  } else if (node.getType() == "constructor_path") {
-    return inferConstructorPath(std::move(ast));
-  } else if (node.getType() == "let_binding") {
-    return inferLetBinding(std::move(ast));
-  } else if (node.getType() == "let_expression") {
-    return inferLetExpression(std::move(ast));
-  } else if (node.getType() == "fun_expression") {
-    return inferFunctionExpression(std::move(ast));
-  } else if (node.getType() == "match_expression") {
-    return inferMatchExpression(std::move(ast));
-  } else if (node.getType() == "value_path") {
-    return inferValuePath(std::move(ast));
-  } else if (node.getType() == "for_expression") {
-    return inferForExpression(std::move(ast));
-  } else if (node.getType() == "infix_expression") {
-    return inferInfixExpression(std::move(ast));
-  } else if (node.getType() == "if_expression") {
-    return inferIfExpression(std::move(ast));
-  } else if (node.getType() == "array_get_expression") {
-    return inferArrayGetExpression(std::move(ast));
-  } else if (node.getType() == "list_expression") {
-    return inferListExpression(std::move(ast));
-  } else if (llvm::is_contained(passthroughTypes, node.getType())) {
-    assert(node.getNumNamedChildren() == 1);
-    return infer(node.getNamedChild(0));
-  } else if (node.getType() == "compilation_unit") {
-    return inferCompilationUnit(std::move(ast));
-  } else if (node.getType() == "application_expression") {
-    return inferApplicationExpression(std::move(ast));
-  } else if (node.getType() == "module_definition") {
-    return inferModuleDefinition(std::move(ast));
-  } else if (node.getType() == "value_specification") {
-    return inferValueSpecification(std::move(ast));
-  } else if (node.getType() == "type_constructor_path") {
-    return inferTypeConstructorPath(std::move(ast));
-  } else if (node.getType() == "record_declaration") {
-    return inferRecordDeclaration(std::move(ast));
-  } else if (node.getType() == "sequence_expression") {
-    return inferSequenceExpression(std::move(ast));
-  } else if (node.getType() == "type_definition") {
-    return inferTypeDefinition(std::move(ast));
-  } else if (node.getType() == "value_pattern") {
-    return inferValuePattern(std::move(ast));
-  } else if (node.getType() == "constructor_path") {
-    return inferConstructorPath(node.getCursor());
-  } else if (node.getType() == "parenthesized_pattern") {
-    return inferParenthesizedPattern(std::move(ast));
-  } else if (node.getType() == "constructor_pattern") {
-    return inferConstructorPattern(std::move(ast));
-  } else if (node.getType() == "tuple_pattern") {
-    return inferTuplePattern(node);
-  } else if (node.getType() == "type_variable") {
-    return getType(node);
-  } else if (node.getType() == "constructed_type") {
-    return inferConstructedType(std::move(ast));
-  }
-  show(ast.copy(), true);
-  llvm::errs() << "Unknown node type: " << node.getType() << '\n';
-  assert(false && "Unknown node type");
-  return nullptr;
 }
 
 // Try to unify two types based on their structure.
@@ -1252,6 +1209,94 @@ TypeExpr *Unifier::getWildcardType() {
 TypeExpr *Unifier::getVarargsType() { 
   static TypeExpr *type = getType("varargs!");
   return type;
+}
+
+TypeExpr* Unifier::inferType(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  static constexpr std::string_view passthroughTypes[] = {
+    "parenthesized_expression",
+    "then_clause",
+    "else_clause",
+    "value_definition",
+    "expression_item",
+  };
+  if (node.getType() == "number") {
+    auto text = getText(node, source);
+    return text.contains('.') ? getType("float") : getType("int");
+  } else if (node.getType() == "float") {
+    return getType("float");
+  } else if (node.getType() == "unit") {
+    return getUnitType();
+  } else if (node.getType() == "string") {
+    return getType("string");
+  } else if (node.getType() == "guard") {
+    return inferGuard(std::move(ast));
+  } else if (node.getType() == "do_clause") {
+    return infer(node.getNamedChild(0));
+  } else if (node.getType() == "constructor_path") {
+    return inferConstructorPath(std::move(ast));
+  } else if (node.getType() == "let_binding") {
+    return inferLetBinding(std::move(ast));
+  } else if (node.getType() == "let_expression") {
+    return inferLetExpression(std::move(ast));
+  } else if (node.getType() == "fun_expression") {
+    return inferFunctionExpression(std::move(ast));
+  } else if (node.getType() == "match_expression") {
+    return inferMatchExpression(std::move(ast));
+  } else if (node.getType() == "value_path") {
+    return inferValuePath(std::move(ast));
+  } else if (node.getType() == "for_expression") {
+    return inferForExpression(std::move(ast));
+  } else if (node.getType() == "infix_expression") {
+    return inferInfixExpression(std::move(ast));
+  } else if (node.getType() == "if_expression") {
+    return inferIfExpression(std::move(ast));
+  } else if (node.getType() == "array_expression") {
+    return inferArrayExpression(std::move(ast));
+  } else if (node.getType() == "array_get_expression") {
+    return inferArrayGetExpression(std::move(ast));
+  } else if (node.getType() == "list_expression") {
+    return inferListExpression(std::move(ast));
+  } else if (llvm::is_contained(passthroughTypes, node.getType())) {
+    assert(node.getNumNamedChildren() == 1);
+    return infer(node.getNamedChild(0));
+  } else if (node.getType() == "compilation_unit") {
+    return inferCompilationUnit(std::move(ast));
+  } else if (node.getType() == "application_expression") {
+    return inferApplicationExpression(std::move(ast));
+  } else if (node.getType() == "module_definition") {
+    return inferModuleDefinition(std::move(ast));
+  } else if (node.getType() == "value_specification") {
+    return inferValueSpecification(std::move(ast));
+  } else if (node.getType() == "type_constructor_path") {
+    return inferTypeConstructorPath(std::move(ast));
+  } else if (node.getType() == "record_declaration") {
+    return inferRecordDeclaration(std::move(ast));
+  } else if (node.getType() == "sequence_expression") {
+    return inferSequenceExpression(std::move(ast));
+  } else if (node.getType() == "type_definition") {
+    return inferTypeDefinition(std::move(ast));
+  } else if (node.getType() == "value_pattern") {
+    return inferValuePattern(std::move(ast));
+  } else if (node.getType() == "constructor_path") {
+    return inferConstructorPath(node.getCursor());
+  } else if (node.getType() == "parenthesized_pattern") {
+    return inferParenthesizedPattern(std::move(ast));
+  } else if (node.getType() == "constructor_pattern") {
+    return inferConstructorPattern(std::move(ast));
+  } else if (node.getType() == "tuple_pattern") {
+    return inferTuplePattern(node);
+  } else if (node.getType() == "type_variable") {
+    return getType(node);
+  } else if (node.getType() == "constructed_type") {
+    return inferConstructedType(std::move(ast));
+  } else if (node.getType() == "product_expression") {
+    return inferProductExpression(std::move(ast));
+  }
+  show(ast.copy(), true);
+  llvm::errs() << "Unknown node type: " << node.getType() << '\n';
+  assert(false && "Unknown node type");
+  return nullptr;
 }
 
 } // namespace ts
