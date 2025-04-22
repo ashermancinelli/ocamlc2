@@ -76,6 +76,7 @@ private:
   TypeExpr *inferPattern(ts::Node node);
   TypeExpr *inferTuplePattern(ts::Node node);
   TypeExpr *inferValuePattern(Cursor ast);
+  TypeExpr *inferParenthesizedPattern(Cursor ast);
   TypeExpr *inferConstructorPattern(Cursor ast);
   TypeExpr *inferGuard(Cursor ast);
   TypeExpr *inferArrayGetExpression(Cursor ast);
@@ -174,6 +175,7 @@ private:
   void popModule();
   std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
   std::vector<std::string> getPathParts(Node node);
+  TypeExpr *collapseTuplePattern(TypeExpr *type);
 
   std::string_view source;
   Env env;

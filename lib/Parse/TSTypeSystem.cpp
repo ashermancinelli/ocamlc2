@@ -305,7 +305,15 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
 TypeExpr* Unifier::inferTuplePattern(ts::Node node) {
   SmallVector<TypeExpr*> types;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    types.push_back(infer(node.getNamedChild(i)));
+    auto *childType = infer(node.getNamedChild(i));
+    if (auto *childTupleType = llvm::dyn_cast<TypeOperator>(childType);
+        childTupleType &&
+        childTupleType->getName() == TypeOperator::getTupleOperatorName()) {
+      std::copy(childTupleType->getArgs().begin(),
+                childTupleType->getArgs().end(), std::back_inserter(types));
+    } else {
+      types.push_back(childType);
+    }
   }
   return createTuple(types);
 }
@@ -923,7 +931,9 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   if (body.getType() == "variant_declaration") {
     for (unsigned i = 0; i < body.getNumNamedChildren(); ++i) {
       auto child = body.getNamedChild(i);
-      inferVariantConstructor(variantType, child.getCursor());
+      if (child.getType() == "comment") continue;
+      auto *ctorType = inferVariantConstructor(variantType, child.getCursor());
+      setType(child, ctorType);
     }
   } else {
     show(body.getCursor(), true);
@@ -933,6 +943,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
 }
 
 TypeExpr* Unifier::inferConstructedType(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "constructed_type");
   SmallVector<TypeExpr*> args;
@@ -949,6 +960,14 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
     return nullptr;
   }
   return inferredType;
+}
+
+TypeExpr* Unifier::inferParenthesizedPattern(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "parenthesized_pattern");
+  auto *type = infer(node.getNamedChild(0));
+  return type;
 }
 
 TypeExpr *Unifier::inferValuePattern(Cursor ast) {
@@ -1029,7 +1048,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   } else if (node.getType() == "constructor_path") {
     return inferConstructorPath(node.getCursor());
   } else if (node.getType() == "parenthesized_pattern") {
-    return infer(node.getNamedChild(0));
+    return inferParenthesizedPattern(std::move(ast));
   } else if (node.getType() == "constructor_pattern") {
     return inferConstructorPattern(std::move(ast));
   } else if (node.getType() == "tuple_pattern") {

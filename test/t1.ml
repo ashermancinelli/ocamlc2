@@ -40,7 +40,7 @@ type shape =
   | Triangle of float * float * float  (* sides *)
 
 (* Function using custom type *)
-let area = function
+let area s = match s with
   | Circle r -> Float.pi *. r *. r
   | Rectangle (w, h) -> w *. h
   | Triangle (a, b, c) ->
