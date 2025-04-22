@@ -59,6 +59,22 @@ static std::string hashPath(std::vector<std::string> path) {
   return llvm::join(path, "MM");
 }
 
+TypeExpr* Unifier::getTypeVariable(Node node) {
+  assert(node.getType() == "type_variable");
+  auto text = stringArena.save(getText(node, source));
+  return getTypeVariable(text);
+}
+
+TypeExpr* Unifier::getTypeVariable(llvm::StringRef name) {
+  auto str = stringArena.save(name);
+  if (auto *type = env.lookup(str)) {
+    return type;
+  }
+  auto *type = createTypeVariable();
+  env.insert(str, type);
+  return type;
+}
+
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Unifier::Env& env) {
   for (auto it = env.TopLevelMap.begin(); it != env.TopLevelMap.end(); ++it) {
     os << it->first << " -> " << *(it->second->getValue()) << '\n';
@@ -214,6 +230,10 @@ void Unifier::initializeEnvironment() {
 
   auto *Array = getArrayType();
   auto *List = getListType();
+  declare("list", List);
+  declarePath(
+      {"List", "iter"},
+      getFunctionType({getFunctionType({List->back(), T_unit}), List, T_unit}));
   declare("Nil", getFunctionType({List}));
   declare("Cons", getFunctionType({List->back(), List, List}));
   declarePath({"Array", "length"}, getFunctionType({Array, T_int}));
@@ -263,6 +283,17 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
   maybeDumpTypes(cursor.getCurrentNode(), te);
   DBG(show(cursor.copy(), true));
   return te;
+}
+
+TypeExpr* Unifier::inferFunctionType(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "function_type");
+  SmallVector<TypeExpr*> types;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto *childType = infer(node.getNamedChild(i));
+    types.push_back(childType);
+  }
+  return getFunctionType(types);
 }
 
 TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
@@ -548,7 +579,9 @@ TypeExpr* Unifier::inferIfExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::declare(Node node, TypeExpr* type) {
-  return declare(getText(node, source), type);
+  declare(getText(node, source), type);
+  setType(node, type);
+  return type;
 }
 
 TypeExpr* Unifier::inferForExpression(Cursor ast) {
@@ -799,10 +832,8 @@ TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
       auto *type = declareConcrete(child.getNamedChild(0));
       types.push_back(type);
     } else {
-      detail::Scope scope(this);
-      auto body = child.getNamedChild(0);
       assert(i == node.getNumNamedChildren() - 1 && "Expected body after parameters");
-      types.push_back(infer(body));
+      types.push_back(infer(child));
     }
   }
   return getFunctionType(types);
@@ -1240,6 +1271,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     "else_clause",
     "value_definition",
     "expression_item",
+    "parenthesized_type",
   };
   if (node.getType() == "number") {
     auto text = getText(node, source);
@@ -1308,11 +1340,13 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   } else if (node.getType() == "tuple_pattern") {
     return inferTuplePattern(node);
   } else if (node.getType() == "type_variable") {
-    return getType(node);
+    return getTypeVariable(node);
   } else if (node.getType() == "constructed_type") {
     return inferConstructedType(std::move(ast));
   } else if (node.getType() == "product_expression") {
     return inferProductExpression(std::move(ast));
+  } else if (node.getType() == "function_type") {
+    return inferFunctionType(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';

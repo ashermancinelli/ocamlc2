@@ -98,6 +98,7 @@ private:
   TypeExpr *inferVariantConstructor(TypeExpr *variantType, Cursor ast);
   TypeExpr *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferConstructedType(Cursor ast);
+  TypeExpr *inferFunctionType(Cursor ast);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
@@ -140,6 +141,7 @@ private:
   //
   // val access : 'a list -> 'a
   TypeExpr *getTypeVariable(const llvm::StringRef name);
+  TypeExpr *getTypeVariable(Node node);
 
   llvm::SmallVector<TypeExpr *> getParameterTypes(Cursor parameters);
 

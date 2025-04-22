@@ -11,8 +11,16 @@ let () =
   M2.print ();
   let l = [1; 2; 3] in
   let l' = M2.map (fun x -> x * 2) l in
-  List.iter (fun x -> print_endline (string_of_int x)) l';
+  let f x = print_endline @@ string_of_int x in
+  (List.iter f l' ; List.iter (fun x -> print_endline "---") l');
 
 (*
 RUN: p3 %s --dump-types | FileCheck %s
+CHECK: let: message : string
+CHECK: let: print : (λ unit unit)
+CHECK: let: map : (λ (λ 't20 't21) (List 't20) (List 't21))
+CHECK: let: l : (List int)
+CHECK: let: l' : (List int)
+CHECK: let: f : (λ int unit)
+CHECK: let: () : unit
 *)
