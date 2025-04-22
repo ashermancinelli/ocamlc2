@@ -6,7 +6,8 @@ let area (s : shape) : int =
     | B i -> (i + 1)
     ;;
 
-print_int (area (A));;
+print_int (area A);
+print_endline "";;
 
 (*
 RUN: p3 %s --dump-types | FileCheck %s

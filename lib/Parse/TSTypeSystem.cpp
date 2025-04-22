@@ -479,15 +479,19 @@ TypeExpr *Unifier::declareConcrete(Node node) {
 }
 
 TypeExpr *Unifier::declareFunctionParameter(Node node) {
+  assert(node.getType() == "parameter");
+  node = node.getNamedChild(0);
   if (node.getType() == "unit") {
     return getUnitType();
   } else if (node.getType() == "typed_pattern") {
     auto name = node.getNamedChild(0);
     auto *type = infer(node.getNamedChild(1));
+    setType(node, type);
     return declare(name, type);
   } else {
     auto *type = createTypeVariable();
     concreteTypes.insert(type);
+    setType(node, type);
     return declare(node, type);
   }
 }
@@ -543,18 +547,46 @@ TypeExpr* Unifier::inferLetBinding(Cursor ast) {
   const bool isRecursive = isLetBindingRecursive(ast.copy());
   auto name = node.getNamedChild(0),
        body = node.getNamedChild(node.getNumNamedChildren() - 1);
-  for (unsigned i = 1; i < node.getNumNamedChildren() - 1; ++i) {
+  TypeExpr* declaredReturnType = nullptr;
+  const auto numChildren = node.getNumNamedChildren();
+  for (unsigned i = 1; i < numChildren - 1; ++i) {
     auto n = node.getNamedChild(i);
-    assert(n.getType() == "parameter" && "Expected parameter");
-    parameters.push_back(n.getNamedChild(0));
+    if (n.getType() == "parameter") {
+      parameters.push_back(n);
+    } else {
+      assert(i == numChildren - 2);
+      declaredReturnType = infer(n);
+    }
   }
+  TypeExpr* inferredReturnType = nullptr;
   if (parameters.empty()) {
     assert(!isRecursive && "Expected non-recursive let binding for non-function");
-    return inferLetBindingValue(name, body);
-  } else if (isRecursive) {
-    return inferLetBindingRecursiveFunction(name, parameters, body);
+    inferredReturnType = inferLetBindingValue(name, body);
+    if (declaredReturnType != nullptr &&
+        failed(unify(inferredReturnType, declaredReturnType))) {
+      assert(false &&
+             "Failed to unify inferred return type with declared return type");
+      return nullptr;
+    }
+    return inferredReturnType;
   } else {
-    return inferLetBindingFunction(name, parameters, body);
+    if (isRecursive) {
+      inferredReturnType =
+          inferLetBindingRecursiveFunction(name, parameters, body);
+    } else {
+      inferredReturnType = inferLetBindingFunction(name, parameters, body);
+    }
+    if (declaredReturnType != nullptr) {
+      SmallVector<TypeExpr*> typeVars = llvm::map_to_vector(parameters, [&] (auto) -> TypeExpr* { return createTypeVariable(); });
+      typeVars.push_back(declaredReturnType);
+      auto *expectedType = getFunctionType(typeVars);
+      if (failed(unify(inferredReturnType, expectedType))) {
+        assert(false &&
+               "Failed to unify inferred return type with declared return type");
+        return nullptr;
+      }
+    }
+    return inferredReturnType;
   }
 }
 
