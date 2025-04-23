@@ -36,7 +36,17 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genValueDefinition(const ocamlc2::ts::Nod
 mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
   TRACE();
   auto type = node.getType();
-  if (type == "compilation_unit") {
+  static constexpr std::string_view passthroughTypes[] = {
+    "parenthesized_expression",
+    "then_clause",
+    "else_clause",
+    "value_definition",
+    "expression_item",
+    "parenthesized_type",
+  };
+  if (llvm::is_contained(passthroughTypes, type)) {
+    return gen(node.getNamedChild(0));
+  } else if (type == "compilation_unit") {
     for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
       auto child = node.getNamedChild(i);
       auto res = gen(child);
