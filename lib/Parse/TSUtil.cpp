@@ -64,5 +64,31 @@ dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
   return os;
 }
 
+llvm::SmallVector<ts::Node> getChildren(const ts::Node &node) {
+  llvm::SmallVector<ts::Node> children;
+  for (unsigned i = 0; i < node.getNumChildren(); ++i) {
+    children.push_back(node.getChild(i));
+  }
+  return children;
+}
+
+llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node &node) {
+  llvm::SmallVector<ts::Node> children;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    children.push_back(node.getNamedChild(i));
+  }
+  return children;
+}
+
+bool isLetBindingRecursive(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "let_binding" && "expecting let_binding");
+  auto maybeRecKeyword = node.getPreviousSibling();
+  if (!maybeRecKeyword.isNull() && maybeRecKeyword.getType() == "rec") {
+    return true;
+  }
+  return false;
+}
+
 } // namespace ts
 } // namespace ocamlc2

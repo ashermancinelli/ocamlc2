@@ -259,9 +259,9 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
         while (it != letChildren.end()) {
           lastValue = must(gen(it++));
         }
-        auto *castedValue =
+        auto castedValue =
             builder.createConvert(loc(child), lastValue, oboxType);
-        builder.create<mlir::func::ReturnOp>(loc(child), castedValue->getResult(0));
+        builder.create<mlir::func::ReturnOp>(loc(child), castedValue);
       }
       return mlir::Value();
     }
@@ -320,7 +320,7 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     int result;
     textRef.getAsInteger(10, result);
     auto op = builder.create<mlir::arith::ConstantIntOp>(loc(child), result, 64);
-    auto box = builder.createEmbox(loc(child), op.getResult())->getResult(0);
+    auto box = builder.createEmbox(loc(child), op);
     return box;
   } else if (childType == "parenthesized_expression") {
     auto children = childrenNodes(child);
@@ -338,14 +338,10 @@ FailureOr<mlir::Value> MLIRGen::gen(NodeIter it) {
     auto iterVar = maybeIterVar.value();
     assert(it++->first == "=");
     auto lowerBound = must(gen(it++));
-    lowerBound =
-        builder.createConvert(loc(child), lowerBound, builder.getI64Type())
-            ->getResult(0);
+    lowerBound = builder.createConvert(loc(child), lowerBound, builder.getI64Type());
     assert(it++->first == "to");
     auto upperBound = must(gen(it++));
-    upperBound =
-        builder.createConvert(loc(child), upperBound, builder.getI64Type())
-            ->getResult(0);
+    upperBound = builder.createConvert(loc(child), upperBound, builder.getI64Type());
     mlir::Value step = builder.create<mlir::arith::ConstantIntOp>(loc(child), 1, 64);
     auto loop = builder.create<mlir::scf::ForOp>(loc(child), lowerBound, upperBound, step);
     {

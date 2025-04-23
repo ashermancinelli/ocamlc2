@@ -53,28 +53,28 @@ llvm::ArrayRef<RuntimeFunction> RuntimeFunction::getRuntimeFunctions() {
   if (rtfs.empty()) {
     rtfs.push_back({"Printf.printf", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      return builder.createCallIntrinsic(loc, "Printf.printf", args, builder.getUnitType())->getResult(0);
+      return builder.createCallIntrinsic(loc, "Printf.printf", args, builder.getUnitType());
     }});
     rtfs.push_back({"int", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      return builder.createConvert(loc, args[0], builder.emboxType(builder.getI32Type()))->getResult(0);
+      return builder.createConvert(loc, args[0], builder.emboxType(builder.getI32Type()));
     }});
     rtfs.push_back({"float", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      return builder.createConvert(loc, args[0], builder.emboxType(builder.getF64Type()))->getResult(0);
+      return builder.createConvert(loc, args[0], builder.emboxType(builder.getF64Type()));
     }});
     rtfs.push_back({"Obj.repr", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
       auto reprOp = builder.createCallIntrinsic(loc, "Obj.repr", args);
-      return reprOp->getResult(0);
+      return reprOp;
     }});
     rtfs.push_back({"print_float", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      return builder.createCallIntrinsic(loc, "print_float", args, builder.getUnitType())->getResult(0);
+      return builder.createCallIntrinsic(loc, "print_float", args, builder.getUnitType());
     }});
     rtfs.push_back({"print_int", [](MLIRGen *gen, TSNode *node, mlir::Location loc, mlir::ValueRange args) -> mlir::Value {
       auto &builder = gen->getBuilder();
-      return builder.createCallIntrinsic(loc, "print_int", args, builder.getUnitType())->getResult(0);
+      return builder.createCallIntrinsic(loc, "print_int", args, builder.getUnitType());
     }});
   }
   return rtfs;

@@ -1,6 +1,7 @@
 #include "ocamlc2/Parse/MLIRGen3.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
 #include "ocamlc2/Parse/AST.h"
+#include "ocamlc2/Parse/TSUtil.h"
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/LogicalResult.h>
@@ -25,12 +26,130 @@
 using namespace ocamlc2;
 using InsertionGuard = mlir::ocaml::OcamlOpBuilder::InsertionGuard;
 
+static StringArena stringArena;
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const ocamlc2::ts::Node node) {
+  const auto children = getNamedChildren(node);
+  const bool isRecursive = isLetBindingRecursive(node.getCursor());
+  const auto lhs = children[0];
+  const auto lhsType = unifierType(lhs);
+  const auto rhs = children[children.size() - 1];
+  if (lhsType == unifier.getUnitType()) {
+    return gen(rhs);
+  }
+  nyi(node) << "let binding with non-unit lhs";
+  if (isRecursive) {
+    return nyi(node);
+  }
   return nyi(node);
 }
 
-mlir::FailureOr<mlir::Value> MLIRGen3::genValueDefinition(const ocamlc2::ts::Node node) {
-  return nyi(node);
+mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeFromBasicTypeOperator(llvm::StringRef name) {
+  if (name == "int") {
+    return builder.emboxType(builder.getI64Type());
+  } else if (name == "float") {
+    return builder.emboxType(builder.getF64Type());
+  } else if (name == "bool") {
+    return builder.emboxType(builder.getI1Type());
+  }
+  return failure();
+}
+
+mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeForNode(const ocamlc2::ts::Node node) {
+  const auto *type = unifierType(node);
+  if (type == nullptr) {
+    return error(node) << "Could not infer type";
+  }
+  if (const auto *to = llvm::dyn_cast<ocamlc2::TypeOperator>(type)) {
+    if (to->getArgs().empty()) {
+      auto mlirType = mlirTypeFromBasicTypeOperator(to->getName());
+      if (failed(mlirType)) {
+        return error(node) << "Unknown basic type operator: " << *type;
+      }
+      return mlirType;
+    }
+    return error(node) << "Unknown type operator: " << *type;
+  }
+  return error(node) << "Unknown type: " << *type;
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
+  return variables.lookup(name);
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genForExpression(const ocamlc2::ts::Node node) {
+  TRACE();
+  const auto children = getNamedChildren(node);
+  const auto inductionVariableNode = children[0];
+  const auto startNode = children[1];
+  const auto endNode = children[2];
+  const auto bodyNode = children[3];
+  const auto upOrDownToNode = node.getChild(4);
+  const auto stepSize = upOrDownToNode.getType() == "to"       ? 1
+                        : upOrDownToNode.getType() == "downto" ? -1
+                                                           : 0;
+  if (stepSize == 0) {
+    return error(node) << "Could not infer step size";
+  }
+  auto startValue = gen(startNode);
+  auto endValue = gen(endNode);
+  if (failed(startValue) || failed(endValue)) {
+    return error(node) << "Failed to generate bounds for `for` expression";
+  }
+  mlir::Value start = builder.createUnbox(loc(startNode), *startValue);
+  mlir::Value end = builder.createUnbox(loc(endNode), *endValue);
+  mlir::Value step = builder.createConstant(loc(upOrDownToNode), builder.getI64Type(),
+                                     stepSize);
+  auto forOp = builder.create<mlir::scf::ForOp>(loc(node), start, end, step);
+  auto bodyBlock = forOp.getBody();
+  VariableScope scope(variables);
+  builder.setInsertionPointToStart(bodyBlock);
+  auto res = declareVariable(inductionVariableNode, forOp.getInductionVar(),
+                             loc(inductionVariableNode));
+  if (failed(res)) {
+    return res;
+  }
+  auto bodyValue = gen(bodyNode);
+  if (failed(bodyValue)) {
+    return error(node) << "Failed to generate body for `for` expression";
+  }
+  // for expressions are of unit type, don't need to propagate anything here
+  return mlir::Value();
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const ocamlc2::ts::Node node) {
+  VariableScope scope(variables);
+  InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(module->getBody());
+  auto mainFunc = builder.create<mlir::func::FuncOp>(
+      loc(node), "main", builder.getFunctionType({}, builder.getI32Type()));
+  auto &body = mainFunc.getFunctionBody();
+  builder.setInsertionPointToEnd(&body.emplaceBlock());
+  for (auto child : getNamedChildren(node)) {
+    auto res = gen(child);
+    if (mlir::failed(res)) {
+      return res;
+    }
+  }
+  return mlir::Value();
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genNumber(const ocamlc2::ts::Node node) {
+  auto str = getText(node);
+  auto type = mlirTypeForNode(node);
+  if (failed(type)) {
+    return failure();
+  }
+  long long int intValue;
+  double doubleValue;
+  if (not str.getAsInteger(10, intValue)) {
+    auto constant = builder.createConstant(loc(node), builder.getI64Type(), intValue);
+    return builder.createEmbox(loc(node), constant);
+  } else if (not str.getAsDouble(doubleValue)) {
+    auto constant = builder.createConstant(loc(node), builder.getF64Type(), doubleValue);
+    return builder.createEmbox(loc(node), constant);
+  }
+  return error(node) << "Failed to parse number: " << str;
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
@@ -40,6 +159,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
     "parenthesized_expression",
     "then_clause",
     "else_clause",
+    "do_clause",
     "value_definition",
     "expression_item",
     "parenthesized_type",
@@ -47,22 +167,37 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
   if (llvm::is_contained(passthroughTypes, type)) {
     return gen(node.getNamedChild(0));
   } else if (type == "compilation_unit") {
-    for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-      auto child = node.getNamedChild(i);
-      auto res = gen(child);
-      if (mlir::failed(res)) {
-        return res;
-      }
-    }
-    return mlir::Value();
+    return genCompilationUnit(node);
   } else if (type == "let_binding") {
     return genLetBinding(node);
-  } else if (type == "value_definition") {
-    return genValueDefinition(node);
   } else if (type == "comment") {
     return mlir::Value();
+  } else if (type == "number") {
+    return genNumber(node);
+  } else if (type == "for_expression") {
+    return genForExpression(node);
   }
   return error(node) << "Unknown node type: " << type;
+}
+
+llvm::StringRef MLIRGen3::getText(const ocamlc2::ts::Node node) {
+  return ::getText(node, unifier.source);
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(ocamlc2::ts::Node node, mlir::Value value, mlir::Location loc) {
+  auto str = getText(node);
+  return declareVariable(str, value, loc);
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc) {
+  auto savedName = stringArena.save(name);
+  DBGS("declaring '" << savedName << "' of type " << value.getType() << "\n");
+  if (variables.count(savedName)) {
+    return mlir::emitError(loc)
+        << "Variable '" << name << "' already declared";
+  }
+  variables.insert(savedName, value);
+  return value;
 }
 
 mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> MLIRGen3::gen() {

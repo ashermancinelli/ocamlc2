@@ -18,9 +18,6 @@ struct MLIRGen3 {
     : context(context), builder(&context), unifier(unifier), root(root) {}
   mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen();
   mlir::FailureOr<mlir::Value> gen(const ocamlc2::ts::Node node);
-  mlir::FailureOr<mlir::Value> genLetBinding(const ocamlc2::ts::Node node);
-  mlir::FailureOr<mlir::Value> genValueDefinition(const ocamlc2::ts::Node node);
-
   inline mlir::Location loc(const ocamlc2::ts::Node node) const {
     auto range = node.getPointRange();
     auto start = range.start, end = range.end;
@@ -28,8 +25,12 @@ struct MLIRGen3 {
         mlir::StringAttr::get(&context, unifier.filepath), start.row + 1,
         start.column + 1, end.row + 1, end.column + 1);
   }
+  inline auto error(const mlir::Location loc) const {
+    return mlir::emitError(loc) << "error: ";
+  }
   inline auto error(const ocamlc2::ts::Node node) const {
-    return mlir::emitError(loc(node)) << "error: ";
+    unifier.show(node.getCursor(), true);
+    return error(loc(node));
   }
   inline auto nyi(const ocamlc2::ts::Node node) const {
     unifier.show(node.getCursor(), true);
@@ -39,6 +40,22 @@ struct MLIRGen3 {
     return module.get();
   }
 private:
+  mlir::FailureOr<mlir::Value> genLetBinding(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genValueDefinition(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genForExpression(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genCompilationUnit(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genNumber(const ocamlc2::ts::Node node);
+
+  mlir::FailureOr<mlir::Value> declareVariable(ocamlc2::ts::Node node, mlir::Value value, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
+
+  mlir::FailureOr<mlir::Type> mlirTypeForNode(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
+  llvm::StringRef getText(const ocamlc2::ts::Node node);
+  inline auto *unifierType(const ocamlc2::ts::Node node) {
+    return unifier.getInferredType(node);
+  }
   llvm::ScopedHashTable<llvm::StringRef, mlir::Value> variables;
   mlir::MLIRContext &context;
   mlir::ocaml::OcamlOpBuilder builder;

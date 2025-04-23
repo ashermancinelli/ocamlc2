@@ -3,6 +3,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Builders.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/ValueRange.h>
 
@@ -12,30 +13,41 @@ class OcamlOpBuilder : public mlir::OpBuilder {
   using OpBuilder::OpBuilder;
 
 public:
-  mlir::Operation *createConvert(mlir::Location loc, mlir::Value input, mlir::Type resultType) {
+  mlir::Value createConvert(mlir::Location loc, mlir::Value input, mlir::Type resultType) {
     return create<mlir::ocaml::ConvertOp>(loc, resultType, input);
   }
 
-  mlir::Operation *createEmbox(mlir::Location loc, mlir::Value input) {
+  mlir::Value createEmbox(mlir::Location loc, mlir::Value input) {
     return createConvert(loc, input, emboxType(input.getType()));
   }
 
-  mlir::Operation *createCall(mlir::Location loc, func::FuncOp function, mlir::ValueRange args) {
+  mlir::Value createUnbox(mlir::Location loc, mlir::Value input) {
+    auto type = input.getType();
+    if (auto boxType = mlir::dyn_cast<mlir::ocaml::BoxType>(type)) {
+      return createConvert(loc, input, boxType.getElementType());
+    }
+    return input;
+  }
+
+  mlir::Value createConstant(mlir::Location loc, mlir::Type type, int64_t value) {
+    return create<mlir::arith::ConstantOp>(loc, type, mlir::IntegerAttr::get(type, value));
+  }
+
+  mlir::Value createCall(mlir::Location loc, func::FuncOp function, mlir::ValueRange args) {
     SmallVector<mlir::Value> convertedArgs;
     auto ftype = function.getFunctionType();
     for (auto arg : llvm::enumerate(args)) {
       convertedArgs.push_back(
-          createConvert(loc, arg.value(), ftype.getInput(arg.index()))
-              ->getResult(0));
+          createConvert(loc, arg.value(), ftype.getInput(arg.index())));
     }
-    return create<mlir::func::CallOp>(loc, function, convertedArgs);
+    return create<mlir::func::CallOp>(loc, function, convertedArgs).getResult(0);
   }
 
-  mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {
+  mlir::Value createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {
     return create<mlir::ocaml::IntrinsicOp>(loc, getUnitType(), getStringAttr(callee), args);
   }
 
-  mlir::Operation *createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args, mlir::Type resultType) {
+  mlir::Value createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args, mlir::Type resultType) {
     return create<mlir::ocaml::IntrinsicOp>(loc, resultType, getStringAttr(callee), args);
   }
 

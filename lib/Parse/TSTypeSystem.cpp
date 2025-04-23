@@ -24,19 +24,6 @@ using namespace llvm;
 using std::move;
 
 namespace { 
-struct StringArena {
-  std::set<std::string> pool;
-  llvm::StringRef save(std::string str) {
-    auto [it, _] = pool.insert(str);
-    return *it;
-  }
-  llvm::StringRef save(std::string_view str) {
-    return save(std::string(str));
-  }
-  llvm::StringRef save(const char *str) {
-    return save(std::string_view(str));
-  }
-};
 static StringArena stringArena;
 
 static constexpr std::string_view pathTypes[] = {
@@ -460,16 +447,6 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
     }
     return resultType;
   }
-}
-
-static bool isLetBindingRecursive(Cursor ast) {
-  DBGS("Checking: " << ast.getCurrentNode().getType() << '\n');
-  auto node = ast.getCurrentNode();
-  auto maybeRecKeyword = node.getPreviousSibling();
-  if (!maybeRecKeyword.isNull() && maybeRecKeyword.getType() == "rec") {
-    return true;
-  }
-  return false;
 }
 
 TypeExpr *Unifier::declareConcrete(Node node) {

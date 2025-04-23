@@ -129,40 +129,6 @@ TypeVariable::TypeVariable() : TypeExpr(Kind::Variable) {
   this->id = id++;
 }
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
-  if (var.instantiated()) {
-    os << *var.instance;
-  } else {
-    os << var.getName();
-  }
-  return os;
-}
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op) {
-  auto args = op.getArgs();
-  auto name = op.getName().str();
-  if (auto pos = name.find("StdlibMM"); pos != std::string::npos) {
-    name = name.substr(pos + 8);
-  }
-  if (args.empty()) {
-    return os << name;
-  }
-  os << '(' << op.getName();
-  for (auto *arg : args) {
-    os << ' ' << *arg;
-  }
-  return os << ')';
-}
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type) {
-  if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
-    os << *to;
-  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
-    os << *tv;
-  }
-  return os;
-}
-
 bool TypeExpr::operator==(const TypeExpr& other) const {
   if (auto *to = llvm::dyn_cast<TypeOperator>(this)) {
     if (auto *toOther = llvm::dyn_cast<TypeOperator>(&other)) {

@@ -26,7 +26,7 @@ struct TypeExpr {
   virtual llvm::StringRef getName() const = 0;
   Kind getKind() const { return kind; }
   bool operator==(const TypeExpr& other) const;
-  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type);
+  template<typename T> friend T& operator<<(T& os, const TypeExpr& type);
 private:
   Kind kind;
 };
@@ -36,7 +36,7 @@ struct TypeOperator : public TypeExpr {
   inline llvm::StringRef getName() const override { return name; }
   inline llvm::ArrayRef<TypeExpr*> getArgs() const { return args; }
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Operator; }
-  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op);
+  template<typename T> friend T& operator<<(T& os, const TypeOperator& op);
   inline TypeExpr* at(size_t index) const { return args[index]; }
   consteval static llvm::StringRef getFunctionOperatorName() { return "λ"; }
   consteval static llvm::StringRef getTupleOperatorName() { return "*"; }
@@ -77,11 +77,48 @@ struct TypeVariable : public TypeExpr {
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Variable; }
   inline bool instantiated() const { return instance != nullptr; }
   bool operator==(const TypeVariable& other) const;
-  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var);
+  template<typename T> friend T& operator<<(T& os, const TypeVariable& var);
   TypeExpr* instance = nullptr;
 private:
   int id;
   mutable std::optional<std::string> name = std::nullopt;
 };
+
+template<typename T>
+T& operator<<(T& os, const TypeOperator& op) {
+  auto args = op.getArgs();
+  auto name = op.getName().str();
+  if (auto pos = name.find("StdlibMM"); pos != std::string::npos) {
+    name = name.substr(pos + 8);
+  }
+  if (args.empty()) {
+    return os << name;
+  }
+  os << '(' << op.getName();
+  for (auto *arg : args) {
+    os << ' ' << *arg;
+  }
+  return os << ')';
+}
+
+template<typename T>
+T& operator<<(T& os, const TypeExpr& type) {
+  if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
+    os << *to;
+  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
+    os << *tv;
+  }
+  return os;
+}
+
+template<typename T>
+T& operator<<(T& os, const TypeVariable& var) {
+  if (var.instantiated()) {
+    os << *var.instance;
+  } else {
+    os << var.getName();
+  }
+  return os;
+}
 
 }

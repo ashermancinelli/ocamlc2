@@ -34,12 +34,54 @@ struct Unifier {
   using ConcreteTypes = llvm::DenseSet<TypeVariable *>;
   TypeExpr *infer(Cursor ast);
   TypeExpr *infer(ts::Node const &ast);
+  inline auto *getInferredType(ts::Node const &ast) {
+    return nodeToType.lookup(ast.getID());
+  }
   template <typename T, typename... Args> T *create(Args &&...args) {
     static_assert(std::is_base_of_v<TypeExpr, T>,
                   "Unifier should only be used to create TypeExpr subclasses");
     typeArena.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     return static_cast<T *>(typeArena.back().get());
   }
+
+private:
+  inline auto *createTypeVariable() { return create<TypeVariable>(); }
+
+  inline auto *createTypeOperator(llvm::StringRef name,
+                                  llvm::ArrayRef<TypeExpr *> args = {}) {
+    return create<TypeOperator>(name, args);
+  }
+
+public:
+  inline auto *getFunctionType(llvm::ArrayRef<TypeExpr *> args) {
+    return create<FunctionOperator>(args);
+  }
+
+  inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
+    return createTypeOperator(TypeOperator::getTupleOperatorName(), args);
+  }
+
+  TypeExpr *getBoolType();
+  TypeExpr *getFloatType();
+  TypeExpr *getIntType();
+  TypeExpr *getUnitType();
+  TypeExpr *getStringType();
+  TypeExpr *getWildcardType();
+  TypeExpr *getVarargsType();
+  inline auto *getListTypeOf(TypeExpr *type) {
+    return createTypeOperator(TypeOperator::getListOperatorName(), {type});
+  }
+  inline auto *getListType() { return getListTypeOf(createTypeVariable()); }
+  inline auto *getArrayTypeOf(TypeExpr *type) {
+    return createTypeOperator(TypeOperator::getArrayOperatorName(), {type});
+  }
+  inline auto *getArrayType() { return getArrayTypeOf(createTypeVariable()); }
+  inline auto *getRecordType(ArrayRef<TypeExpr *> fields) {
+    return createTypeOperator(TypeOperator::getRecordOperatorName(), fields);
+  }
+  bool isVarargs(TypeExpr *type);
+  bool isWildcard(TypeExpr *type);
+
   std::string_view source;
   std::string filepath;
 
@@ -148,42 +190,6 @@ private:
   TypeExpr *getTypeVariable(Node node);
 
   llvm::SmallVector<TypeExpr *> getParameterTypes(Cursor parameters);
-
-  inline auto *createTypeVariable() { return create<TypeVariable>(); }
-
-  inline auto *createTypeOperator(llvm::StringRef name,
-                                  llvm::ArrayRef<TypeExpr *> args = {}) {
-    return create<TypeOperator>(name, args);
-  }
-
-  inline auto *getFunctionType(llvm::ArrayRef<TypeExpr *> args) {
-    return create<FunctionOperator>(args);
-  }
-
-  inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
-    return createTypeOperator(TypeOperator::getTupleOperatorName(), args);
-  }
-
-  TypeExpr *getBoolType();
-  TypeExpr *getFloatType();
-  TypeExpr *getIntType();
-  TypeExpr *getUnitType();
-  TypeExpr *getStringType();
-  TypeExpr *getWildcardType();
-  TypeExpr *getVarargsType();
-  inline auto *getListTypeOf(TypeExpr *type) {
-    return createTypeOperator(TypeOperator::getListOperatorName(), {type});
-  }
-  inline auto *getListType() { return getListTypeOf(createTypeVariable()); }
-  inline auto *getArrayTypeOf(TypeExpr *type) {
-    return createTypeOperator(TypeOperator::getArrayOperatorName(), {type});
-  }
-  inline auto *getArrayType() { return getArrayTypeOf(createTypeVariable()); }
-  inline auto *getRecordType(ArrayRef<TypeExpr *> fields) {
-    return createTypeOperator(TypeOperator::getRecordOperatorName(), fields);
-  }
-  bool isVarargs(TypeExpr *type);
-  bool isWildcard(TypeExpr *type);
 
   void pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> modules);
   inline void pushModuleSearchPath(llvm::StringRef module) {

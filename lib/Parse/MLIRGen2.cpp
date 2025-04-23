@@ -84,7 +84,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(NumberExprAST const& node) {
   int result;
   textRef.getAsInteger(10, result);
   auto op = builder.create<mlir::arith::ConstantIntOp>(loc(&node), result, 64);
-  auto box = builder.createEmbox(loc(&node), op.getResult())->getResult(0);
+  auto box = builder.createEmbox(loc(&node), op);
   return box;
 }
 
@@ -108,7 +108,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ConstructorPathAST const& node) {
         << "Function '" << name << "' not found";
   }
   auto call = builder.createCall(loc(&node), function, {});
-  return call->getResult(0);
+  return call;
 }
 
 mlir::FailureOr<std::string> MLIRGen2::getApplicatorName(ASTNode const& node) {
@@ -134,9 +134,9 @@ mlir::FailureOr<mlir::Value> MLIRGen2::genRuntime(llvm::StringRef name, Applicat
     }
     auto type = builder.emboxType(builder.getI64Type());
     convertedArgs.push_back(
-        builder.createConvert(loc(&node), *arg, type)->getResult(0));
+        builder.createConvert(loc(&node), *arg, type));
     auto call = builder.createCallIntrinsic(loc(&node), "print_int", convertedArgs);
-    return call->getResult(0);
+    return call;
   }
   return mlir::failure();
 }
@@ -196,7 +196,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(InfixExpressionAST const& node) {
         << "Failed to resolve types for infix expression '" << node.getOperator() << "'";
   }
   auto callOp = builder.createCallIntrinsic(loc(&node), node.getOperator(), {*lhs, *rhs}, *resultType);
-  return callOp->getResult(0);
+  return callOp;
 }
 
 mlir::FailureOr<TypeConstructor> MLIRGen2::getTypeConstructor(ASTNode const& node) {
@@ -346,9 +346,9 @@ mlir::LogicalResult MLIRGen2::genVariantConstructors(mlir::ocaml::VariantType va
     auto variantIndex = builder.create<mlir::arith::ConstantIntOp>(loc, iter.index(), 64);
     auto variantIndexBox = builder.createEmbox(loc, variantIndex);
     // if (emptyCtor) {
-      SmallVector<mlir::Value> args {variantIndexBox->getResult(0)};
+      SmallVector<mlir::Value> args {variantIndexBox};
       auto variant = builder.create<mlir::ocaml::IntrinsicOp>(loc, variantType, "variant_ctor_empty", args);
-      builder.create<mlir::func::ReturnOp>(loc, variant->getResult(0));
+      builder.create<mlir::func::ReturnOp>(loc, mlir::ValueRange{variant});
     // } else {
     //   builder.create<mlir::func::ReturnOp>(loc, variantIndexBox);
     // }
@@ -549,15 +549,15 @@ mlir::FailureOr<mlir::Value> MLIRGen2::genMatchCase(
 
   auto converted =
       builder.createConvert(location, *expressionResult, resultType);
-  builder.create<mlir::scf::YieldOp>(location, converted->getResult(0));
+  builder.create<mlir::scf::YieldOp>(location, converted);
   builder.setInsertionPointToStart(&ifOp.getElseRegion().front());
   if (++current == end) {
     auto zero = builder.create<mlir::arith::ConstantIntOp>(location, 0, 1);
     builder.create<mlir::cf::AssertOp>(
         location, zero, builder.getStringAttr("Match-case is not exhaustive!"));
     auto unitOp = builder.create<mlir::ocaml::UnitOp>(location, builder.getUnitType());
-    auto converted = builder.createConvert(location, unitOp->getResult(0), resultType);
-    builder.create<mlir::scf::YieldOp>(location, converted->getResult(0));
+    auto converted = builder.createConvert(location, unitOp, resultType);
+    builder.create<mlir::scf::YieldOp>(location, converted);
   } else {
     mlir::Value elseValue;
     {
@@ -571,7 +571,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::genMatchCase(
       elseValue = *maybeElseValue;
     }
     auto converted = builder.createConvert(location, elseValue, resultType);
-    builder.create<mlir::scf::YieldOp>(location, converted->getResult(0));
+    builder.create<mlir::scf::YieldOp>(location, converted);
   }
 
   return ifOp.getResult(0);
@@ -633,7 +633,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ApplicationExprAST const& node) {
             << "Failed to generate argument " << i << " for applicator " << name;
       }
     }
-    return builder.createCall(loc(&node), function, args)->getResult(0);
+    return builder.createCall(loc(&node), function, args);
   }
 
   if (auto runtimeCall = genRuntime(name, node); succeeded(runtimeCall)) {
@@ -660,10 +660,8 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(ForExpressionAST const& node) {
                       location, node.getIsDownto() ? -1 : 1, 64)
                   .getResult();
   auto startOp =
-      builder.createConvert(location, *startExpr, builder.getI64Type())
-          ->getResult(0);
-  auto endOp = builder.createConvert(location, *endExpr, builder.getI64Type())
-                   ->getResult(0);
+      builder.createConvert(location, *startExpr, builder.getI64Type());
+  auto endOp = builder.createConvert(location, *endExpr, builder.getI64Type());
   auto forOp = builder.create<mlir::scf::ForOp>(location, startOp, endOp, step);
   {
     InsertionGuard guard(builder);
@@ -698,7 +696,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(LetExpressionAST const& node) {
     return mlir::emitError(location)
         << "Failed to generate body for let expression";
   }
-  return *body;
+  return body;
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen2::gen(ASTNode const& node) {
