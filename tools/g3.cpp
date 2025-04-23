@@ -1,0 +1,95 @@
+#include "ocamlc2/Dialect/OcamlDialect.h"
+#include "ocamlc2/Parse/TSUnifier.h"
+#include "ocamlc2/Parse/MLIRGen3.h"
+#include "ocamlc2/Dialect/OcamlPasses.h"
+#include "ocamlc2/Support/LLVMCommon.h"
+#include "ocamlc2/Support/Utils.h"
+#include "ocamlc2/Support/CL.h"
+
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
+#include <iostream>
+#include <filesystem>
+#include <llvm/Support/SourceMgr.h>
+#include <memory>
+#include <llvm/Support/CommandLine.h>
+#include <mlir/IR/AsmState.h>
+#include <tree_sitter/tree-sitter-ocaml.h>
+#include <cpp-tree-sitter.h>
+#include <tree_sitter/api.h>
+#define DEBUG_TYPE "g3"
+#include "ocamlc2/Support/Debug.h.inc"
+
+namespace fs = std::filesystem;
+
+using namespace llvm;
+static cl::opt<std::string> inputFilename(cl::Positional,
+                                          cl::desc("<input ocaml file>"),
+                                          cl::init("-"),
+                                          cl::Required,
+                                          cl::value_desc("filename"));
+
+int main(int argc, char* argv[]) {
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
+  llvm::cl::ParseCommandLineOptions(argc, argv, "g3");
+  TRACE();
+  maybeReplaceWithGDB(argc, argv);
+  fs::path filepath = inputFilename.getValue();
+  std::string source = must(slurpFile(filepath));
+  DBGS("Source:\n" << source << "\n");
+
+  ::ts::Language language = tree_sitter_ocaml();
+  ::ts::Parser parser{language};
+  auto tree = parser.parseString(source);
+  auto root = tree.getRootNode();
+  
+  ocamlc2::ts::Unifier unifier{filepath, source};
+  DBG(
+    llvm::errs() << "AST:\n";
+    unifier.show(root.getCursor(), true);
+  )
+  auto *te = unifier.infer(root.getCursor());
+  DBGS("Inferred type: " << *te << '\n');
+
+  mlir::MLIRContext context;
+  llvm::SourceMgr sourceMgr;
+  mlir::SourceMgrDiagnosticHandler sourceManagerHandler(sourceMgr, &context);
+
+  mlir::ocaml::registerPasses();
+  mlir::DialectRegistry registry;
+  mlir::ocaml::setupRegistry(registry);
+  context.appendDialectRegistry(registry);
+  mlir::ocaml::setupContext(context);
+
+
+  MLIRGen3 gen(context, unifier, root);
+  auto module = gen.gen();
+
+  if (mlir::failed(module)) {
+    DBGS("Failed to generate MLIR for compilation unit\n");
+    return 1;
+  }
+
+  DBGS("Module:\n" << module->get() << "\n");
+
+#if 0
+  mlir::PassManager pm(&context);
+  mlir::ocaml::setupDefaultPipeline(pm);
+  mlir::ocaml::setupCodegenPipeline(pm);
+  if (mlir::failed(applyPassManagerCLOptions(pm))) {
+    llvm::errs() << "Failed to apply pass manager options\n";
+    return 1;
+  }
+
+  if (mlir::failed(pm.run(module->get()))) {
+    DBGS("Failed to run pass manager\n");
+    return 1;
+  }
+
+  DBGS("Module:\n");
+  llvm::outs() << module->get() << "\n";
+#endif
+  return 0;
+}

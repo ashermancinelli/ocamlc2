@@ -32,6 +32,7 @@ add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp)
 add_ocamlc2_tool(p3 p3.cpp)
 add_ocamlc2_tool(ocamlc2-camlparse ocamlc2-camlparse.cpp)
 add_ocamlc2_tool(ocamlc2-tomlir2 ocamlc2-tomlir2.cpp LINK_MLIR_LIBS)
+add_ocamlc2_tool(g3 g3.cpp LINK_MLIR_LIBS)
 
 # Copy the 'c' script to binary directory
 add_custom_command(

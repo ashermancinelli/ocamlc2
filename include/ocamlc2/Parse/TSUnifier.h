@@ -26,7 +26,7 @@ namespace detail {
   struct Scope;
 }
 struct Unifier {
-  Unifier(std::string_view source) : source(source) {}
+  Unifier(std::string filepath, std::string_view source) : source(source), filepath(filepath) {}
   Unifier() {}
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
@@ -40,6 +40,8 @@ struct Unifier {
     typeArena.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     return static_cast<T *>(typeArena.back().get());
   }
+  std::string_view source;
+  std::string filepath;
 
 private:
   void initializeEnvironment();
@@ -194,7 +196,6 @@ private:
   std::vector<std::string> getPathParts(Node node);
   void maybeDumpTypes(Node node, TypeExpr *type);
 
-  std::string_view source;
   Env env;
   ConcreteTypes concreteTypes;
   std::vector<std::unique_ptr<TypeExpr>> typeArena;

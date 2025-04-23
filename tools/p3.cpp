@@ -25,7 +25,7 @@ static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::value_desc("filename"));
 
 int main(int argc, char* argv[]) {
-  llvm::cl::ParseCommandLineOptions(argc, argv, "ocamlc2-p3");
+  llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
   TRACE();
   fs::path filepath = inputFilename.getValue();
   std::string source = must(slurpFile(filepath));
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
   auto tree = parser.parseString(source);
   auto root = tree.getRootNode();
   
-  ocamlc2::ts::Unifier unifier{source};
+  ocamlc2::ts::Unifier unifier{filepath.string(), source};
   DBG(
     llvm::errs() << "AST:\n";
     unifier.show(root.getCursor(), true);

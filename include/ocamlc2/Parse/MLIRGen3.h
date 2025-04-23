@@ -1,0 +1,48 @@
+#pragma once
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "ocamlc2/Dialect/OcamlOpBuilder.h"
+#include "ocamlc2/Support/LLVMCommon.h"
+#include <llvm/ADT/ScopedHashTable.h>
+#include <llvm/Support/LogicalResult.h>
+#include <mlir/IR/Location.h>
+#include "ocamlc2/Parse/TSUnifier.h"
+
+struct MLIRGen3;
+using VariableScope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::Value>;
+using VariantDeclarations = std::vector<std::pair<std::string, std::optional<mlir::Type>>>;
+
+struct MLIRGen3 {
+  MLIRGen3(mlir::MLIRContext &context, ocamlc2::ts::Unifier &unifier, ts::Node root) 
+    : context(context), builder(&context), unifier(unifier), root(root) {}
+  mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen();
+  mlir::FailureOr<mlir::Value> gen(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genLetBinding(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genValueDefinition(const ocamlc2::ts::Node node);
+
+  inline mlir::Location loc(const ocamlc2::ts::Node node) const {
+    auto range = node.getPointRange();
+    auto start = range.start, end = range.end;
+    return mlir::FileLineColRange::get(
+        mlir::StringAttr::get(&context, unifier.filepath), start.row,
+        start.column, end.row, end.column);
+  }
+  inline auto error(const ocamlc2::ts::Node node) const {
+    return mlir::emitError(loc(node)) << "error: ";
+  }
+  inline auto nyi(const ocamlc2::ts::Node node) const {
+    unifier.show(node.getCursor(), true);
+    return error(node) << "not yet implemented: " << node.getType();
+  }
+  inline mlir::ModuleOp getModule() const {
+    return module.get();
+  }
+private:
+  llvm::ScopedHashTable<llvm::StringRef, mlir::Value> variables;
+  mlir::MLIRContext &context;
+  mlir::ocaml::OcamlOpBuilder builder;
+  ocamlc2::ts::Unifier &unifier;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
+  ts::Node root;
+};
