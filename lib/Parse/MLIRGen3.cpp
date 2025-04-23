@@ -2,6 +2,7 @@
 #include "ocamlc2/Dialect/OcamlDialect.h"
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/TSUtil.h"
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/LogicalResult.h>
@@ -25,6 +26,12 @@
 
 using namespace ocamlc2;
 using InsertionGuard = mlir::ocaml::OcamlOpBuilder::InsertionGuard;
+
+using mlir::failed;
+using mlir::failure;
+using mlir::success;
+using mlir::succeeded;
+using mlir::LogicalResult;
 
 static StringArena stringArena;
 
@@ -51,26 +58,61 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeFromBasicTypeOperator(llvm::String
     return builder.emboxType(builder.getF64Type());
   } else if (name == "bool") {
     return builder.emboxType(builder.getI1Type());
+  } else if (name == "unit") {
+    return builder.getUnitType();
   }
   return failure();
 }
 
-mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeForNode(const ocamlc2::ts::Node node) {
+mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(const ocamlc2::ts::Node node) {
   const auto *type = unifierType(node);
+  return mlirFunctionType(type, loc(node));
+}
+
+mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(const ocamlc2::TypeExpr *type, mlir::Location loc) {
   if (type == nullptr) {
-    return error(node) << "Could not infer type";
+    return error(loc) << "Type for node was not inferred at unification-time";
   }
   if (const auto *to = llvm::dyn_cast<ocamlc2::TypeOperator>(type)) {
-    if (to->getArgs().empty()) {
+    const auto typeOperatorArgs = to->getArgs();
+    if (to->getName() != TypeOperator::getFunctionOperatorName()) {
+      return error(loc) << "Could not get MLIR function type from unified type: " << *type;
+    }
+    auto args = llvm::drop_end(typeOperatorArgs);
+    auto argTypes = llvm::to_vector(llvm::map_range(args, [this, loc](auto *arg) {
+      return *mlirType(arg, loc);
+    }));
+    auto returnType = *mlirType(typeOperatorArgs.back(), loc);
+    return mlir::FunctionType::get(builder.getContext(), argTypes, {returnType});
+  }
+  return error(loc) << "Could get MLIR type from unified function type: "
+                     << *type;
+}
+
+mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::TypeExpr *type,
+                                               mlir::Location loc) {
+  if (const auto *to = llvm::dyn_cast<ocamlc2::TypeOperator>(type)) {
+    const auto args = to->getArgs();
+    if (args.empty()) {
       auto mlirType = mlirTypeFromBasicTypeOperator(to->getName());
       if (failed(mlirType)) {
-        return error(node) << "Unknown basic type operator: " << *type;
+        return error(loc) << "Unknown basic type operator: " << *type;
       }
       return mlirType;
+    } else if (to->getName() == TypeOperator::getFunctionOperatorName()) {
+      return mlirFunctionType(type, loc);
     }
-    return error(node) << "Unknown type operator: " << *type;
+    return error(loc) << "Unknown type operator: " << *type;
   }
-  return error(node) << "Unknown type: " << *type;
+  return error(loc) << "Unknown type: " << *type;
+}
+
+mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::ts::Node node) {
+  const auto *type = unifierType(node);
+  if (type == nullptr) {
+    return error(node) << "Type for node was not inferred at unification-time";
+  }
+  return mlirType(type, loc(node));
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
@@ -136,7 +178,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const ocamlc2::ts::Nod
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genNumber(const ocamlc2::ts::Node node) {
   auto str = getText(node);
-  auto type = mlirTypeForNode(node);
+  auto type = mlirType(node);
   if (failed(type)) {
     return failure();
   }
@@ -150,6 +192,44 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genNumber(const ocamlc2::ts::Node node) {
     return builder.createEmbox(loc(node), constant);
   }
   return error(node) << "Failed to parse number: " << str;
+}
+
+mlir::FailureOr<mlir::func::FuncOp> MLIRGen3::genCallee(const ocamlc2::ts::Node node) {
+  if (node.getType() == "value_path") {
+    auto str = getText(node);
+    auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
+    if (callee == nullptr) {
+      auto type = mlirType(node);
+      if (failed(type)) {
+        return failure();
+      }
+      auto functionType = mlir::dyn_cast<mlir::FunctionType>(*type);
+      if (not functionType) {
+        return error(node) << "Failed to get callee: " << str;
+      }
+      InsertionGuard guard(builder);
+      builder.setInsertionPointToStart(module->getBody());
+      auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
+      return callee;
+    }
+    return callee;
+  } else {
+    return error(node) << "Unknown callee: " << node.getType();
+  }
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genApplicationExpression(const ocamlc2::ts::Node node) {
+  const auto children = getNamedChildren(node);
+  const auto callee = children[0];
+  auto calleeFunc = genCallee(callee);
+  if (mlir::failed(calleeFunc)) {
+    return failure();
+  }
+  auto args = llvm::drop_begin(children);
+  llvm::SmallVector<mlir::Value> argValues = llvm::to_vector(llvm::map_range(
+      args,
+      [this](const ocamlc2::ts::Node &arg) { return *gen(arg); }));
+  return builder.createCall(loc(node), *calleeFunc, argValues);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
@@ -176,12 +256,15 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
     return genNumber(node);
   } else if (type == "for_expression") {
     return genForExpression(node);
+  } else if (type == "application_expression") {
+    return genApplicationExpression(node);
   }
   return error(node) << "Unknown node type: " << type;
 }
 
 llvm::StringRef MLIRGen3::getText(const ocamlc2::ts::Node node) {
-  return ::getText(node, unifier.source);
+  auto str = ::getText(node, unifier.source);
+  return stringArena.save(str);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(ocamlc2::ts::Node node, mlir::Value value, mlir::Location loc) {

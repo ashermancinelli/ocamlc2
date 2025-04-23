@@ -33,14 +33,17 @@ public:
     return create<mlir::arith::ConstantOp>(loc, type, mlir::IntegerAttr::get(type, value));
   }
 
-  mlir::Value createCall(mlir::Location loc, func::FuncOp function, mlir::ValueRange args) {
+  SmallVector<mlir::Value> prepareArguments(mlir::Location loc, mlir::FunctionType functionType, mlir::ValueRange args) {
     SmallVector<mlir::Value> convertedArgs;
-    auto ftype = function.getFunctionType();
     for (auto arg : llvm::enumerate(args)) {
       convertedArgs.push_back(
-          createConvert(loc, arg.value(), ftype.getInput(arg.index())));
+          createConvert(loc, arg.value(), functionType.getInput(arg.index())));
     }
-    return create<mlir::func::CallOp>(loc, function, convertedArgs).getResult(0);
+    return convertedArgs;
+  }
+
+  mlir::Value createCall(mlir::Location loc, func::FuncOp function, mlir::ValueRange args) {
+    return create<mlir::func::CallOp>(loc, function, prepareArguments(loc, function.getFunctionType(), args)).getResult(0);
   }
 
   mlir::Value createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {
