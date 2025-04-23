@@ -3,6 +3,7 @@
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/TSUtil.h"
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/STLForwardCompat.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/LogicalResult.h>
@@ -44,11 +45,41 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const ocamlc2::ts::Node nod
   if (lhsType == unifier.getUnitType()) {
     return gen(rhs);
   }
-  return nyi(node) << " non-unit lhs";
   if (isRecursive) {
     return nyi(node);
   }
-  return nyi(node);
+  llvm::SmallVector<Node> parameters;
+  llvm::copy_if(llvm::drop_begin(children), std::back_inserter(parameters), [](auto node) {
+    return node.getType() == "parameter";
+  });
+  auto functionType = mlirType(lhs);
+  if (failed(functionType)) {
+    return failure();
+  }
+  mlir::func::FuncOp function;
+  {
+    InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(module->getBody());
+    function = builder.create<mlir::func::FuncOp>(loc(node), getText(lhs),
+                                                       *functionType);
+    auto &bodyRegion = function.getFunctionBody();
+    builder.setInsertionPointToEnd(&bodyRegion.emplaceBlock());
+    auto parameterValues = [&] {
+      auto filter = llvm::make_filter_range(
+          parameters, [](auto node) { return node.getType() == "parameter"; });
+      return llvm::to_vector(llvm::map_range(
+          filter, [this](auto node) { return gen(node.getNamedChild(0)); }));
+    }();
+    if (llvm::any_of(parameterValues, failed)) {
+      return failure();
+    }
+    auto body = gen(rhs);
+    if (failed(body)) {
+      return failure();
+    }
+    builder.create<mlir::func::ReturnOp>(loc(node), *body);
+  }
+  return mlir::Value(builder.create<mlir::func::ConstantOp>(loc(node), function));
 }
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeFromBasicTypeOperator(llvm::StringRef name) {
