@@ -44,7 +44,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const ocamlc2::ts::Node nod
   if (lhsType == unifier.getUnitType()) {
     return gen(rhs);
   }
-  nyi(node) << "let binding with non-unit lhs";
+  return nyi(node) << " non-unit lhs";
   if (isRecursive) {
     return nyi(node);
   }
@@ -113,6 +113,12 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::ts::Node node) {
     return error(node) << "Type for node was not inferred at unification-time";
   }
   return mlirType(type, loc(node));
+}
+
+
+mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(const ocamlc2::ts::Node node) {
+  auto str = getText(node);
+  return getVariable(str, loc(node));
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
@@ -258,6 +264,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
     return genForExpression(node);
   } else if (type == "application_expression") {
     return genApplicationExpression(node);
+  } else if (type == "value_path") {
+    return getVariable(node);
   }
   return error(node) << "Unknown node type: " << type;
 }

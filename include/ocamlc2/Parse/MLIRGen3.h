@@ -51,6 +51,7 @@ private:
   mlir::FailureOr<mlir::Value> declareVariable(ocamlc2::ts::Node node, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> getVariable(const ocamlc2::ts::Node node);
 
   mlir::FailureOr<mlir::Type> mlirType(const ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirType(const ocamlc2::ts::Node node);
