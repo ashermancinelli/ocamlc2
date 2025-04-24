@@ -4,6 +4,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include <filesystem>
+#include <cpp-tree-sitter.h>
 namespace fs = std::filesystem;
 
 mlir::FailureOr<std::string> slurpFile(const std::string &path);
@@ -24,3 +25,5 @@ struct StringArena {
 
 fs::path moduleNameToFilePath(std::string_view name);
 std::string filePathToModuleName(fs::path path);
+ts::Language getOCamlLanguage();
+ts::Language getOCamlInterfaceLanguage();

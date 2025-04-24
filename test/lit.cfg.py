@@ -9,7 +9,7 @@ config.test_source_root = os.path.dirname(__file__)
 config.test_build_root = os.path.join(config.test_source_root, '..', 'build')
 
 # File extensions to treat as tests
-config.suffixes = ['.ml']
+config.suffixes = ['.ml', '.mli']
 
 # Use shell-like test format (interprets RUN: lines)
 config.test_format = lit.formats.ShTest()

@@ -31,7 +31,9 @@ namespace detail {
 struct Unifier {
   Unifier();
   Unifier(std::string filepath);
-  void loadSourceFile(std::string filepath);
+  void loadSourceFile(fs::path filepath);
+  void loadImplementationFile(fs::path filepath);
+  void loadInterfaceFile(fs::path filepath);
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using EnvScope = Env::ScopeTy;

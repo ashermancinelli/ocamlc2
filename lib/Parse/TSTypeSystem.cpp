@@ -15,7 +15,6 @@
 #include <numeric>
 #include <sstream>
 #include <llvm/Support/FileSystem.h>
-#include <tree-sitter-ocaml.h>
 
 #define DEBUG_TYPE "typesystem"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -291,6 +290,9 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
     if (name.getType() != "unit") {
       llvm::outs() << "let: " << getText(name) << " : " << *type << '\n';
     }
+  } else if (node.getType() == "value_specification") {
+    auto name = node.getNamedChild(0);
+    llvm::outs() << "val: " << getText(name) << " : " << *type << '\n';
   }
 }
 
@@ -1447,14 +1449,32 @@ Unifier::Unifier(std::string filepath) : rootScope(std::make_unique<detail::Scop
   loadSourceFile(filepath);
 }
 
-void Unifier::loadSourceFile(std::string filepath) {
+void Unifier::loadSourceFile(fs::path filepath) {
+  if (filepath.extension() == ".ml") {
+    loadImplementationFile(filepath);
+  } else if (filepath.extension() == ".mli") {
+    loadInterfaceFile(filepath);
+  } else {
+    llvm::errs() << "Unknown file extension: " << filepath.extension() << '\n';
+    assert(false && "Unknown file extension");
+  }
+  (void)infer(sources.back().tree.getRootNode().getCursor());
+}
+
+void Unifier::loadImplementationFile(fs::path filepath) {
   std::string source = must(slurpFile(filepath));
   DBGS("Source:\n" << source << "\n");
-  ::ts::Language language = tree_sitter_ocaml();
+  ::ts::Language language = getOCamlLanguage();
   ::ts::Parser parser{language};
   sources.emplace_back(filepath, source, parser.parseString(source));
-  auto root = sources.back().tree.getRootNode();
-  infer(root.getCursor());
+}
+
+void Unifier::loadInterfaceFile(fs::path filepath) {
+  std::string source = must(slurpFile(filepath));
+  DBGS("Source:\n" << source << "\n");
+  ::ts::Language language = getOCamlInterfaceLanguage();
+  ::ts::Parser parser{language};
+  sources.emplace_back(filepath, source, parser.parseString(source));
 }
 
 llvm::StringRef Unifier::getTextSaved(Node node) {
