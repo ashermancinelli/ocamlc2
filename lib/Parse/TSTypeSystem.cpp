@@ -125,6 +125,15 @@ TypeExpr* Unifier::declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* t
   return declare(hashedPath, type);
 }
 
+TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
+  nodeToType[node.getID()] = type;
+  return type;
+}
+
+TypeExpr* Unifier::getType(ts::NodeID id) {
+  return nodeToType.lookup(id);
+}
+
 TypeExpr* Unifier::getType(const char *name) {
   return getType(stringArena.save(name));
 }
@@ -269,11 +278,6 @@ llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed) {
 
 TypeExpr* Unifier::infer(ts::Node const& ast) {
   return infer(ast.getCursor());
-}
-
-TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
-  nodeToType[node.getID()] = type;
-  return type;
 }
 
 void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
@@ -672,8 +676,6 @@ TypeExpr* Unifier::inferForExpression(Cursor ast) {
 
 TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   TRACE();
-  detail::Scope scope(this);
-  initializeEnvironment();
   const auto currentModule = filePathToModuleName(sources.back().filepath);
   pushModule(stringArena.save(currentModule));
   auto *t = getUnitType();
@@ -761,7 +763,13 @@ FunctionOperator *Unifier::getFunctionTypeForPartialApplication(FunctionOperator
   auto fullArgs = func->getArgs();
   const auto declaredArity = fullArgs.size() - 1;
   assert(arity <= declaredArity && "Cant partially apply a function with more arguments than it has");
+
+  // TODO: partial application of varargs does not work - we need to inspect the arguments
+  // to see what the proper arity is before seeing if an application is partial or not.
+  // For now, use the erroneous behavior of only allowing partial application if the
+  // varargs is empty.
   const auto isVarargs = func->isVarargs();
+
   if (arity == declaredArity || (isVarargs && arity == declaredArity - 1)) {
     DBGS("No partial application needed, returning original function type\n");
     return func;
@@ -1430,7 +1438,12 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   return nullptr;
 }
 
-Unifier::Unifier(std::string filepath) {
+Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)) {
+  initializeEnvironment();
+}
+
+Unifier::Unifier(std::string filepath) : rootScope(std::make_unique<detail::Scope>(this)) {
+  initializeEnvironment();
   loadSourceFile(filepath);
 }
 

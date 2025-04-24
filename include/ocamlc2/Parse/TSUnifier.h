@@ -29,7 +29,7 @@ namespace detail {
   struct Scope;
 }
 struct Unifier {
-  // Unifier(std::string filepath, std::string_view source) : source(source), filepath(filepath) {}
+  Unifier();
   Unifier(std::string filepath);
   void loadSourceFile(std::string filepath);
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
@@ -47,6 +47,8 @@ struct Unifier {
     typeArena.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     return static_cast<T *>(typeArena.back().get());
   }
+  TypeExpr *getType(Node node);
+  TypeExpr *getType(ts::NodeID id);
   inline std::string_view getText(Node node) {
     return ts::getText(node, sources.back().source);
   }
@@ -185,7 +187,6 @@ private:
                                     llvm::SmallVector<TypeExpr *> &typevars);
   inline bool declared(llvm::StringRef name) { return env.count(name) > 0; }
 
-  TypeExpr *getType(Node node);
   TypeExpr *getType(const llvm::StringRef name);
   TypeExpr *maybeGetType(const llvm::StringRef name);
   TypeExpr *getType(std::string_view name);
@@ -222,6 +223,7 @@ private:
   llvm::SmallVector<llvm::StringRef> currentModule;
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
   llvm::DenseMap<StringRef, SmallVector<StringRef>> recordTypeFieldOrder;
+  std::unique_ptr<detail::Scope> rootScope;
   friend struct detail::ModuleSearchPathScope;
   friend struct detail::ModuleScope;
   friend struct detail::Scope;

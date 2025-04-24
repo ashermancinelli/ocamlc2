@@ -18,31 +18,24 @@ namespace fs = std::filesystem;
 using namespace ocamlc2;
 
 using namespace llvm;
-static cl::opt<std::string> inputFilename(cl::Positional,
-                                          cl::desc("<input ocaml file>"),
-                                          cl::init("-"),
+static cl::list<std::string> inputFilenames(cl::Positional,
+                                          cl::desc("<input ocaml file name>"),
                                           cl::Required,
+                                          cl::OneOrMore,
                                           cl::value_desc("filename"));
 
 int main(int argc, char* argv[]) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
   TRACE();
-  fs::path filepath = inputFilename.getValue();
-  std::string source = must(slurpFile(filepath));
-  DBGS("Source:\n" << source << "\n");
-
-  // ::ts::Language language = tree_sitter_ocaml();
-  // ::ts::Parser parser{language};
-  // auto tree = parser.parseString(source);
-  // auto root = tree.getRootNode();
-  
-  ocamlc2::ts::Unifier unifier{filepath.string()};
-  DBG(
-    llvm::errs() << "AST:\n";
-    unifier.show(unifier.sources.back().tree.getRootNode().getCursor(), true);
-  )
-  auto *te = unifier.infer(unifier.sources.back().tree.getRootNode().getCursor());
-  DBGS("Inferred type: " << *te << '\n');
+  ocamlc2::ts::Unifier unifier;
+  for (auto &filepath : inputFilenames) {
+    unifier.loadSourceFile(filepath);
+    DBG(llvm::errs() << "AST:\n"; unifier.show(
+        unifier.sources.back().tree.getRootNode().getCursor(), true);)
+    auto rootNode = unifier.sources.back().tree.getRootNode();
+    auto *te = unifier.getType(rootNode.getID());
+    DBGS("Inferred type: " << *te << '\n');
+  }
 
   return 0;
 }
