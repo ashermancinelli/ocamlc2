@@ -8,8 +8,11 @@ set(INTERFACES
     option.mli
     stdlib.mli
 )
-add_custom_target(iface ALL
+add_custom_target(stdlib-interfaces ALL
+    COMMENT "Copying interfaces to distribution directory"
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include/dist
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${INTERFACES} ${CMAKE_BINARY_DIR}/include/dist
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+add_custom_target(I DEPENDS stdlib-interfaces)

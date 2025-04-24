@@ -35,8 +35,7 @@ int main(int argc, char* argv[]) {
   }
   for (auto &filepath : inputFilenames) {
     unifier.loadSourceFile(filepath);
-    DBG(llvm::errs() << "AST:\n"; unifier.show(
-        unifier.sources.back().tree.getRootNode().getCursor(), true);)
+    DBG(llvm::errs() << "AST:\n"; unifier.show(true);)
     auto rootNode = unifier.sources.back().tree.getRootNode();
     auto *te = unifier.getType(rootNode.getID());
     DBGS("Inferred type: " << *te << '\n');

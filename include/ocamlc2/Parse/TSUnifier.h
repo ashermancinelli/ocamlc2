@@ -37,6 +37,7 @@ struct Unifier {
   void loadStdlibInterfaces(fs::path exe);
   void dumpTypes(llvm::raw_ostream &os);
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
+  llvm::raw_ostream &show(bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable *>;
@@ -163,9 +164,15 @@ private:
   TypeExpr *inferFunctionType(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *inferExternal(Cursor ast);
+  TypeExpr *inferTupleType(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
-  SmallVector<Node> flattenFunctionType(Node node);
-
+  inline SmallVector<Node> flattenFunctionType(Node node) {
+    return flattenType("function_type", node);
+  }
+  inline SmallVector<Node> flattenTupleType(Node node) {
+    return flattenType("tuple_type", node);
+  }
+  SmallVector<Node> flattenType(std::string_view nodeType, Node node);
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
   template <typename ITERABLE>

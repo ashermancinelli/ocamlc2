@@ -14,6 +14,7 @@ function(add_ocamlc2_tool name)
         Support
         MLIRIR
     )
+    add_dependencies(${name} stdlib-interfaces)
     set_target_properties(${name} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

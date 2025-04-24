@@ -257,6 +257,10 @@ void Unifier::initializeEnvironment() {
   }
 }
 
+llvm::raw_ostream& Unifier::show(bool showUnnamed) {
+  return show(sources.back().tree.getRootNode().getCursor(), showUnnamed);
+}
+
 llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed) {
   auto showTypes = [this](llvm::raw_ostream &os, ts::Node node) {
     if (auto *te = nodeToType.lookup(node.getID())) {
@@ -309,9 +313,9 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   return getUnitType();
 }
 
-SmallVector<Node> Unifier::flattenFunctionType(Node node) {
+SmallVector<Node> Unifier::flattenType(std::string_view nodeType, Node node) {
   TRACE();
-  if (node.getType() != "function_type") {
+  if (node.getType() != nodeType) {
     return {node};
   }
   SmallVector<Node> nodes;
@@ -392,6 +396,17 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
     }
     return varaintType;
   }
+}
+
+TypeExpr* Unifier::inferTupleType(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "tuple_type");
+  auto nodes = flattenTupleType(node);
+  SmallVector<TypeExpr*> types;
+  for (auto n : nodes) {
+    types.push_back(infer(n));
+  }
+  return getTupleType(types);
 }
 
 TypeExpr* Unifier::inferTuplePattern(ts::Node node) {
@@ -1114,7 +1129,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       setType(child, ctorType);
     }
   } else {
-    show(body.getCursor(), true);
+    show(node.getCursor(), true);
     assert(false && "Unknown type binding type");
   }
   return getUnitType();
@@ -1446,6 +1461,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferOpenModule(std::move(ast));
   } else if (node.getType() == "external") {
     return inferExternal(std::move(ast));
+  } else if (node.getType() == "tuple_type") {
+    return inferTupleType(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';

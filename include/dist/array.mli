@@ -1,8 +1,7 @@
-type 'a t = 'a array
-val length : 'a array -> int
-val iter : ('a -> unit) -> 'a array -> unit
 
-(** An alias for the type of arrays. 
+(** An alias for the type of arrays.
+*)
+(* type 'a t = 'a array *)
 
 external length : 'a array -> int = "%array_length"
 (** Return the length (number of elements) of the given array. *)
@@ -153,7 +152,7 @@ val compare : ('a -> 'a -> int) -> 'a array -> 'a array -> int
 val iter : ('a -> unit) -> 'a array -> unit
 (** [iter f a] applies function [f] in turn to all
    the elements of [a].  It is equivalent to
-   [f a.(0); f a.(1); ...; f a.(length a - 1); ()]. *)
+   [f a.(0); f a.(1); ...; f a.(length a - 1); ()]. 
 
 val iteri : (int -> 'a -> unit) -> 'a array -> unit
 (** Same as {!iter}, but the
@@ -452,4 +451,5 @@ module Floatarray : sig
   external unsafe_set : floatarray -> int -> float -> unit
       = "%floatarray_unsafe_set"
 end
-*)
+
+   *)

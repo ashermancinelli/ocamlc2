@@ -50,3 +50,9 @@ install:
 
 check:
 	$(LIT) -svv test
+
+i:
+	$(NINJA) -C build stdlib-interfaces
+
+p3:
+	$(NINJA) -C build p3
