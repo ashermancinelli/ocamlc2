@@ -3,6 +3,8 @@
 #include "ocamlc2/Support/LLVMCommon.h"
 #include <fstream>
 #include <iostream>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 FailureOr<std::string> slurpFile(const std::string &path) {
   std::ifstream file(path);
@@ -14,6 +16,22 @@ FailureOr<std::string> slurpFile(const std::string &path) {
   std::string contents((std::istreambuf_iterator<char>(file)),
                        std::istreambuf_iterator<char>());
   return contents;
+}
+
+std::string moduleNameToPath(std::string_view name) {
+  auto path = std::string(name) + ".ml";
+  std::transform(path.begin(), path.end(), path.begin(), ::tolower);
+  return path;
+}
+
+std::string modulePathToName(fs::path path) {
+  path = path.filename().replace_extension();
+  auto newPathString = path.string();
+  assert(newPathString.size() > 0);
+  assert(newPathString.find('-') == std::string::npos);
+  std::transform(newPathString.begin(), newPathString.end(), newPathString.begin(), ::tolower);
+  newPathString[0] = std::toupper(newPathString[0]);
+  return newPathString;
 }
 
 namespace ANSIColors {

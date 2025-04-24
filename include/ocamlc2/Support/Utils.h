@@ -19,3 +19,6 @@ struct StringArena {
     return save(std::string_view(str));
   }
 };
+
+std::string moduleNameToPath(std::string_view name);
+std::string modulePathToName(std::string_view path);
