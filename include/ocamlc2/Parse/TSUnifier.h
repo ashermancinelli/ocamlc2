@@ -34,6 +34,7 @@ struct Unifier {
   void loadSourceFile(fs::path filepath);
   void loadImplementationFile(fs::path filepath);
   void loadInterfaceFile(fs::path filepath);
+  void loadStdlibInterfaces(fs::path exe);
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using EnvScope = Env::ScopeTy;

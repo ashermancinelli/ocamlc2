@@ -27,3 +27,4 @@ fs::path moduleNameToFilePath(std::string_view name);
 std::string filePathToModuleName(fs::path path);
 ts::Language getOCamlLanguage();
 ts::Language getOCamlInterfaceLanguage();
+llvm::SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe);

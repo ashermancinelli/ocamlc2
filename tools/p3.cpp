@@ -5,6 +5,7 @@
 #include "ocamlc2/Support/CL.h"
 #include <iostream>
 #include <filesystem>
+#include <llvm/Support/FileSystem.h>
 #include <memory>
 #include <llvm/Support/CommandLine.h>
 #include <cpp-tree-sitter.h>
@@ -25,9 +26,11 @@ static cl::list<std::string> inputFilenames(cl::Positional,
                                           cl::value_desc("filename"));
 
 int main(int argc, char* argv[]) {
+  auto exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);
   llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
   TRACE();
   ocamlc2::ts::Unifier unifier;
+  unifier.loadStdlibInterfaces(exe);
   for (auto &filepath : inputFilenames) {
     unifier.loadSourceFile(filepath);
     DBG(llvm::errs() << "AST:\n"; unifier.show(

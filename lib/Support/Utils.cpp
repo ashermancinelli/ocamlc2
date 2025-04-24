@@ -1,9 +1,14 @@
 #include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/CL.h"
 #include "ocamlc2/Support/LLVMCommon.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <llvm/Support/raw_ostream.h>
+#define DEBUG_TYPE "utils"
+#include "ocamlc2/Support/Debug.h.inc"
 namespace fs = std::filesystem;
 
 FailureOr<std::string> slurpFile(const std::string &path) {
@@ -49,3 +54,36 @@ const char* underline() { return Color ? "\033[4m" : ""; }
 const char* reverse() { return Color ? "\033[7m" : ""; }
 const char* strikethrough() { return Color ? "\033[9m" : ""; }
 } // namespace ANSIColors
+
+static constexpr std::string_view OCamlStdlibInterfaces[] = {
+  "bool",
+  "int",
+  "string",
+  "array",
+  "list",
+  "map",
+  "option",
+  // "bytes.mli",
+  // "char.mli",
+  // "exn.mli",
+  // "format.mli",
+  // "set.mli",
+};
+
+SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe) {
+  DBGS("exe: " << exe << "\n");
+  exe = fs::absolute(exe);
+  auto bindir = exe.parent_path();
+  auto install_root = bindir.parent_path();
+  auto include_dir = install_root / "include" / "dist";
+  return llvm::to_vector(llvm::map_range(OCamlStdlibInterfaces, [&](std::string_view interface) {
+    auto path = include_dir / (std::string(interface) + ".mli");
+    if (!fs::exists(path)) {
+      llvm::errs() << "OCaml interface file not found: " << path << "\n"
+                   << "OCamlC2 was installed incorrectly. Please check your "
+                      "OCaml installation.\n";
+      exit(1);
+    }
+    return path;
+  }));
+}

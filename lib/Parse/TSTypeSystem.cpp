@@ -1470,24 +1470,42 @@ void Unifier::loadSourceFile(fs::path filepath) {
 }
 
 void Unifier::loadImplementationFile(fs::path filepath) {
+  DBGS("Loading implementation file: " << filepath << "\n");
   std::string source = must(slurpFile(filepath));
+  if (source.empty()) {
+    DBGS("Source is empty\n");
+    return;
+  }
   DBGS("Source:\n" << source << "\n");
   ::ts::Language language = getOCamlLanguage();
   ::ts::Parser parser{language};
-  sources.emplace_back(filepath, source, parser.parseString(source));
+  auto tree = parser.parseString(source);
+  sources.emplace_back(filepath, source, std::move(tree));
 }
 
 void Unifier::loadInterfaceFile(fs::path filepath) {
+  DBGS("Loading interface file: " << filepath << "\n");
   std::string source = must(slurpFile(filepath));
+  if (source.empty()) {
+    DBGS("Source is empty\n");
+    return;
+  }
   DBGS("Source:\n" << source << "\n");
   ::ts::Language language = getOCamlInterfaceLanguage();
   ::ts::Parser parser{language};
-  sources.emplace_back(filepath, source, parser.parseString(source));
+  auto tree = parser.parseString(source);
+  sources.emplace_back(filepath, source, std::move(tree));
 }
 
 llvm::StringRef Unifier::getTextSaved(Node node) {
   auto sv = ts::getText(node, sources.back().source);
   return stringArena.save(sv);
+}
+
+void Unifier::loadStdlibInterfaces(fs::path exe) {
+  for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
+    loadInterfaceFile(filepath);
+  }
 }
 
 } // namespace ts
