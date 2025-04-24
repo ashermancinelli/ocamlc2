@@ -162,6 +162,7 @@ private:
   TypeExpr *inferConstructedType(Cursor ast);
   TypeExpr *inferFunctionType(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
+  TypeExpr *inferExternal(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
   SmallVector<Node> flattenFunctionType(Node node);
 

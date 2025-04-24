@@ -8,28 +8,41 @@ bool Debug = false;
 bool RunGDB = false;
 bool Color = true;
 bool DumpTypes = false;
-static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
-                                  cl::location(RunGDB));
+bool Freestanding = false;
 
-static cl::opt<std::string> debugger("debugger", cl::desc("The debugger to use"), cl::init("lldb"));
+cl::OptionCategory OcamlOptions("OCaml Options", "");
+
+static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
+                                  cl::location(RunGDB), cl::cat(OcamlOptions));
+
+static cl::opt<std::string> debugger("debugger",
+                                     cl::desc("The debugger to use"),
+                                     cl::init("lldb"), cl::cat(OcamlOptions));
 
 static cl::opt<bool, true> debug("L", cl::desc("Enable debug mode"),
-                           cl::location(Debug));
+                                 cl::location(Debug), cl::cat(OcamlOptions));
 
 static cl::opt<bool, true> dumpTypes("dump-types", cl::desc("Dump types"),
-                                     cl::location(DumpTypes));
+                                     cl::location(DumpTypes),
+                                     cl::cat(OcamlOptions));
 
 static cl::opt<bool>
     noColor("no-color", cl::desc("Disable color output"),
-            cl::cb<void, bool>([](bool value) { Color = !value; }));
+            cl::cb<void, bool>([](bool value) { Color = !value; }),
+            cl::cat(OcamlOptions));
+
+static cl::opt<bool>
+    freestanding("freestanding", cl::desc("Enable freestanding mode"),
+                 cl::cb<void, bool>([](bool value) { Freestanding = value; }),
+                 cl::cat(OcamlOptions));
 
 void maybeReplaceWithGDB(int argc, char **argv) {
   if (!RunGDB) {
     return;
   }
-  std::vector<char*> newArgs;
-  newArgs.push_back(const_cast<char*>(debugger.getValue().c_str()));
-  newArgs.push_back(const_cast<char*>("--"));
+  std::vector<char *> newArgs;
+  newArgs.push_back(const_cast<char *>(debugger.getValue().c_str()));
+  newArgs.push_back(const_cast<char *>("--"));
   newArgs.push_back(argv[0]);
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];

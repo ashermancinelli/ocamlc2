@@ -282,7 +282,7 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
     if (name.getType() != "unit") {
       nodesToDump.push_back(std::make_tuple("let", sourceIndex, node));
     }
-  } else if (node.getType() == "value_specification") {
+  } else if (node.getType() == "value_specification" || node.getType() == "external") {
     nodesToDump.push_back(std::make_tuple("val", sourceIndex, node));
   }
 }
@@ -1295,6 +1295,14 @@ bool Unifier::isVarargs(TypeExpr* type) {
   return false;
 }
 
+TypeExpr* Unifier::inferExternal(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  auto name = node.getNamedChild(0);
+  auto typeNode = node.getNamedChild(1);
+  auto type = infer(typeNode);
+  return declare(name, type);
+}
+
 bool Unifier::isWildcard(TypeExpr* type) {
   if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
     return op->getName() == getWildcardType()->getName();
@@ -1436,6 +1444,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferFunctionType(std::move(ast));
   } else if (node.getType() == "open_module") {
     return inferOpenModule(std::move(ast));
+  } else if (node.getType() == "external") {
+    return inferExternal(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';

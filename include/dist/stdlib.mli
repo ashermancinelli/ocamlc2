@@ -3,6 +3,9 @@ type float
 type string
 type unit
 type bool
+type 'a list
+type 'a array
+type 'a option
 
 val sqrt : float -> float
 val print_int : int -> unit
