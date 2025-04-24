@@ -3,6 +3,8 @@
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include <filesystem>
+namespace fs = std::filesystem;
 
 mlir::FailureOr<std::string> slurpFile(const std::string &path);
 
@@ -20,5 +22,5 @@ struct StringArena {
   }
 };
 
-std::string moduleNameToPath(std::string_view name);
-std::string modulePathToName(std::string_view path);
+fs::path moduleNameToFilePath(std::string_view name);
+std::string filePathToModuleName(fs::path path);

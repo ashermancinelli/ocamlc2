@@ -20,5 +20,4 @@ CHECK: let: find_index : (λ 't12 (Array 't12) (Optional int))
 CHECK: let: arr : (Array int)
 CHECK: let: item : int
 CHECK: let: result : (Optional int)
-CHECK: let: () : unit
 *)

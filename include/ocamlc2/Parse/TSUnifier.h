@@ -187,6 +187,7 @@ private:
 
   TypeExpr *getType(Node node);
   TypeExpr *getType(const llvm::StringRef name);
+  TypeExpr *maybeGetType(const llvm::StringRef name);
   TypeExpr *getType(std::string_view name);
   TypeExpr *getType(std::vector<std::string> path);
   TypeExpr *getType(const char *name);

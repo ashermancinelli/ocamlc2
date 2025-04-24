@@ -19,5 +19,4 @@ CHECK: let: aux : (λ int (Optional int))
 CHECK: let: find_index : (λ 't12 (Array 't12) (Optional int))
 CHECK: let: arr : (Array int)
 CHECK: let: index : (Optional int)
-CHECK: let: () : unit
 *)

@@ -22,5 +22,4 @@ CHECK: let: map : (λ (λ 't20 't21) (List 't20) (List 't21))
 CHECK: let: l : (List int)
 CHECK: let: l' : (List int)
 CHECK: let: f : (λ int unit)
-CHECK: let: () : unit
 *)

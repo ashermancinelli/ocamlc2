@@ -4,6 +4,7 @@
 #include "ocamlc2/Parse/TSUtil.h"
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Support/Utils.h"
+#include <cstdint>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
@@ -41,11 +42,11 @@ static std::string getPath(llvm::ArrayRef<llvm::StringRef> path) {
 }
 
 static std::string hashPath(llvm::ArrayRef<llvm::StringRef> path) {
-  return llvm::join(path, "MM");
+  return llvm::join(path, ".");
 }
 
 static std::string hashPath(std::vector<std::string> path) {
-  return llvm::join(path, "MM");
+  return llvm::join(path, ".");
 }
 
 TypeExpr* Unifier::getTypeVariable(Node node) {
@@ -80,6 +81,7 @@ void Unifier::pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> modules) {
 void Unifier::pushModule(llvm::StringRef module) {
   DBGS("pushing module: " << module << '\n');
   currentModule.push_back(stringArena.save(module.str()));
+  pushModuleSearchPath(currentModule);
 }
 
 void Unifier::popModuleSearchPath() {
@@ -90,6 +92,7 @@ void Unifier::popModuleSearchPath() {
 void Unifier::popModule() {
   DBGS("popping module: " << currentModule.back() << '\n');
   currentModule.pop_back();
+  popModuleSearchPath();
 }
 
 std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
@@ -122,6 +125,18 @@ TypeExpr* Unifier::declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* t
   return declare(hashedPath, type);
 }
 
+TypeExpr* Unifier::getType(const char *name) {
+  return getType(stringArena.save(name));
+}
+
+TypeExpr* Unifier::getType(Node node) {
+  DBGS("Getting type for: " << node.getType() << '\n');
+  if (llvm::is_contained(pathTypes, node.getType())) {
+    return getType(getPathParts(node));
+  }
+  return getType(getTextSaved(node));
+}
+
 TypeExpr* Unifier::getType(std::vector<std::string> path) {
   auto hashedPath = hashPath(path);
   return getType(stringArena.save(hashedPath));
@@ -132,22 +147,29 @@ TypeExpr* Unifier::getType(const std::string_view name) {
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
   DBGS("Getting type: " << name << '\n');
-  if (auto *type = env.lookup(name)) {
-    DBGS("Found type in default env: " << *type << '\n');
-    return clone(type);
+  if (auto *type = maybeGetType(name)) {
+    return type;
   }
   for (auto &path : llvm::reverse(moduleSearchPath)) {
-    DBGS("Checking module search path: " << path << '\n');
     auto possiblePath = hashPath(std::vector<std::string>{path.str(), name.str()});
     auto str = stringArena.save(possiblePath);
-    DBGS("with name: " << str << '\n');
-    if (auto *type = env.lookup(str)) {
-      DBGS("Found type " << *type << " in module search path: " << possiblePath << '\n');
-      return clone(type);
+    DBGS("Checking module search path: " << path << " with name: " << str << '\n');
+    if (auto *type = maybeGetType(str)) {
+      return type;
     }
   }
   DBGS("Type not declared: " << name << '\n');
   assert(false && "Type not declared");
+  return nullptr;
+}
+
+TypeExpr *Unifier::maybeGetType(const llvm::StringRef name) {
+  DBGS(name << '\n');
+  if (auto *type = env.lookup(name)) {
+    DBGS("Found type " << *type << '\n');
+    return clone(type);
+  }
+  DBGS("not found\n");
   return nullptr;
 }
 
@@ -255,11 +277,16 @@ TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
 }
 
 void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
-  if (!DumpTypes) {
+  static std::set<uintptr_t> seen;
+  if (!DumpTypes or seen.count(node.getID())) {
     return;
   }
+  seen.insert(node.getID());
   if (node.getType() == "let_binding") {
-    llvm::outs() << "let: " << getText(node.getNamedChild(0)) << " : " << *type << '\n';
+    auto name = node.getNamedChild(0);
+    if (name.getType() != "unit") {
+      llvm::outs() << "let: " << getText(name) << " : " << *type << '\n';
+    }
   }
 }
 
@@ -279,6 +306,9 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   auto name = ast.getCurrentNode().getNamedChild(0);
   auto path = getPathParts(name);
   pushModuleSearchPath(hashPath(path));
+  auto currentModulePath = currentModule;
+  std::copy(path.begin(), path.end(), std::back_inserter(currentModulePath));
+  pushModuleSearchPath(hashPath(currentModulePath));
   return getUnitType();
 }
 
@@ -644,6 +674,8 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   TRACE();
   detail::Scope scope(this);
   initializeEnvironment();
+  const auto currentModule = filePathToModuleName(sources.back().filepath);
+  pushModule(stringArena.save(currentModule));
   auto *t = getUnitType();
   auto shouldSkip = [](Node node) {
     static constexpr std::string_view shouldSkip[] = {
@@ -659,19 +691,8 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
       }
     } while (ast.gotoNextSibling());
   }
+  popModule();
   return t;
-}
-
-TypeExpr* Unifier::getType(const char *name) {
-  return getType(stringArena.save(name));
-}
-
-TypeExpr* Unifier::getType(Node node) {
-  DBGS("Getting type for: " << node.getType() << '\n');
-  if (llvm::is_contained(pathTypes, node.getType())) {
-    return getType(getPathParts(node));
-  }
-  return getType(getTextSaved(node));
 }
 
 std::vector<std::string> Unifier::getPathParts(Node node) {

@@ -1,6 +1,6 @@
-let () = print_int (5 + 5);;
+let add a = a + 5;;
 
 (*
 RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: () : unit
+CHECK: let: add : (λ int int)
 *)

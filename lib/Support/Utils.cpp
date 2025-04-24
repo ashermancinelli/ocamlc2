@@ -18,13 +18,13 @@ FailureOr<std::string> slurpFile(const std::string &path) {
   return contents;
 }
 
-std::string moduleNameToPath(std::string_view name) {
+fs::path moduleNameToFilePath(std::string_view name) {
   auto path = std::string(name) + ".ml";
   std::transform(path.begin(), path.end(), path.begin(), ::tolower);
   return path;
 }
 
-std::string modulePathToName(fs::path path) {
+std::string filePathToModuleName(fs::path path) {
   path = path.filename().replace_extension();
   auto newPathString = path.string();
   assert(newPathString.size() > 0);

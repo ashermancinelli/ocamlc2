@@ -84,5 +84,4 @@ CHECK: let: sum : int
 CHECK: let: s : float
 CHECK: let: area : (λ shape float)
 CHECK: let: test_array : (Array int)
-CHECK: let: () : unit
 *)
