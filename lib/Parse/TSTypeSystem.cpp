@@ -318,13 +318,38 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   return getUnitType();
 }
 
+SmallVector<Node> Unifier::flattenFunctionType(Node node) {
+  TRACE();
+  if (node.getType() != "function_type") {
+    return {node};
+  }
+  SmallVector<Node> nodes;
+  auto leftChild = node.getNamedChild(0);
+  nodes.push_back(leftChild);
+  auto rightChild = node.getNamedChild(1);
+  auto flattenedRightChild = flattenFunctionType(rightChild);
+  std::copy(flattenedRightChild.begin(), flattenedRightChild.end(), std::back_inserter(nodes));
+  DBG(
+    DBGS("Flattened function type:\n");
+    for (auto [i, n] : llvm::enumerate(nodes)) {
+      DBGS(i << ": " << n.getType() << '\n');
+    }
+  );
+  return nodes;
+}
+
 TypeExpr* Unifier::inferFunctionType(Cursor ast) {
+  TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "function_type");
-  SmallVector<TypeExpr*> types;
-  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    auto *childType = infer(node.getNamedChild(i));
+  auto leftChild = node.getNamedChild(0);
+  SmallVector<TypeExpr*> types = {infer(leftChild)};
+  auto rightChild = node.getNamedChild(1);
+  auto nodes = flattenFunctionType(rightChild);
+  for (auto [i, n] : llvm::enumerate(nodes)) {
+    auto *childType = infer(n);
     types.push_back(childType);
+    DBGS(i << ": " << *childType << '\n');
   }
   return getFunctionType(types);
 }
@@ -990,35 +1015,18 @@ TypeExpr* Unifier::inferModuleStructure(Cursor ast) {
   return getUnitType();
 }
 
-TypeExpr* Unifier::inferFunctionSpecification(Cursor ast) {
-  TRACE();
-  auto node = ast.getCurrentNode();
-  assert(node.getType() == "function_type");
-  SmallVector<TypeExpr*> args;
-  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    auto child = node.getNamedChild(i);
-    args.push_back(infer(child));
-  }
-  return getFunctionType(args);
-}
-
 TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "value_specification");
   auto name = node.getNamedChild(0);
   auto specification = node.getNamedChild(1);
-  if (specification.getType() == "function_type") {
-    auto *type = [&] {
-      detail::Scope scope(this);
-      return inferFunctionSpecification(specification.getCursor());
-    }();
-    declare(name, type);
-    return type;
-  }
-  show(ast.copy(), true);
-  assert(false && "Unknown value specification type");
-  return nullptr;
+  auto *type = [&] {
+    detail::Scope scope(this);
+    return infer(specification);
+  }();
+  declare(name, type);
+  return type;
 }
 
 TypeExpr* Unifier::inferRecordDeclaration(Cursor ast) {

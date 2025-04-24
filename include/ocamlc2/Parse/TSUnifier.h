@@ -161,6 +161,7 @@ private:
   TypeExpr *inferFunctionType(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
+  SmallVector<Node> flattenFunctionType(Node node);
 
   bool isSubType(TypeExpr *a, TypeExpr *b);
 
@@ -187,7 +188,7 @@ private:
   TypeExpr *declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
   TypeExpr *declarePatternVariables(const ASTNode *ast,
                                     llvm::SmallVector<TypeExpr *> &typevars);
-  inline bool declared(llvm::StringRef name) { return env.count(name) > 0; }
+  inline bool declared(llvm::StringRef name) { return env.count(name); }
 
   TypeExpr *getType(const llvm::StringRef name);
   TypeExpr *maybeGetType(const llvm::StringRef name);
