@@ -58,8 +58,34 @@ private:
   std::string name;
 };
 
+struct VarargsOperator : public TypeOperator {
+  VarargsOperator() : TypeOperator(TypeOperator::getVarargsOperatorName()) {}
+  static inline bool classof(const TypeExpr *expr) {
+    if (expr->getKind() == Kind::Operator) {
+      auto *op = llvm::cast<TypeOperator>(expr);
+      return op->getName() == TypeOperator::getVarargsOperatorName();
+    }
+    return false;
+  }
+};
+
 struct FunctionOperator : public TypeOperator {
   FunctionOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(TypeOperator::getFunctionOperatorName(), args) {}
+  static inline bool classof(const TypeExpr *expr) {
+    if (expr->getKind() == Kind::Operator) {
+      auto *op = llvm::cast<TypeOperator>(expr);
+      return op->getName() == TypeOperator::getFunctionOperatorName();
+    }
+    return false;
+  }
+  inline bool isVarargs() const {
+    for (auto *arg : getArgs()) {
+      if (llvm::isa<VarargsOperator>(arg)) {
+        return true;
+      }
+    }
+    return false;
+  }
 };
 
 struct TupleOperator : public TypeOperator {

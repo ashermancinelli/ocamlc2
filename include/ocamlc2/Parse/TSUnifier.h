@@ -61,13 +61,6 @@ private:
   }
 
 public:
-  inline auto *getFunctionType(llvm::ArrayRef<TypeExpr *> args) {
-    return create<FunctionOperator>(args);
-  }
-
-  inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
-    return createTypeOperator(TypeOperator::getTupleOperatorName(), args);
-  }
 
   TypeExpr *getBoolType();
   TypeExpr *getFloatType();
@@ -76,6 +69,13 @@ public:
   TypeExpr *getStringType();
   TypeExpr *getWildcardType();
   TypeExpr *getVarargsType();
+  inline auto *getFunctionType(llvm::ArrayRef<TypeExpr *> args) {
+    return create<FunctionOperator>(args);
+  }
+  FunctionOperator *getFunctionTypeForPartialApplication(FunctionOperator *func, unsigned arity);
+  inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
+    return createTypeOperator(TypeOperator::getTupleOperatorName(), args);
+  }
   inline auto *getListTypeOf(TypeExpr *type) {
     return createTypeOperator(TypeOperator::getListOperatorName(), {type});
   }

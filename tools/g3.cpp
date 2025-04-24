@@ -39,13 +39,9 @@ int main(int argc, char* argv[]) {
   fs::path filepath = inputFilename.getValue();
   std::string source = must(slurpFile(filepath));
   DBGS("Source:\n" << source << "\n");
-
-  ::ts::Language language = tree_sitter_ocaml();
-  ::ts::Parser parser{language};
-  auto tree = parser.parseString(source);
-  auto root = tree.getRootNode();
   
-  ocamlc2::ts::Unifier unifier{filepath, source};
+  ocamlc2::ts::Unifier unifier(filepath);
+  auto root = unifier.sources.back().tree.getRootNode();
   DBG(
     llvm::errs() << "AST:\n";
     unifier.show(root.getCursor(), true);

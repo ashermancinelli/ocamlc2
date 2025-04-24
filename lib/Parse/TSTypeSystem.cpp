@@ -730,7 +730,6 @@ TypeExpr* Unifier::inferValuePath(Cursor ast) {
   return getType(pathParts);
 }
 
-// TODO: currying
 TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -743,12 +742,37 @@ TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
   }
   args.push_back(createTypeVariable());
   auto declaredFuncType = infer(id);
+  auto *funcType = [&] -> TypeExpr* {
+    if (auto *func = llvm::dyn_cast<FunctionOperator>(declaredFuncType)) {
+      return getFunctionTypeForPartialApplication(func, args.size() - 1);
+    }
+    return declaredFuncType;
+  }();
   auto inferredFuncType = getFunctionType(args);
-  if (failed(unify(declaredFuncType, inferredFuncType))) {
+  if (failed(unify(funcType, inferredFuncType))) {
     assert(false && "Failed to unify declared and inferred function types");
     return nullptr;
   }
   return inferredFuncType->back();
+}
+
+FunctionOperator *Unifier::getFunctionTypeForPartialApplication(FunctionOperator *func, unsigned arity) {
+  TRACE();
+  auto fullArgs = func->getArgs();
+  const auto declaredArity = fullArgs.size() - 1;
+  assert(arity <= declaredArity && "Cant partially apply a function with more arguments than it has");
+  const auto isVarargs = func->isVarargs();
+  if (arity == declaredArity || (isVarargs && arity == declaredArity - 1)) {
+    DBGS("No partial application needed, returning original function type\n");
+    return func;
+  }
+  auto curriedArgs = SmallVector<TypeExpr*>(fullArgs.begin(), fullArgs.begin() + arity);
+  auto returnTypeArgs = SmallVector<TypeExpr*>(fullArgs.begin() + arity, fullArgs.end());
+  auto *functionReturnType = getFunctionType(returnTypeArgs);
+  curriedArgs.push_back(functionReturnType);
+  auto *curriedFuncType = getFunctionType(curriedArgs);
+  DBGS("Curried function type: " << *curriedFuncType << '\n');
+  return curriedFuncType;
 }
 
 TypeExpr* Unifier::inferConstructorPath(Cursor ast) {
