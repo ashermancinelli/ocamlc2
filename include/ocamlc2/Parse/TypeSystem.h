@@ -41,9 +41,9 @@ struct TypeOperator : public TypeExpr {
   consteval static llvm::StringRef getFunctionOperatorName() { return "λ"; }
   consteval static llvm::StringRef getTupleOperatorName() { return "*"; }
   consteval static llvm::StringRef getConstructorOperatorName() { return "V"; }
-  consteval static llvm::StringRef getListOperatorName() { return "List"; }
-  consteval static llvm::StringRef getArrayOperatorName() { return "Array"; }
-  consteval static llvm::StringRef getRecordOperatorName() { return "Record"; }
+  consteval static llvm::StringRef getListOperatorName() { return "list"; }
+  consteval static llvm::StringRef getArrayOperatorName() { return "array"; }
+  consteval static llvm::StringRef getRecordOperatorName() { return "record"; }
   consteval static llvm::StringRef getUnitOperatorName() { return "unit"; }
   consteval static llvm::StringRef getWildcardOperatorName() { return "_"; }
   consteval static llvm::StringRef getVarargsOperatorName() { return "varargs!"; }

@@ -30,5 +30,5 @@ let () = print_endline @@ match Br (1, Br (2, Lf, 4), 4) with
 
 (*
 RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: f : (λ (tree 't22) string)
+CHECK: let: f : (λ (tree '[[T:.+]]) string)
 *)

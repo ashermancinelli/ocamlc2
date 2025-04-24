@@ -16,8 +16,8 @@ let () =
 (*
 RUN: p3 %s --dump-types | FileCheck %s
 CHECK: let: aux : (λ int (Optional int))
-CHECK: let: find_index : (λ 't12 (Array 't12) (Optional int))
-CHECK: let: arr : (Array int)
+CHECK: let: find_index : (λ '[[T:.+]] (array '[[T]]) (Optional int))
+CHECK: let: arr : (array int)
 CHECK: let: item : int
 CHECK: let: result : (Optional int)
 *)

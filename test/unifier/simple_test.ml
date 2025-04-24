@@ -19,11 +19,11 @@ let result = compose (fun x -> x * 2) (fun y -> y + 1) 5;;
 
 (*
 RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: id : (λ 't12 't12)
+CHECK: let: id : (λ '[[T:.+]] '[[T]])
 CHECK: let: a : int
 CHECK: let: b : bool
 CHECK: let: add : (λ int int int)
-CHECK: let: apply : (λ (λ 't19 't20) 't19 't20)
-CHECK: let: compose : (λ (λ 't24 't25) (λ 't23 't24) 't23 't25)
+CHECK: let: apply : (λ (λ '[[T1:.+]] '[[T2:.+]]) '[[T1]] '[[T2]])
+CHECK: let: compose : (λ (λ '[[T3:.+]] '[[T4:.+]]) (λ '[[T5:.+]] '[[T3]]) '[[T5]] '[[T4]])
 CHECK: let: result : int
 *)

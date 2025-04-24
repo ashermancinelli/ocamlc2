@@ -8,7 +8,7 @@ set(INTERFACES
     option.mli
     stdlib.mli
 )
-add_custom_target(install-dist-interfaces ALL
+add_custom_target(iface ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include/dist
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${INTERFACES} ${CMAKE_BINARY_DIR}/include/dist
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

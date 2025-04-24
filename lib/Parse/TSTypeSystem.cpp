@@ -1101,7 +1101,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto *typeOperator = createTypeOperator(getTextSaved(name), typeVars);
   declare(name, typeOperator);
   if (childIndex == node.getNumNamedChildren()) {
-    DBGS("Type binding is a declaration");
+    DBGS("Type binding is a declaration\n");
     return typeOperator;
   }
   auto body = node.getNamedChild(childIndex++);

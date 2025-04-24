@@ -2,6 +2,7 @@ type int
 type float
 type string
 type unit
+type bool
 
 val sqrt : float -> float
 val print_int : int -> unit

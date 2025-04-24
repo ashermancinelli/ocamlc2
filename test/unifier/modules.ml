@@ -18,8 +18,8 @@ let () =
 RUN: p3 %s --dump-types | FileCheck %s
 CHECK: let: message : string
 CHECK: let: print : (λ unit unit)
-CHECK: let: map : (λ (λ '[[a:.+]] '[[b:.+]]) (List '[[a]]) (List '[[b]]))
-CHECK: let: l : (List int)
-CHECK: let: l' : (List int)
+CHECK: let: map : (λ (λ '[[a:.+]] '[[b:.+]]) (list '[[a]]) (list '[[b]]))
+CHECK: let: l : (list int)
+CHECK: let: l' : (list int)
 CHECK: let: f : (λ int unit)
 *)
