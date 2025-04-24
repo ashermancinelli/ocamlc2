@@ -31,17 +31,17 @@ int main(int argc, char* argv[]) {
   std::string source = must(slurpFile(filepath));
   DBGS("Source:\n" << source << "\n");
 
-  ::ts::Language language = tree_sitter_ocaml();
-  ::ts::Parser parser{language};
-  auto tree = parser.parseString(source);
-  auto root = tree.getRootNode();
+  // ::ts::Language language = tree_sitter_ocaml();
+  // ::ts::Parser parser{language};
+  // auto tree = parser.parseString(source);
+  // auto root = tree.getRootNode();
   
-  ocamlc2::ts::Unifier unifier{filepath.string(), source};
+  ocamlc2::ts::Unifier unifier{filepath.string()};
   DBG(
     llvm::errs() << "AST:\n";
-    unifier.show(root.getCursor(), true);
+    unifier.show(unifier.tree->getRootNode().getCursor(), true);
   )
-  auto *te = unifier.infer(root.getCursor());
+  auto *te = unifier.infer(unifier.tree->getRootNode().getCursor());
   DBGS("Inferred type: " << *te << '\n');
 
   return 0;

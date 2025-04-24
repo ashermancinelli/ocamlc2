@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <numeric>
 #include <sstream>
+#include <llvm/Support/FileSystem.h>
+#include <tree-sitter-ocaml.h>
 
 #define DEBUG_TYPE "typesystem"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -1381,6 +1383,18 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';
   assert(false && "Unknown node type");
   return nullptr;
+}
+
+Unifier::Unifier(std::string filepath) : filepath(filepath) {
+  static SmallVector<ts::Tree> trees;
+  source = must(slurpFile(filepath));
+  DBGS("Source:\n" << source << "\n");
+  ::ts::Language language = tree_sitter_ocaml();
+  ::ts::Parser parser{language};
+  trees.push_back(parser.parseString(source));
+  tree = &trees.back();
+  auto root = tree->getRootNode();
+  infer(root.getCursor());
 }
 
 } // namespace ts

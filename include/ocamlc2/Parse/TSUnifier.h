@@ -26,8 +26,8 @@ namespace detail {
   struct Scope;
 }
 struct Unifier {
-  Unifier(std::string filepath, std::string_view source) : source(source), filepath(filepath) {}
-  Unifier() {}
+  // Unifier(std::string filepath, std::string_view source) : source(source), filepath(filepath) {}
+  Unifier(std::string filepath);
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using EnvScope = Env::ScopeTy;
@@ -81,8 +81,9 @@ public:
   }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
-  std::string_view source;
+  std::string source;
   std::string filepath;
+  ::ts::Tree *tree;
 
 private:
   void initializeEnvironment();
