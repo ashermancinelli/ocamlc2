@@ -44,6 +44,13 @@ struct TypeOperator : public TypeExpr {
   consteval static llvm::StringRef getListOperatorName() { return "List"; }
   consteval static llvm::StringRef getArrayOperatorName() { return "Array"; }
   consteval static llvm::StringRef getRecordOperatorName() { return "Record"; }
+  consteval static llvm::StringRef getUnitOperatorName() { return "unit"; }
+  consteval static llvm::StringRef getWildcardOperatorName() { return "_"; }
+  consteval static llvm::StringRef getVarargsOperatorName() { return "varargs!"; }
+  consteval static llvm::StringRef getStringOperatorName() { return "string"; }
+  consteval static llvm::StringRef getIntOperatorName() { return "int"; }
+  consteval static llvm::StringRef getFloatOperatorName() { return "float"; }
+  consteval static llvm::StringRef getBoolOperatorName() { return "bool"; }
   inline TypeExpr *back() const { return args.back(); }
 
 private:
@@ -61,6 +68,17 @@ struct TupleOperator : public TypeOperator {
     if (expr->getKind() == Kind::Operator) {
       auto *op = llvm::cast<TypeOperator>(expr);
       return op->getName() == TypeOperator::getTupleOperatorName();
+    }
+    return false;
+  }
+};
+
+struct UnitOperator : public TypeOperator {
+  UnitOperator() : TypeOperator(TypeOperator::getUnitOperatorName()) {}
+  static inline bool classof(const TypeExpr *expr) {
+    if (expr->getKind() == Kind::Operator) {
+      auto *op = llvm::cast<TypeOperator>(expr);
+      return op->getName() == TypeOperator::getUnitOperatorName();
     }
     return false;
   }

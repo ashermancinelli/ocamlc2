@@ -37,6 +37,7 @@ using mlir::LogicalResult;
 static StringArena stringArena;
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const ocamlc2::ts::Node node) {
+  TRACE();
   const auto children = getNamedChildren(node);
   const bool isRecursive = isLetBindingRecursive(node.getCursor());
   const auto lhs = children[0];
@@ -48,28 +49,33 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const ocamlc2::ts::Node nod
   if (isRecursive) {
     return nyi(node);
   }
-  llvm::SmallVector<Node> parameters;
-  llvm::copy_if(llvm::drop_begin(children), std::back_inserter(parameters), [](auto node) {
-    return node.getType() == "parameter";
-  });
-  auto functionType = mlirType(lhs);
-  if (failed(functionType)) {
+  auto parameters = llvm::to_vector(llvm::make_filter_range(
+      children, [](auto node) { return node.getType() == "parameter"; }));
+  auto maybeFunctionType = mlirType(lhs);
+  if (failed(maybeFunctionType)) {
     return failure();
   }
+  auto functionType = mlir::dyn_cast<mlir::FunctionType>(*maybeFunctionType);
+  if (not functionType) {
+    return error(node) << "Expected function type for let binding";
+  }
+  auto nameString = getText(lhs);
   mlir::func::FuncOp function;
   {
     InsertionGuard guard(builder);
     builder.setInsertionPointToStart(module->getBody());
-    function = builder.create<mlir::func::FuncOp>(loc(node), getText(lhs),
-                                                       *functionType);
+    function =
+        builder.create<mlir::func::FuncOp>(loc(node), nameString, functionType);
+    function.setPrivate();
     auto &bodyRegion = function.getFunctionBody();
     builder.setInsertionPointToEnd(&bodyRegion.emplaceBlock());
-    auto parameterValues = [&] {
-      auto filter = llvm::make_filter_range(
-          parameters, [](auto node) { return node.getType() == "parameter"; });
-      return llvm::to_vector(llvm::map_range(
-          filter, [this](auto node) { return gen(node.getNamedChild(0)); }));
-    }();
+    auto parameterValues = llvm::to_vector(llvm::map_range(
+        llvm::make_filter_range(parameters,
+                                [](auto node) {
+                                  return node.getNamedChild(0).getType() !=
+                                         "unit";
+                                }),
+        [this](auto node) { return gen(node.getNamedChild(0)); }));
     if (llvm::any_of(parameterValues, failed)) {
       return failure();
     }
@@ -79,7 +85,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const ocamlc2::ts::Node nod
     }
     builder.create<mlir::func::ReturnOp>(loc(node), *body);
   }
-  return mlir::Value(builder.create<mlir::func::ConstantOp>(loc(node), function));
+  return mlir::Value(builder.create<mlir::func::ConstantOp>(loc(node), function.getFunctionType(), function.getName()));
 }
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeFromBasicTypeOperator(llvm::StringRef name) {
@@ -110,11 +116,17 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(const ocamlc2::TypeExpr *
       return error(loc) << "Could not get MLIR function type from unified type: " << *type;
     }
     auto args = llvm::drop_end(typeOperatorArgs);
-    auto argTypes = llvm::to_vector(llvm::map_range(args, [this, loc](auto *arg) {
-      return *mlirType(arg, loc);
-    }));
+    auto nonUnitArgs = llvm::make_filter_range(
+        args, [](auto *arg) { return !llvm::isa<UnitOperator>(arg); });
+    auto argTypes = llvm::to_vector(llvm::map_range(
+        nonUnitArgs, [this, loc](auto *arg) { return mlirType(arg, loc); }));
+    if (llvm::any_of(argTypes, failed)) {
+      return failure();
+    }
+    auto successfulArgTypes = llvm::to_vector(
+        llvm::map_range(argTypes, [](auto type) { return *type; }));
     auto returnType = *mlirType(typeOperatorArgs.back(), loc);
-    return mlir::FunctionType::get(builder.getContext(), argTypes, {returnType});
+    return mlir::FunctionType::get(builder.getContext(), successfulArgTypes, {returnType});
   }
   return error(loc) << "Could get MLIR type from unified function type: "
                      << *type;
@@ -122,6 +134,7 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(const ocamlc2::TypeExpr *
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::TypeExpr *type,
                                                mlir::Location loc) {
+  TRACE();
   if (const auto *to = llvm::dyn_cast<ocamlc2::TypeOperator>(type)) {
     const auto args = to->getArgs();
     if (args.empty()) {
@@ -134,6 +147,11 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::TypeExpr *type,
       return mlirFunctionType(type, loc);
     }
     return error(loc) << "Unknown type operator: " << *type;
+  } else if (const auto *tv = llvm::dyn_cast<ocamlc2::TypeVariable>(type)) {
+    if (tv->instantiated()) {
+      return mlirType(tv->instance, loc);
+    }
+    return error(loc) << "Uninstantiated type variable: " << *type;
   }
   return error(loc) << "Unknown type: " << *type;
 }
@@ -153,7 +171,10 @@ mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(const ocamlc2::ts::Node node)
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
-  return variables.lookup(name);
+  if (auto value = variables.lookup(name)) {
+    return value;
+  }
+  return failure();
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genForExpression(const ocamlc2::ts::Node node) {
@@ -197,11 +218,13 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genForExpression(const ocamlc2::ts::Node 
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const ocamlc2::ts::Node node) {
+  TRACE();
   VariableScope scope(variables);
   InsertionGuard guard(builder);
   builder.setInsertionPointToStart(module->getBody());
   auto mainFunc = builder.create<mlir::func::FuncOp>(
       loc(node), "main", builder.getFunctionType({}, builder.getI32Type()));
+  mainFunc.setPrivate();
   auto &body = mainFunc.getFunctionBody();
   builder.setInsertionPointToEnd(&body.emplaceBlock());
   for (auto child : getNamedChildren(node)) {
@@ -214,6 +237,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const ocamlc2::ts::Nod
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genNumber(const ocamlc2::ts::Node node) {
+  TRACE();
   auto str = getText(node);
   auto type = mlirType(node);
   if (failed(type)) {
@@ -231,7 +255,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genNumber(const ocamlc2::ts::Node node) {
   return error(node) << "Failed to parse number: " << str;
 }
 
-mlir::FailureOr<mlir::func::FuncOp> MLIRGen3::genCallee(const ocamlc2::ts::Node node) {
+mlir::FailureOr<mlir::Value> MLIRGen3::genCallee(const ocamlc2::ts::Node node) {
+  TRACE();
   if (node.getType() == "value_path") {
     auto str = getText(node);
     auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
@@ -247,12 +272,37 @@ mlir::FailureOr<mlir::func::FuncOp> MLIRGen3::genCallee(const ocamlc2::ts::Node 
       InsertionGuard guard(builder);
       builder.setInsertionPointToStart(module->getBody());
       auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
-      return callee;
+      callee.setPrivate();
+      auto funcOp = builder.create<mlir::func::ConstantOp>(
+          loc(node), callee.getFunctionType(), callee.getName());
+      return funcOp.getResult();
     }
-    return callee;
+    auto funcOp = builder.create<mlir::func::ConstantOp>(
+        loc(node), callee.getFunctionType(), callee.getName());
+    return funcOp.getResult();
   } else {
     return error(node) << "Unknown callee: " << node.getType();
   }
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genInfixExpression(const ocamlc2::ts::Node node) {
+  TRACE();
+  const auto children = getNamedChildren(node);
+  const auto lhs = children[0];
+  const auto rhs = children[2];
+  const auto op = children[1];
+  auto callee = getVariable(op);
+  if (failed(callee)) {
+    return error(node) << "Failed to get callee: " << op.getType();
+  }
+  auto lhsValue = gen(lhs);
+  auto rhsValue = gen(rhs);
+  if (failed(lhsValue) || failed(rhsValue)) {
+    return error(node) << "Failed to generate lhs or rhs";
+  }
+  llvm::dbgs() << *callee << "\n" << *lhsValue << "\n" << *rhsValue << "\n";
+  auto callOp = builder.create<mlir::func::CallIndirectOp>(loc(node), *callee, mlir::ValueRange{*lhsValue, *rhsValue});
+  return callOp.getResult(0);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genApplicationExpression(const ocamlc2::ts::Node node) {
@@ -263,10 +313,10 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genApplicationExpression(const ocamlc2::t
     return failure();
   }
   auto args = llvm::drop_begin(children);
-  llvm::SmallVector<mlir::Value> argValues = llvm::to_vector(llvm::map_range(
-      args,
-      [this](const ocamlc2::ts::Node &arg) { return *gen(arg); }));
-  return builder.createCall(loc(node), *calleeFunc, argValues);
+  const auto argValues = llvm::to_vector(llvm::map_range(
+      args, [this](const ocamlc2::ts::Node &arg) { return *gen(arg); }));
+  auto callOp = builder.create<mlir::func::CallIndirectOp>(loc(node), *calleeFunc, argValues);
+  return callOp.getResult(0);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
@@ -297,6 +347,10 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
     return genApplicationExpression(node);
   } else if (type == "value_path") {
     return getVariable(node);
+  } else if (type == "infix_expression") {
+    return genInfixExpression(node);
+  } else if (type == "unit") {
+    return mlir::Value(builder.create<mlir::ocaml::UnitOp>(loc(node)));
   }
   return error(node) << "Unknown node type: " << type;
 }
@@ -334,6 +388,7 @@ mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> MLIRGen3::gen() {
 
   if (mlir::failed(module->verify())) {
     DBGS("Failed to verify MLIR for compilation unit\n");
+    llvm::errs() << *module << "\n";
     return mlir::failure();
   }
 

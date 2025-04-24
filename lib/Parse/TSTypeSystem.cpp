@@ -1254,37 +1254,37 @@ bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
 }
 
 TypeExpr *Unifier::getBoolType() { 
-  static TypeExpr *type = getType("bool");
+  static TypeExpr *type = getType(TypeOperator::getBoolOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getFloatType() { 
-  static TypeExpr *type = getType("float");
+  static TypeExpr *type = getType(TypeOperator::getFloatOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getIntType() { 
-  static TypeExpr *type = getType("int");
+  static TypeExpr *type = getType(TypeOperator::getIntOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getUnitType() { 
-  static TypeExpr *type = getType("unit");
+  static TypeExpr *type = getType(TypeOperator::getUnitOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getStringType() { 
-  static TypeExpr *type = getType("string");
+  static TypeExpr *type = getType(TypeOperator::getStringOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getWildcardType() { 
-  static TypeExpr *type = getType("_");
+  static TypeExpr *type = getType(TypeOperator::getWildcardOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getVarargsType() { 
-  static TypeExpr *type = getType("varargs!");
+  static TypeExpr *type = getType(TypeOperator::getVarargsOperatorName());
   return type;
 }
 

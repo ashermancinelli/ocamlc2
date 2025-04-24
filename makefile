@@ -1,5 +1,6 @@
 CMAKE            ?= cmake
 NINJA            ?= ninja
+LIT              ?= lit
 # LLVM             ?= /opt/homebrew/opt/llvm@19
 LLVM             ?= /usr/local
 CBIN             ?= $(LLVM)/bin
@@ -46,3 +47,6 @@ build:
 
 install:
 	$(NINJA) -C build install
+
+check:
+	$(LIT) -svv test

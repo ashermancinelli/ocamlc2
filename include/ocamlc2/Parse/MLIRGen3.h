@@ -46,7 +46,8 @@ private:
   mlir::FailureOr<mlir::Value> genCompilationUnit(const ocamlc2::ts::Node node);
   mlir::FailureOr<mlir::Value> genNumber(const ocamlc2::ts::Node node);
   mlir::FailureOr<mlir::Value> genApplicationExpression(const ocamlc2::ts::Node node);
-  mlir::FailureOr<mlir::func::FuncOp> genCallee(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genCallee(const ocamlc2::ts::Node node);
+  mlir::FailureOr<mlir::Value> genInfixExpression(const ocamlc2::ts::Node node);
 
   mlir::FailureOr<mlir::Value> declareVariable(ocamlc2::ts::Node node, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);

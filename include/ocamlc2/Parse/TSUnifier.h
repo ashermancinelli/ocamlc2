@@ -81,7 +81,6 @@ public:
   }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
-
   std::string_view source;
   std::string filepath;
 
