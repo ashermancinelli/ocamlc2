@@ -205,15 +205,6 @@ void Unifier::initializeEnvironment() {
   auto *T_string = getStringType();
   auto *T1 = createTypeVariable(), *T2 = createTypeVariable();
 
-  declare("sqrt", getFunctionType({T_float, T_float}));
-  declare("print_int", getFunctionType({T_int, T_unit}));
-  declare("print_endline", getFunctionType({T_string, T_unit}));
-  declare("print_string", getFunctionType({T_string, T_unit}));
-  declare("print_int", getFunctionType({T_int, T_unit}));
-  declare("print_float", getFunctionType({T_float, T_unit}));
-  declare("string_of_int", getFunctionType({T_int, T_string}));
-  declare("float_of_int", getFunctionType({T_int, T_float}));
-  declare("int_of_float", getFunctionType({T_float, T_int}));
   popModule();
 
   {
@@ -281,18 +272,18 @@ TypeExpr* Unifier::infer(ts::Node const& ast) {
 
 void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
   static std::set<uintptr_t> seen;
-  if (!DumpTypes or seen.count(node.getID())) {
+  if (!DumpTypes or isLoadingStdlib or seen.count(node.getID())) {
     return;
   }
   seen.insert(node.getID());
+  const auto sourceIndex = sources.size() - 1;
   if (node.getType() == "let_binding") {
     auto name = node.getNamedChild(0);
     if (name.getType() != "unit") {
-      llvm::outs() << "let: " << getText(name) << " : " << *type << '\n';
+      nodesToDump.push_back(std::make_tuple("let", sourceIndex, node));
     }
   } else if (node.getType() == "value_specification") {
-    auto name = node.getNamedChild(0);
-    llvm::outs() << "val: " << getText(name) << " : " << *type << '\n';
+    nodesToDump.push_back(std::make_tuple("val", sourceIndex, node));
   }
 }
 
@@ -1107,15 +1098,19 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     ++childIndex;
   }
   auto name = node.getNamedChild(childIndex++);
-  auto *variantType = createTypeOperator(getTextSaved(name), typeVars);
-  declare(name, variantType);
+  auto *typeOperator = createTypeOperator(getTextSaved(name), typeVars);
+  declare(name, typeOperator);
+  if (childIndex == node.getNumNamedChildren()) {
+    DBGS("Type binding is a declaration");
+    return typeOperator;
+  }
   auto body = node.getNamedChild(childIndex++);
   assert(childIndex == node.getNumNamedChildren());
   if (body.getType() == "variant_declaration") {
     for (unsigned i = 0; i < body.getNumNamedChildren(); ++i) {
       auto child = body.getNamedChild(i);
       if (child.getType() == "comment") continue;
-      auto *ctorType = inferVariantConstructor(variantType, child.getCursor());
+      auto *ctorType = inferVariantConstructor(typeOperator, child.getCursor());
       setType(child, ctorType);
     }
   } else {
@@ -1503,8 +1498,18 @@ llvm::StringRef Unifier::getTextSaved(Node node) {
 }
 
 void Unifier::loadStdlibInterfaces(fs::path exe) {
+  isLoadingStdlib = true;
   for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
-    loadInterfaceFile(filepath);
+    loadSourceFile(filepath);
+  }
+  isLoadingStdlib = false;
+}
+
+void Unifier::dumpTypes(llvm::raw_ostream &os) {
+  for (auto [name, sourceIndex, node] : nodesToDump) {
+    std::string_view source = sources[sourceIndex].source;
+    os << name << ": " << ts::getText(node.getNamedChild(0), source)
+       << " : " << *getType(node.getID()) << '\n';
   }
 }
 

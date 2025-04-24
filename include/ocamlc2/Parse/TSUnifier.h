@@ -35,6 +35,7 @@ struct Unifier {
   void loadImplementationFile(fs::path filepath);
   void loadInterfaceFile(fs::path filepath);
   void loadStdlibInterfaces(fs::path exe);
+  void dumpTypes(llvm::raw_ostream &os);
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using EnvScope = Env::ScopeTy;
@@ -225,9 +226,11 @@ private:
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
   llvm::SmallVector<llvm::StringRef> moduleSearchPath;
   llvm::SmallVector<llvm::StringRef> currentModule;
+  llvm::SmallVector<std::tuple<std::string, unsigned, ts::Node>> nodesToDump;
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
   llvm::DenseMap<StringRef, SmallVector<StringRef>> recordTypeFieldOrder;
   std::unique_ptr<detail::Scope> rootScope;
+  bool isLoadingStdlib = false;
   friend struct detail::ModuleSearchPathScope;
   friend struct detail::ModuleScope;
   friend struct detail::Scope;

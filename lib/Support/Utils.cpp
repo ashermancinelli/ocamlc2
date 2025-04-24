@@ -56,6 +56,7 @@ const char* strikethrough() { return Color ? "\033[9m" : ""; }
 } // namespace ANSIColors
 
 static constexpr std::string_view OCamlStdlibInterfaces[] = {
+  "stdlib",
   "bool",
   "int",
   "string",
