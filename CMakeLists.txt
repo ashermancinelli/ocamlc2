@@ -67,6 +67,13 @@ include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
 include_directories(${PROJECT_SOURCE_DIR}/tpl/cpp-tree-sitter/include)
 add_definitions(${LLVM_DEFINITIONS})
 
+find_program(LIT_COMMAND NAMES lit llvm-lit)
+if (NOT LIT_COMMAND)
+    message(FATAL_ERROR "lit or llvm-lit not found")
+else()
+    message(STATUS "Using lit: ${LIT_COMMAND}")
+endif()
+
 # Disable RTTI
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 
@@ -89,9 +96,6 @@ include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)
 
-
-
-# Include directories
 include_directories(include)
 
 add_subdirectory(tpl)
@@ -99,6 +103,7 @@ add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(tools)
 add_subdirectory(runtime)
+add_subdirectory(test)
 
 # Print configuration information
 message(STATUS "OCaml compiler found: ${OCAML_COMPILER}")
