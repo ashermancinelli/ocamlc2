@@ -2,6 +2,7 @@
 
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/ASTPasses.h"
+#include "ocamlc2/Parse/TSUtil.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include <llvm/ADT/StringRef.h>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <vector>
 #include <sstream>
 #include <set>
+#include <filesystem>
 #include <llvm/Support/Casting.h>
 #include <ocamlc2/Parse/ScopedHashTable.h>
 #include <ocamlc2/Parse/TypeSystem.h>
@@ -20,6 +22,7 @@
 namespace ocamlc2 {
 inline namespace ts {
 using namespace ::ts;
+namespace fs = std::filesystem;
 namespace detail {
   struct ModuleSearchPathScope;
   struct ModuleScope;
@@ -28,6 +31,7 @@ namespace detail {
 struct Unifier {
   // Unifier(std::string filepath, std::string_view source) : source(source), filepath(filepath) {}
   Unifier(std::string filepath);
+  void loadSourceFile(std::string filepath);
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using EnvScope = Env::ScopeTy;
@@ -43,6 +47,10 @@ struct Unifier {
     typeArena.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     return static_cast<T *>(typeArena.back().get());
   }
+  inline std::string_view getText(Node node) {
+    return ts::getText(node, sources.back().source);
+  }
+  llvm::StringRef getTextSaved(Node node);
 
 private:
   inline auto *createTypeVariable() { return create<TypeVariable>(); }
@@ -81,9 +89,13 @@ public:
   }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
-  std::string source;
-  std::string filepath;
-  ::ts::Tree *tree;
+
+  struct SourceFile {
+    fs::path filepath;
+    std::string source;
+    ::ts::Tree tree;
+  };
+  SmallVector<SourceFile> sources;
 
 private:
   void initializeEnvironment();

@@ -50,7 +50,7 @@ static std::string hashPath(std::vector<std::string> path) {
 
 TypeExpr* Unifier::getTypeVariable(Node node) {
   assert(node.getType() == "type_variable");
-  auto text = stringArena.save(getText(node, source));
+  auto text = getTextSaved(node);
   return getTypeVariable(text);
 }
 
@@ -242,7 +242,7 @@ llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed) {
       os << ANSIColors::magenta() << " " << *te << ANSIColors::reset();
     }
   };
-  return dump(llvm::errs(), cursor.copy(), source, 0, showUnnamed, showTypes);
+  return dump(llvm::errs(), cursor.copy(), sources.back().source, 0, showUnnamed, showTypes);
 }
 
 TypeExpr* Unifier::infer(ts::Node const& ast) {
@@ -259,7 +259,7 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
     return;
   }
   if (node.getType() == "let_binding") {
-    llvm::outs() << "let: " << getText(node.getNamedChild(0), source) << " : " << *type << '\n';
+    llvm::outs() << "let: " << getText(node.getNamedChild(0)) << " : " << *type << '\n';
   }
 }
 
@@ -606,7 +606,7 @@ TypeExpr* Unifier::inferIfExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::declare(Node node, TypeExpr* type) {
-  declare(getText(node, source), type);
+  declare(getTextSaved(node), type);
   setType(node, type);
   return type;
 }
@@ -671,7 +671,7 @@ TypeExpr* Unifier::getType(Node node) {
   if (llvm::is_contained(pathTypes, node.getType())) {
     return getType(getPathParts(node));
   }
-  return getType(stringArena.save(getText(node, source)));
+  return getType(getTextSaved(node));
 }
 
 std::vector<std::string> Unifier::getPathParts(Node node) {
@@ -690,10 +690,10 @@ std::vector<std::string> Unifier::getPathParts(Node node) {
       auto parts = getPathParts(child);
       pathParts.insert(pathParts.end(), parts.begin(), parts.end());
     } else if (llvm::is_contained(nameTypes, childType)) {
-      std::string part{getText(child, source)};
+      std::string part{getText(child)};
       pathParts.push_back(part);
     } else if (childType == "parenthesized_operator") {
-      pathParts.push_back(std::string{getText(child.getNamedChild(0), source)});
+      pathParts.push_back(std::string{getText(child.getNamedChild(0))});
     } else {
       assert(false && "Unknown path part type");
     }
@@ -888,7 +888,7 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_binding");
   auto name = node.getChildByFieldName("name");
-  detail::ModuleScope ms{*this, getText(name, source)};
+  detail::ModuleScope ms{*this, getText(name)};
   const auto numChildren = node.getNumNamedChildren();
   std::optional<Node> signature;
   std::optional<Node> structure;
@@ -910,7 +910,7 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
     inferModuleStructure(structure->getCursor());
   }
   return createTypeOperator(
-      hashPath(ArrayRef<StringRef>{"Module", getText(name, source)}), {});
+      hashPath(ArrayRef<StringRef>{"Module", getTextSaved(name)}), {});
 }
 
 TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
@@ -977,12 +977,12 @@ TypeExpr* Unifier::inferRecordDeclaration(Cursor ast) {
     assert(child.getType() == "field_declaration");
     auto name = child.getNamedChild(0);
     auto type = infer(child.getNamedChild(1));
-    auto text = getText(name, source);
-    fieldNames.push_back(stringArena.save(text));
+    auto text = getTextSaved(name);
+    fieldNames.push_back(text);
     fieldTypes.push_back(type);
   }
-  auto recordName = getText(node.getNamedChild(0), source);
-  recordTypeFieldOrder[stringArena.save(recordName)] = fieldNames;
+  auto recordName = getTextSaved(node.getNamedChild(0));
+  recordTypeFieldOrder[recordName] = fieldNames;
   return getRecordType(fieldTypes);
 }
 
@@ -1044,7 +1044,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     ++childIndex;
   }
   auto name = node.getNamedChild(childIndex++);
-  auto *variantType = createTypeOperator(getText(name, source), typeVars);
+  auto *variantType = createTypeOperator(getTextSaved(name), typeVars);
   declare(name, variantType);
   auto body = node.getNamedChild(childIndex++);
   assert(childIndex == node.getNumNamedChildren());
@@ -1093,7 +1093,7 @@ TypeExpr* Unifier::inferParenthesizedPattern(Cursor ast) {
 TypeExpr *Unifier::inferValuePattern(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "value_pattern");
-  auto text = getText(node, source);
+  auto text = getTextSaved(node);
   if (text == "_") {
     return getWildcardType();
   }
@@ -1301,7 +1301,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     "parenthesized_type",
   };
   if (node.getType() == "number") {
-    auto text = getText(node, source);
+    auto text = getText(node);
     return text.contains('.') ? getType("float") : getType("int");
   } else if (node.getType() == "float") {
     return getType("float");
@@ -1385,16 +1385,23 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   return nullptr;
 }
 
-Unifier::Unifier(std::string filepath) : filepath(filepath) {
-  static SmallVector<ts::Tree> trees;
-  source = must(slurpFile(filepath));
+Unifier::Unifier(std::string filepath) {
+  loadSourceFile(filepath);
+}
+
+void Unifier::loadSourceFile(std::string filepath) {
+  std::string source = must(slurpFile(filepath));
   DBGS("Source:\n" << source << "\n");
   ::ts::Language language = tree_sitter_ocaml();
   ::ts::Parser parser{language};
-  trees.push_back(parser.parseString(source));
-  tree = &trees.back();
-  auto root = tree->getRootNode();
+  sources.emplace_back(filepath, source, parser.parseString(source));
+  auto root = sources.back().tree.getRootNode();
   infer(root.getCursor());
+}
+
+llvm::StringRef Unifier::getTextSaved(Node node) {
+  auto sv = ts::getText(node, sources.back().source);
+  return stringArena.save(sv);
 }
 
 } // namespace ts

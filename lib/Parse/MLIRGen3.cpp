@@ -356,8 +356,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const ocamlc2::ts::Node node) {
 }
 
 llvm::StringRef MLIRGen3::getText(const ocamlc2::ts::Node node) {
-  auto str = ::getText(node, unifier.source);
-  return stringArena.save(str);
+  return unifier.getTextSaved(node);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(ocamlc2::ts::Node node, mlir::Value value, mlir::Location loc) {

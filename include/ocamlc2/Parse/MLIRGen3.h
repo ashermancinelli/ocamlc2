@@ -22,8 +22,9 @@ struct MLIRGen3 {
     auto range = node.getPointRange();
     auto start = range.start, end = range.end;
     return mlir::FileLineColRange::get(
-        mlir::StringAttr::get(&context, unifier.filepath), start.row + 1,
-        start.column + 1, end.row + 1, end.column + 1);
+        mlir::StringAttr::get(&context,
+                              unifier.sources.back().filepath.string()),
+        start.row + 1, start.column + 1, end.row + 1, end.column + 1);
   }
   inline auto error(const mlir::Location loc) const {
     return mlir::emitError(loc) << "error: ";

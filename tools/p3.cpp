@@ -39,9 +39,9 @@ int main(int argc, char* argv[]) {
   ocamlc2::ts::Unifier unifier{filepath.string()};
   DBG(
     llvm::errs() << "AST:\n";
-    unifier.show(unifier.tree->getRootNode().getCursor(), true);
+    unifier.show(unifier.sources.back().tree.getRootNode().getCursor(), true);
   )
-  auto *te = unifier.infer(unifier.tree->getRootNode().getCursor());
+  auto *te = unifier.infer(unifier.sources.back().tree.getRootNode().getCursor());
   DBGS("Inferred type: " << *te << '\n');
 
   return 0;
