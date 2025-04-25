@@ -28,6 +28,14 @@ namespace detail {
   struct ModuleScope;
   struct Scope;
 }
+
+struct ParameterDescriptor {
+  Node value;
+  std::optional<Node> type;
+  bool isOptional, isLabeled;
+  std::optional<Node> defaultValue;
+};
+
 struct Unifier {
   Unifier();
   Unifier(std::string filepath);
@@ -167,6 +175,9 @@ private:
   TypeExpr *inferExternal(Cursor ast);
   TypeExpr *inferTupleType(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
+  ParameterDescriptor describeParameter(Node node);
+  SmallVector<ParameterDescriptor> describeParameters(SmallVector<Node> parameters);
+
   inline SmallVector<Node> flattenFunctionType(Node node) {
     return flattenType("function_type", node);
   }

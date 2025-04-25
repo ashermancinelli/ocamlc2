@@ -530,6 +530,40 @@ TypeExpr *Unifier::declareConcrete(Node node) {
   return declare(node, type);
 }
 
+ParameterDescriptor Unifier::describeParameter(Node node) {
+  assert(node.getType() == "parameter");
+  auto children = getChildren(node);
+  ParameterDescriptor desc{node, std::nullopt, false, false, std::nullopt};
+  auto it = node.getCursor();
+  assert(it.gotoFirstChild());
+  while (it.gotoNextSibling()) {
+    auto child = it.getCurrentNode();
+    if (child.getType() == "?") {
+      desc.isOptional = true;
+    } else if (child.getType() == "=") {
+      assert(it.gotoNextSibling());
+      desc.defaultValue = it.getCurrentNode();
+    } else if (child.getType() == "~") {
+      desc.isLabeled = true;
+      assert(it.gotoNextSibling());
+    } else if (child.getType() == ":") {
+      assert(it.gotoNextSibling());
+      desc.type = it.getCurrentNode();
+    } else if (child.getType() == "(" or child.getType() == ")") {
+      continue;
+    } else if (child.getType() == "value_pattern") {
+      desc.value = child;
+    }
+  }
+  return desc;
+}
+
+SmallVector<ParameterDescriptor> Unifier::describeParameters(SmallVector<Node> parameters) {
+  return llvm::map_to_vector(parameters, [&](Node n) -> ParameterDescriptor {
+    return describeParameter(n);
+  });
+}
+
 TypeExpr *Unifier::declareFunctionParameter(Node node) {
   assert(node.getType() == "parameter");
   node = node.getNamedChild(0);
@@ -550,6 +584,7 @@ TypeExpr *Unifier::declareFunctionParameter(Node node) {
 
 TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> parameters, Node body) {
   DBGS("non-recursive let binding, inferring body type\n");
+  auto parameterDescriptors = describeParameters(parameters);
   auto [returnType, types] = [&]() { 
     detail::Scope scope(this);
     SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
