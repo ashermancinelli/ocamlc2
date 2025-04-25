@@ -27,6 +27,7 @@ namespace detail {
   struct ModuleSearchPathScope;
   struct ModuleScope;
   struct Scope;
+  struct TypeVariableScope;
 }
 
 struct ParameterDescriptor {
@@ -38,12 +39,28 @@ struct ParameterDescriptor {
 
 struct Unifier {
   Unifier();
+
+  // Construct a new unifier, load the standard library interfaces, load the
+  // source file.
   Unifier(std::string filepath);
+
+  // Load a source file. The extension will be checked to determine if it is
+  // an interface or implementation.
   void loadSourceFile(fs::path filepath);
+
+  // Load an implementation (.ml) file.
   void loadImplementationFile(fs::path filepath);
+
+  // Load an interface (.mli) file.
   void loadInterfaceFile(fs::path filepath);
+
+  // Load the standard library interfaces.
   void loadStdlibInterfaces(fs::path exe);
+
+  // Show recorded function definitions, declarations, and variable let bindings,
+  // for debugging and testing.
   void dumpTypes(llvm::raw_ostream &os);
+
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
   llvm::raw_ostream &show(bool showUnnamed = false);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
@@ -242,22 +259,61 @@ private:
   std::vector<std::string> getPathParts(Node node);
   void maybeDumpTypes(Node node, TypeExpr *type);
 
+  // Type variables don't have the same scoping rules as other variables.
+  // When type variables in introduced, we're not sure what type we're
+  // even declaring or what the scope is, and we don't want the declarees
+  // to be in a more narrow scope. Type variables live only long enough to
+  // declare the type(s).
+  // TODO
+  void pushTypeVariableScope() {}
+  void popTypeVariableScope() {}
+
+  // Environment for type variables
   Env env;
+
+  // Set of types that have been declared as concrete, usually because they
+  // are type variables for parameters of a function.
   ConcreteTypes concreteTypes;
+
+  // Allocator for type expressions
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
+
+  // Paths to search for type variables
   llvm::SmallVector<llvm::StringRef> moduleSearchPath;
+
+  // Current module path for code being inferred
   llvm::SmallVector<llvm::StringRef> currentModule;
+
+  // It is useful to keep and dump certain nodes and types for debugging
+  // and testing. Record them here to be dumped after inference is complete.
   llvm::SmallVector<std::tuple<std::string, unsigned, ts::Node>> nodesToDump;
+
+  // Sidecar for caching inferred types
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
+
+  // Record the order of fields in record types so the constructor can be
+  // treated like a function after fields are reordered.
   llvm::DenseMap<StringRef, SmallVector<StringRef>> recordTypeFieldOrder;
+
+  // Root scope for the unifier, created when the unifier is constructed.
+  // Sometimes we need to declare stdlib types before actually loading the
+  // stdlib, in which case we don't have a compilation unit to create a scope.
   std::unique_ptr<detail::Scope> rootScope;
+
+  // Whether we are loading the standard library. It's helpful to skip certain
+  // debugging steps when loading the stdlib, as it becomes very noisy when
+  // looking at inference of user code.
   bool isLoadingStdlib = false;
+
+  // RAII wrappers for pushing and popping search paths and environment scopes.
   friend struct detail::ModuleSearchPathScope;
   friend struct detail::ModuleScope;
   friend struct detail::Scope;
+  friend struct detail::TypeVariableScope;
 };
 
 namespace detail {
+
 struct ModuleSearchPathScope {
   ModuleSearchPathScope(Unifier &unifier,
                         llvm::ArrayRef<llvm::StringRef> modules)
@@ -269,6 +325,7 @@ struct ModuleSearchPathScope {
 private:
   Unifier &unifier;
 };
+
 struct ModuleScope {
   ModuleScope(Unifier &unifier, llvm::StringRef module) : unifier(unifier) {
     unifier.pushModule(module);
@@ -293,6 +350,16 @@ private:
   Unifier *unifier;
   Unifier::EnvScope envScope;
   Unifier::ConcreteTypes concreteTypes;
+};
+
+struct TypeVariableScope {
+  TypeVariableScope(Unifier &unifier) : unifier(unifier) {
+    unifier.pushTypeVariableScope();
+  }
+  ~TypeVariableScope() { unifier.popTypeVariableScope(); }
+
+private:
+  Unifier &unifier;
 };
 
 } // namespace detail

@@ -49,7 +49,7 @@ install:
 	$(NINJA) -C build install
 
 check:
-	$(LIT) -svv test
+	$(NINJA) -C build check
 
 i:
 	$(NINJA) -C build stdlib-interfaces

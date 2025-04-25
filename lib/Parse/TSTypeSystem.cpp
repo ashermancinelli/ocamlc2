@@ -536,20 +536,25 @@ ParameterDescriptor Unifier::describeParameter(Node node) {
   ParameterDescriptor desc{node, std::nullopt, false, false, std::nullopt};
   auto it = node.getCursor();
   assert(it.gotoFirstChild());
+  unsigned nesting = 0;
   while (it.gotoNextSibling()) {
     auto child = it.getCurrentNode();
     if (child.getType() == "?") {
+      DBGS("Optional parameter\n");
       desc.isOptional = true;
     } else if (child.getType() == "=") {
+      DBGS("Default value\n");
       assert(it.gotoNextSibling());
       desc.defaultValue = it.getCurrentNode();
     } else if (child.getType() == "~") {
+      DBGS("Labeled parameter\n");
       desc.isLabeled = true;
       assert(it.gotoNextSibling());
     } else if (child.getType() == ":") {
       assert(it.gotoNextSibling());
       desc.type = it.getCurrentNode();
     } else if (child.getType() == "(" or child.getType() == ")") {
+      nesting += child.getType() == "(" ? 1 : -1;
       continue;
     } else if (child.getType() == "value_pattern") {
       desc.value = child;
