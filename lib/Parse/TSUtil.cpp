@@ -3,9 +3,9 @@
 #include <llvm/Support/raw_ostream.h>
 #include <cpp-tree-sitter.h>
 
+using namespace ts;
+
 namespace ocamlc2 {
-inline namespace ts {
-using namespace ::ts;
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TSPoint &point) {
   return os << point.row << ":" << point.column;
 }
@@ -54,6 +54,9 @@ dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
     }
   } else {
     for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+      if (auto name = node.getFieldNameForNamedChild(i)) {
+        os << indentStr << ANSIColors::faint() << ANSIColors::italic() << *name << ": " << ANSIColors::reset();
+      }
       auto child = node.getNamedChild(i);
       dump(os, child.getCursor(), source, indent + 1, showUnnamed, dumpNode);
     }
@@ -90,5 +93,4 @@ bool isLetBindingRecursive(Cursor ast) {
   return false;
 }
 
-} // namespace ts
 } // namespace ocamlc2

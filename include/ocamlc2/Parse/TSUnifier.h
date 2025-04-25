@@ -80,7 +80,7 @@ struct Unifier {
   TypeExpr *getType(Node node);
   TypeExpr *getType(ts::NodeID id);
   inline std::string_view getText(Node node) {
-    return ts::getText(node, sources.back().source);
+    return ocamlc2::getText(node, sources.back().source);
   }
   llvm::StringRef getTextSaved(Node node);
 
@@ -191,6 +191,7 @@ private:
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *inferExternal(Cursor ast);
   TypeExpr *inferTupleType(Cursor ast);
+  TypeExpr *inferTupleExpression(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
   ParameterDescriptor describeParameter(Node node);
   SmallVector<ParameterDescriptor> describeParameters(SmallVector<Node> parameters);

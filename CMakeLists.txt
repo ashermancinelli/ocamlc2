@@ -21,6 +21,8 @@ set(TREESITTER_OCAML_DIR "/usr/local" CACHE PATH "Path to Tree-sitter OCaml pars
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(OCAMLC2_LINKER_FLAGS "" CACHE STRING "Linker flags for ocamlc2")
 
+enable_testing()
+
 # enable warnings
 set(CMAKE_CXX_FLAGS 
   "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wunused-variable -Wunused-value -Wunused-function -Werror -Wno-covered-switch-default")

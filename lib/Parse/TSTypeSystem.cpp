@@ -404,6 +404,13 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
   }
 }
 
+TypeExpr* Unifier::inferTupleExpression(Cursor ast) {
+  auto types = llvm::map_to_vector(getNamedChildren(ast.getCurrentNode()), [&](Node n) {
+    return infer(n);
+  });
+  return getTupleType(types);
+}
+
 TypeExpr* Unifier::inferTupleType(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "tuple_type");
@@ -555,6 +562,9 @@ ParameterDescriptor Unifier::describeParameter(Node node) {
       desc.type = it.getCurrentNode();
     } else if (child.getType() == "(" or child.getType() == ")") {
       nesting += child.getType() == "(" ? 1 : -1;
+      if (nesting == 1) {
+        (void)nesting;
+      }
       continue;
     } else if (child.getType() == "value_pattern") {
       desc.value = child;
@@ -1022,7 +1032,9 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_binding");
-  auto name = node.getChildByFieldName("name");
+  auto name = node.getNamedChild(0);
+  assert(!name.isNull() && "Expected module name");
+  assert(name.getType() == "module_name" && "Expected module name");
   detail::ModuleScope ms{*this, getText(name)};
   const auto numChildren = node.getNumNamedChildren();
   std::optional<Node> signature;
@@ -1545,6 +1557,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferExternal(std::move(ast));
   } else if (node.getType() == "tuple_type") {
     return inferTupleType(std::move(ast));
+  } else if (node.getType() == "tuple_expression") {
+    return inferTupleExpression(std::move(ast));
   }
   show(ast.copy(), true);
   llvm::errs() << "Unknown node type: " << node.getType() << '\n';
@@ -1602,7 +1616,7 @@ void Unifier::loadInterfaceFile(fs::path filepath) {
 }
 
 llvm::StringRef Unifier::getTextSaved(Node node) {
-  auto sv = ts::getText(node, sources.back().source);
+  auto sv = ocamlc2::getText(node, sources.back().source);
   return stringArena.save(sv);
 }
 
@@ -1617,7 +1631,7 @@ void Unifier::loadStdlibInterfaces(fs::path exe) {
 void Unifier::dumpTypes(llvm::raw_ostream &os) {
   for (auto [name, sourceIndex, node] : nodesToDump) {
     std::string_view source = sources[sourceIndex].source;
-    os << name << ": " << ts::getText(node.getNamedChild(0), source)
+    os << name << ": " << ocamlc2::getText(node.getNamedChild(0), source)
        << " : " << *getType(node.getID()) << '\n';
   }
 }
