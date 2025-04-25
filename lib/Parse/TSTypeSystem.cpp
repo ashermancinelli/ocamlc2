@@ -154,24 +154,30 @@ TypeExpr* Unifier::getType(const std::string_view name) {
 }
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
-  DBGS("Getting type: " << name << '\n');
   if (auto *type = maybeGetType(name)) {
+    return type;
+  }
+  assert(false && "Type not declared");
+}
+
+TypeExpr* Unifier::maybeGetType(const llvm::StringRef name) {
+  DBGS("Getting type: " << name << '\n');
+  if (auto *type = maybeGetTypeWithName(name)) {
     return type;
   }
   for (auto &path : llvm::reverse(moduleSearchPath)) {
     auto possiblePath = hashPath(std::vector<std::string>{path.str(), name.str()});
     auto str = stringArena.save(possiblePath);
     DBGS("Checking module search path: " << path << " with name: " << str << '\n');
-    if (auto *type = maybeGetType(str)) {
+    if (auto *type = maybeGetTypeWithName(str)) {
       return type;
     }
   }
   DBGS("Type not declared: " << name << '\n');
-  assert(false && "Type not declared");
   return nullptr;
 }
 
-TypeExpr *Unifier::maybeGetType(const llvm::StringRef name) {
+TypeExpr *Unifier::maybeGetTypeWithName(const llvm::StringRef name) {
   DBGS(name << '\n');
   if (auto *type = env.lookup(name)) {
     DBGS("Found type " << *type << '\n');
@@ -1169,7 +1175,25 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
   auto typeArgs = llvm::map_to_vector(children, [&](Node child) {
     return infer(child);
   });
-  auto *inferredType = createTypeOperator(getTextSaved(name), typeArgs);
+  auto text = getTextSaved(name);
+  if (auto *type = maybeGetType(text)) {
+    DBGS("Type already exists: " << *type << '\n');
+    if (auto *typeOperator = llvm::dyn_cast<TypeOperator>(type)) {
+      DBGS("Type operator found\n");
+      auto toArgs = typeOperator->getArgs();
+      assert(toArgs.size() == typeArgs.size() &&
+             "Type operator has different number of arguments than type "
+             "arguments");
+      for (auto [toArg, typeArg] : llvm::zip(toArgs, typeArgs)) {
+        if (failed(unify(toArg, typeArg))) {
+          assert(false && "Failed to unify type operator argument");
+        }
+      }
+      return typeOperator;
+    }
+    return type;
+  }
+  auto *inferredType = createTypeOperator(text, typeArgs);
   return inferredType;
 }
 
