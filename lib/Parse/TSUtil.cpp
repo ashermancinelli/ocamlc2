@@ -1,5 +1,6 @@
 #include "ocamlc2/Parse/TSUtil.h"
 #include "ocamlc2/Support/Colors.h"
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/Support/raw_ostream.h>
 #include <cpp-tree-sitter.h>
 
@@ -21,17 +22,21 @@ std::string_view getText(const ts::Node &node, std::string_view source) {
   return source.substr(byteRange.start, byteRange.end - byteRange.start);
 }
 
+static std::string getIndent(unsigned indent) {
+  std::string indentStr;
+  for (unsigned i = 0; i < indent; ++i) {
+    indentStr += std::string(ANSIColors::faint()) + "| " + ANSIColors::reset();
+  }
+  return indentStr;
+}
+
 llvm::raw_ostream &
 dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
      unsigned indent, bool showUnnamed,
      std::optional<std::function<void(llvm::raw_ostream &, ts::Node)>> dumpNode) {
   auto range = cursor.getCurrentNode().getPointRange();
   auto byteRange = cursor.getCurrentNode().getByteRange();
-  std::string indentStr;
-  for (unsigned i = 0; i < indent; ++i) {
-    indentStr += std::string(ANSIColors::faint()) + "| " + ANSIColors::reset();
-  }
-  os << indentStr << ANSIColors::cyan() << cursor.getCurrentNode().getType() << ANSIColors::reset() << ": ";
+  os << getIndent(indent) << ANSIColors::cyan() << cursor.getCurrentNode().getType() << ANSIColors::reset() << ": ";
   auto text = source.substr(byteRange.start, byteRange.end - byteRange.start);
   os << ANSIColors::italic() << ANSIColors::faint();
   if (text.contains('\n')) {
@@ -47,19 +52,17 @@ dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
   os << "\n";
   os << ANSIColors::reset();
   auto node = cursor.getCurrentNode();
-  if (showUnnamed) {
-    for (unsigned i = 0; i < node.getNumChildren(); ++i) {
-      auto child = node.getChild(i);
-      dump(os, child.getCursor(), source, indent + 1, showUnnamed, dumpNode);
+  auto showLabel = [&] (auto node, unsigned index) {
+    auto name = showUnnamed ? node.getFieldNameForChild(index) : node.getFieldNameForNamedChild(index);
+    if (!name.empty()) {
+      os << getIndent(indent + 1) << ANSIColors::faint() << ANSIColors::italic() << name
+         << ": " << ANSIColors::reset() << '\n';
     }
-  } else {
-    for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-      if (auto name = node.getFieldNameForNamedChild(i)) {
-        os << indentStr << ANSIColors::faint() << ANSIColors::italic() << *name << ": " << ANSIColors::reset();
-      }
-      auto child = node.getNamedChild(i);
-      dump(os, child.getCursor(), source, indent + 1, showUnnamed, dumpNode);
-    }
+  };
+  auto children = showUnnamed ? getChildren(node) : getNamedChildren(node);
+  for (auto [i, child] : llvm::enumerate(children)) {
+    showLabel(node, i);
+    dump(os, child.getCursor(), source, indent + 1, showUnnamed, dumpNode);
   }
   if (cursor.gotoNextSibling()) {
     dump(os, cursor.copy(), source, indent, showUnnamed, dumpNode);
