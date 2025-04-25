@@ -1104,42 +1104,59 @@ TypeExpr* Unifier::inferVariantConstructor(TypeExpr* variantType, Cursor ast) {
   return functionType;
 }
 
+TypeExpr* Unifier::inferVariantDeclaration(TypeExpr *variantType, Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "variant_declaration");
+  return inferVariantConstructor(variantType, node.getNamedChild(0).getCursor());
+}
+
 TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_binding");
-  unsigned childIndex = 0;
+  auto namedChildren = getNamedChildren(node);
+  auto *namedIterator = namedChildren.begin();
   SmallVector<TypeExpr*> typeVars;
-  while (node.getNamedChild(childIndex).getType() == "type_variable") {
+  for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
     typeVars.push_back(createTypeVariable());
-    declare(node.getNamedChild(childIndex), typeVars.back());
-    ++childIndex;
+    declare(child, typeVars.back());
   }
-  auto name = node.getNamedChild(childIndex++);
-  auto *typeOperator = createTypeOperator(getTextSaved(name), typeVars);
-  if (childIndex == node.getNumNamedChildren()) {
+  auto name = *namedIterator++;
+  TypeExpr *thisType = createTypeOperator(getTextSaved(name), typeVars);
+  if (namedIterator == namedChildren.end()) {
     DBGS("Type binding is a declaration\n");
-    declare(name, typeOperator);
-    return typeOperator;
+    declare(name, thisType);
+    return thisType;
   }
-  auto body = node.getNamedChild(childIndex++);
-  assert(childIndex == node.getNumNamedChildren());
+  auto body = *namedIterator++;
+  if (body.getType() == "constructed_type") {
+    DBGS("Type binding is a type alias\n");
+    // This is a type alias and we can disregard the original type operator.
+    auto *rhsType = infer(body);
+    thisType = declare(name, rhsType);
+    if (namedIterator == namedChildren.end()) {
+      return thisType;
+    }
+    body = *namedIterator++;
+  } 
+  declare(name, thisType);
   if (body.getType() == "variant_declaration") {
-    declare(name, typeOperator);
+    DBGS("Type binding is a variant declaration\n");
+    assert(namedIterator == namedChildren.end() && "Expected no more children");
     for (unsigned i = 0; i < body.getNumNamedChildren(); ++i) {
       auto child = body.getNamedChild(i);
       if (child.getType() == "comment") continue;
-      auto *ctorType = inferVariantConstructor(typeOperator, child.getCursor());
+      auto *ctorType = inferVariantConstructor(thisType, child.getCursor());
       setType(child, ctorType);
     }
-    return typeOperator;
-  } else if (body.getType() == "constructed_type") {
-    auto *rhsType = infer(body);
-    return declare(name, rhsType);
-  } else {
-    show(node.getCursor(), true);
-    assert(false && "Unknown type binding type");
+    if (namedIterator == namedChildren.end()) {
+      return thisType;
+    }
+    body = *namedIterator++;
   }
+  show(node.getCursor(), true);
+  assert(false && "Unknown type binding type");
   return getUnitType();
 }
 
@@ -1147,19 +1164,12 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "constructed_type");
-  SmallVector<TypeExpr*> args;
-  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    args.push_back(infer(node.getNamedChild(i)));
-  }
-  auto *typeBeingConstructed = args.pop_back_val();
-  auto *typeOperator = llvm::dyn_cast<TypeOperator>(typeBeingConstructed);
-  assert(typeOperator && "Type being constructed is not a type operator");
-  auto typeOperatorName = typeOperator->getName();
-  auto *inferredType = createTypeOperator(typeOperatorName, args);
-  if (failed(unify(inferredType, typeBeingConstructed))) {
-    assert(false && "Failed to unify inferred type with type being constructed");
-    return nullptr;
-  }
+  auto children = getNamedChildren(node);
+  auto name = children.pop_back_val();
+  auto typeArgs = llvm::map_to_vector(children, [&](Node child) {
+    return infer(child);
+  });
+  auto *inferredType = createTypeOperator(getTextSaved(name), typeArgs);
   return inferredType;
 }
 

@@ -22,4 +22,8 @@ val t4 : 'a arrayalias -> 'a
 val t5 : int arrayalias -> int
 type iarray = int array
 val t6 : iarray -> int
-
+type 'a t = 'a option = None | Some of 'a
+val t7 : 'a t -> 'a
+val t8 : int t -> float
+type t2 = int t
+val t9 : t2 -> int option

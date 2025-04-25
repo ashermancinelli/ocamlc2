@@ -158,6 +158,7 @@ private:
   TypeExpr *inferSequenceExpression(Cursor ast);
   TypeExpr *inferTypeDefinition(Cursor ast);
   TypeExpr *inferTypeBinding(Cursor ast);
+  TypeExpr *inferVariantDeclaration(TypeExpr *variantType, Cursor ast);
   TypeExpr *inferVariantConstructor(TypeExpr *variantType, Cursor ast);
   TypeExpr *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferConstructedType(Cursor ast);
