@@ -20,9 +20,10 @@
 #include <cpp-tree-sitter.h>
 
 namespace ocamlc2 {
-inline namespace ts {
-using namespace ::ts;
 namespace fs = std::filesystem;
+using ts::Node;
+using ts::NodeID;
+using ts::Cursor;
 namespace detail {
   struct ModuleSearchPathScope;
   struct ModuleScope;
@@ -70,12 +71,12 @@ struct Unifier {
     typeArena.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     return static_cast<T *>(typeArena.back().get());
   }
-  TypeExpr *getType(Node node);
+  TypeExpr *getType(ts::Node node);
   TypeExpr *getType(ts::NodeID id);
-  inline std::string_view getText(Node node) {
+  inline std::string_view getText(ts::Node node) {
     return ocamlc2::getText(node, sources.back().source);
   }
-  llvm::StringRef getTextSaved(Node node);
+  llvm::StringRef getTextSaved(ts::Node node);
 
 private:
   inline auto *createTypeVariable() { return create<TypeVariable>(); }
@@ -360,5 +361,4 @@ private:
 };
 
 } // namespace detail
-} // namespace ts
 } // namespace ocamlc2

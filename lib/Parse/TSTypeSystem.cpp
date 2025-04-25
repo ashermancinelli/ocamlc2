@@ -20,8 +20,6 @@
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace ocamlc2 {
-inline namespace ts {
-using namespace ::ts;
 using namespace llvm;
 using std::move;
 
@@ -1652,5 +1650,4 @@ void Unifier::dumpTypes(llvm::raw_ostream &os) {
   }
 }
 
-} // namespace ts
 } // namespace ocamlc2
