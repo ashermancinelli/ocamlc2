@@ -154,6 +154,8 @@ val iter : ('a -> unit) -> 'a array -> unit
    the elements of [a].  It is equivalent to
    [f a.(0); f a.(1); ...; f a.(length a - 1); ()]. 
 
+   *)
+
 val iteri : (int -> 'a -> unit) -> 'a array -> unit
 (** Same as {!iter}, but the
    function is applied to the index of the element as first argument,
@@ -332,124 +334,50 @@ val fast_sort : ('a -> 'a -> int) -> 'a array -> unit
 (** Same as {!sort} or {!stable_sort}, whichever is
     faster on typical input. *)
 
-val shuffle :
-  rand: (* thwart tools/sync_stdlib_docs *) (int -> int) -> 'a array -> unit
-(** [shuffle rand a] randomly permutes [a]'s element using [rand] for
-    randomness. The distribution of permutations is uniform.
-
-    [rand] must be such that a call to [rand n] returns a uniformly
-    distributed random number in the range \[[0];[n-1]\].
-    {!Random.int} can be used for this (do not forget to
-    {{!Random.self_init}initialize} the generator).
-
-    @since 5.2 *)
-
-(** {1 Arrays and Sequences} *)
-
-val to_seq : 'a array -> 'a Seq.t
-(** Iterate on the array, in increasing order. Modifications of the
-    array during iteration will be reflected in the sequence.
-    @since 4.07 *)
-
-val to_seqi : 'a array -> (int * 'a) Seq.t
-(** Iterate on the array, in increasing order, yielding indices along elements.
-    Modifications of the array during iteration will be reflected in the
-    sequence.
-    @since 4.07 *)
-
-val of_seq : 'a Seq.t -> 'a array
-(** Create an array from the generator
-    @since 4.07 *)
-
-(** {1:array_concurrency Arrays and concurrency safety}
-
-    Care must be taken when concurrently accessing arrays from multiple
-    domains: accessing an array will never crash a program, but unsynchronized
-    accesses might yield surprising (non-sequentially-consistent) results.
-
-    {2:array_atomicity Atomicity}
-
-    Every array operation that accesses more than one array element is not
-    atomic. This includes iteration, scanning, sorting, splitting and
-    combining arrays.
-
-    For example, consider the following program:
-{[let size = 100_000_000
-let a = Array.make size 1
-let d1 = Domain.spawn (fun () ->
-   Array.iteri (fun i x -> a.(i) <- x + 1) a
-)
-let d2 = Domain.spawn (fun () ->
-  Array.iteri (fun i x -> a.(i) <- 2 * x + 1) a
-)
-let () = Domain.join d1; Domain.join d2
-]}
-
-    After executing this code, each field of the array [a] is either [2], [3],
-    [4] or [5]. If atomicity is required, then the user must implement their own
-    synchronization (for example, using {!Mutex.t}).
-
-    {2:array_data_race Data races}
-
-    If two domains only access disjoint parts of the array, then the
-    observed behaviour is the equivalent to some sequential interleaving of the
-    operations from the two domains.
-
-    A data race is said to occur when two domains access the same array element
-    without synchronization and at least one of the accesses is a write.
-    In the absence of data races, the observed behaviour is equivalent to some
-    sequential interleaving of the operations from different domains.
-
-    Whenever possible, data races should be avoided by using synchronization to
-    mediate the accesses to the array elements.
-
-    Indeed, in the presence of data races, programs will not crash but the
-    observed behaviour may not be equivalent to any sequential interleaving of
-    operations from different domains. Nevertheless, even in the presence of
-    data races, a read operation will return the value of some prior write to
-    that location (with a few exceptions for float arrays).
-
-    {2:array_data_race_exceptions Float arrays}
-
-    Float arrays have two supplementary caveats in the presence of data races.
-
-    First, the blit operation might copy an array byte-by-byte. Data races
-    between such a blit operation and another operation might produce surprising
-    values due to tearing: partial writes interleaved with other operations can
-    create float values that would not exist with a sequential execution.
-
-    For instance, at the end of
- {[let zeros = Array.make size 0.
-let max_floats = Array.make size Float.max_float
-let res = Array.copy zeros
-let d1 = Domain.spawn (fun () -> Array.blit zeros 0 res 0 size)
-let d2 = Domain.spawn (fun () -> Array.blit max_floats 0 res 0 size)
-let () = Domain.join d1; Domain.join d2
-]}
-    the [res] array might contain values that are neither [0.] nor [max_float].
-
-    Second, on 32-bit architectures, getting or setting a field involves two
-    separate memory accesses. In the presence of data races, the user may
-    observe tearing on any operation.
+(*
+RUN: p3 %s --dump-types | FileCheck %s
+CHECK: val: length : (λ (array '[[T1:.+]]) int)
+CHECK: val: get : (λ (array '[[T1:.+]]) int '[[T1]])
+CHECK: val: set : (λ (array '[[T1:.+]]) int '[[T1]] unit)
+CHECK: val: make : (λ int '[[T1:.+]] (array '[[T1]]))
+CHECK: val: create_float : (λ int (array float))
+CHECK: val: init : (λ int (λ int '[[T1:.+]]) (array '[[T1]]))
+CHECK: val: make_matrix : (λ int int '[[T1:.+]] (array (array '[[T1]])))
+CHECK: val: init_matrix : (λ int int (λ int int '[[T1:.+]]) (array (array '[[T1]])))
+CHECK: val: append : (λ (array '[[T1:.+]]) (array '[[T1]]) (array '[[T1]]))
+CHECK: val: concat : (λ (list (array '[[T1:.+]])) (array '[[T1]]))
+CHECK: val: sub : (λ (array '[[T1:.+]]) int int (array '[[T1]]))
+CHECK: val: copy : (λ (array '[[T1:.+]]) (array '[[T1]]))
+CHECK: val: fill : (λ (array '[[T1:.+]]) int int '[[T1]] unit)
+CHECK: val: blit : (λ (array '[[T1:.+]]) int (array '[[T1]]) int int unit)
+CHECK: val: to_list : (λ (array '[[T1:.+]]) (list '[[T1]]))
+CHECK: val: of_list : (λ (list '[[T1:.+]]) (array '[[T1]]))
+CHECK: val: equal : (λ (λ '[[T1:.+]] '[[T1]] bool) (array '[[T1]]) (array '[[T1]]) bool)
+CHECK: val: compare : (λ (λ '[[T1:.+]] '[[T1]] int) (array '[[T1]]) (array '[[T1]]) int)
+CHECK: val: iter : (λ (λ '[[T1:.+]] unit) (array '[[T1]]) unit)
+CHECK: val: iteri : (λ (λ int '[[T1:.+]] unit) (array '[[T1]]) unit)
+CHECK: val: map : (λ (λ '[[T1:.+]] '[[T2:.+]]) (array '[[T1]]) (array '[[T2]]))
+CHECK: val: map_inplace : (λ (λ '[[T1:.+]] '[[T1]]) (array '[[T1]]) unit)
+CHECK: val: mapi : (λ (λ int '[[T1:.+]] '[[T2:.+]]) (array '[[T1]]) (array '[[T2]]))
+CHECK: val: mapi_inplace : (λ (λ int '[[T1:.+]] '[[T1]]) (array '[[T1]]) unit)
+CHECK: val: fold_left : (λ (λ '[[T2:.+]] '[[T1:.+]] '[[T2]]) '[[T2]] (array '[[T1]]) '[[T2]])
+CHECK: val: fold_left_map : (λ (λ '[[T2:.+]] '[[T1:.+]] (* '[[T2]] '[[T3:.+]])) '[[T2]] (array '[[T1]]) (* '[[T2]] (array '[[T3]])))
+CHECK: val: fold_right : (λ (λ '[[T1:.+]] '[[T2:.+]] '[[T2]]) (array '[[T1]]) '[[T2]] '[[T2]])
+CHECK: val: iter2 : (λ (λ '[[T1:.+]] '[[T2:.+]] unit) (array '[[T1]]) (array '[[T2]]) unit)
+CHECK: val: map2 : (λ (λ '[[T1:.+]] '[[T2:.+]] '[[T3:.+]]) (array '[[T1]]) (array '[[T2]]) (array '[[T3]]))
+CHECK: val: for_all : (λ (λ '[[T1:.+]] bool) (array '[[T1]]) bool)
+CHECK: val: exists : (λ (λ '[[T1:.+]] bool) (array '[[T1]]) bool)
+CHECK: val: for_all2 : (λ (λ '[[T1:.+]] '[[T2:.+]] bool) (array '[[T1]]) (array '[[T2]]) bool)
+CHECK: val: exists2 : (λ (λ '[[T1:.+]] '[[T2:.+]] bool) (array '[[T1]]) (array '[[T2]]) bool)
+CHECK: val: mem : (λ '[[T1:.+]] (array '[[T1]]) bool)
+CHECK: val: memq : (λ '[[T1:.+]] (array '[[T1]]) bool)
+CHECK: val: find_opt : (λ (λ '[[T1:.+]] bool) (array '[[T1]]) (option '[[T1]]))
+CHECK: val: find_index : (λ (λ '[[T1:.+]] bool) (array '[[T1]]) (option int))
+CHECK: val: find_map : (λ (λ '[[T1:.+]] (option '[[T2:.+]])) (array '[[T1]]) (option '[[T2]]))
+CHECK: val: find_mapi : (λ (λ int '[[T1:.+]] (option '[[T2:.+]])) (array '[[T1]]) (option '[[T2]]))
+CHECK: val: split : (λ (array (* '[[T1:.+]] '[[T2:.+]])) (* (array '[[T1]]) (array '[[T2]])))
+CHECK: val: combine : (λ (array '[[T1:.+]]) (array '[[T2:.+]]) (array (* '[[T1]] '[[T2]])))
+CHECK: val: sort : (λ (λ '[[T1:.+]] '[[T1]] int) (array '[[T1]]) unit)
+CHECK: val: stable_sort : (λ (λ '[[T1:.+]] '[[T1]] int) (array '[[T1]]) unit)
+CHECK: val: fast_sort : (λ (λ '[[T1:.+]] '[[T1]] int) (array '[[T1]]) unit)
 *)
-
-(**/**)
-
-(** {1 Undocumented functions} *)
-
-(* The following is for system use only. Do not call directly. *)
-
-external unsafe_get : 'a array -> int -> 'a = "%array_unsafe_get"
-external unsafe_set : 'a array -> int -> 'a -> unit = "%array_unsafe_set"
-
-module Floatarray : sig
-  external create : int -> floatarray = "caml_floatarray_create"
-  external length : floatarray -> int = "%floatarray_length"
-  external get : floatarray -> int -> float = "%floatarray_safe_get"
-  external set : floatarray -> int -> float -> unit = "%floatarray_safe_set"
-  external unsafe_get : floatarray -> int -> float = "%floatarray_unsafe_get"
-  external unsafe_set : floatarray -> int -> float -> unit
-      = "%floatarray_unsafe_set"
-end
-
-   *)

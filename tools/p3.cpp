@@ -20,10 +20,10 @@ using namespace ocamlc2;
 
 using namespace llvm;
 static cl::list<std::string> inputFilenames(cl::Positional,
-                                          cl::desc("<input ocaml file name>"),
-                                          cl::Required,
-                                          cl::OneOrMore,
-                                          cl::value_desc("filename"));
+                                            cl::desc("<input ocaml file name>"),
+                                            cl::Required, cl::OneOrMore,
+                                            cl::value_desc("filename"),
+                                            cl::cat(OcamlOptions));
 
 int main(int argc, char* argv[]) {
   auto exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);

@@ -1,5 +1,4 @@
 #include "ocamlc2/Support/CL.h"
-#include <llvm/Support/CommandLine.h>
 #include <unistd.h>
 
 using namespace llvm;
