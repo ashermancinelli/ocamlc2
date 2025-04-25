@@ -1117,20 +1117,25 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   }
   auto name = node.getNamedChild(childIndex++);
   auto *typeOperator = createTypeOperator(getTextSaved(name), typeVars);
-  declare(name, typeOperator);
   if (childIndex == node.getNumNamedChildren()) {
     DBGS("Type binding is a declaration\n");
+    declare(name, typeOperator);
     return typeOperator;
   }
   auto body = node.getNamedChild(childIndex++);
   assert(childIndex == node.getNumNamedChildren());
   if (body.getType() == "variant_declaration") {
+    declare(name, typeOperator);
     for (unsigned i = 0; i < body.getNumNamedChildren(); ++i) {
       auto child = body.getNamedChild(i);
       if (child.getType() == "comment") continue;
       auto *ctorType = inferVariantConstructor(typeOperator, child.getCursor());
       setType(child, ctorType);
     }
+    return typeOperator;
+  } else if (body.getType() == "constructed_type") {
+    auto *rhsType = infer(body);
+    return declare(name, rhsType);
   } else {
     show(node.getCursor(), true);
     assert(false && "Unknown type binding type");
