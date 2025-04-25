@@ -673,6 +673,9 @@ TypeExpr* Unifier::inferIfExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::declare(Node node, TypeExpr* type) {
+  if (node.getType() == "parenthesized_operator") {
+    node = node.getNamedChild(0);
+  }
   declare(getTextSaved(node), type);
   setType(node, type);
   return type;
