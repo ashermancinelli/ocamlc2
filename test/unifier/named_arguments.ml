@@ -6,17 +6,17 @@ let h ?c x = match c with
     | None -> x;;
 let j ?(a = 0) () = a;;
 let k ~(a:int) = a;;
+let sink arg = ();;
 
 let () =
-    print_int @@ f ~a:2;
-    print_int @@ g ~b:1 ();
-    print_int @@ g ();
-    print_int @@ h ~c:3 4;
-    print_int @@ h 1;
-    print_int @@ j ~a:4 ();
-    print_int @@ j ();
-    print_int @@ k ~a:5;
-    print_endline "";;
+    sink @@ f ~a:2;
+    sink @@ g ~b:1 ();
+    sink @@ g ();
+    sink @@ h ~c:3 4;
+    sink @@ h 1;
+    sink @@ j ~a:4 ();
+    sink @@ j ();
+    sink @@ k ~a:5;;
 (*
     Printf.printf "c = %d\n" c;;
 

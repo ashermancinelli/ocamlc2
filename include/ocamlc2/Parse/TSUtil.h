@@ -52,5 +52,20 @@ std::string_view getText(const ts::Node &node, std::string_view source);
 llvm::SmallVector<ts::Node> getChildren(const ts::Node &node);
 llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node &node);
 bool isLetBindingRecursive(ts::Cursor ast);
+inline std::optional<ts::Node> toOptional(ts::Node node) {
+  return node.isNull() ? std::nullopt : std::optional{node};
+}
+
+struct ParameterDescriptor {
+  std::optional<ts::Node> pattern; // null if unit
+  enum LabelKind {
+    None,
+    Optional,
+    Labeled,
+  } labelKind;
+  std::optional<llvm::StringRef> label;
+  std::optional<ts::Node> type;
+  std::optional<ts::Node> defaultValue;
+};
 
 } // namespace ocamlc2

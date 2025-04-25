@@ -2,6 +2,7 @@
 
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/ASTPasses.h"
+#include "ocamlc2/Parse/TSUtil.h"
 #include <llvm/ADT/StringRef.h>
 #include <memory>
 #include <string>
@@ -70,7 +71,11 @@ struct VarargsOperator : public TypeOperator {
 };
 
 struct FunctionOperator : public TypeOperator {
-  FunctionOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(TypeOperator::getFunctionOperatorName(), args) {}
+  FunctionOperator(llvm::ArrayRef<TypeExpr *> args,
+                   llvm::ArrayRef<ParameterDescriptor> parameterDescriptors={})
+      : TypeOperator(TypeOperator::getFunctionOperatorName(), args),
+        parameterDescriptors(parameterDescriptors) {}
+  std::vector<ParameterDescriptor> parameterDescriptors;
   static inline bool classof(const TypeExpr *expr) {
     if (expr->getKind() == Kind::Operator) {
       auto *op = llvm::cast<TypeOperator>(expr);

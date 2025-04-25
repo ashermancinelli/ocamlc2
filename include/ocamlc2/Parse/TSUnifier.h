@@ -30,13 +30,6 @@ namespace detail {
   struct TypeVariableScope;
 }
 
-struct ParameterDescriptor {
-  Node value;
-  std::optional<Node> type;
-  bool isOptional, isLabeled;
-  std::optional<Node> defaultValue;
-};
-
 struct Unifier {
   Unifier();
 
@@ -101,8 +94,10 @@ public:
   TypeExpr *getStringType();
   TypeExpr *getWildcardType();
   TypeExpr *getVarargsType();
-  inline auto *getFunctionType(llvm::ArrayRef<TypeExpr *> args) {
-    return create<FunctionOperator>(args);
+  inline auto *getFunctionType(
+      llvm::ArrayRef<TypeExpr *> args,
+      llvm::ArrayRef<ParameterDescriptor> parameterDescriptors = {}) {
+    return create<FunctionOperator>(args, parameterDescriptors);
   }
   FunctionOperator *getFunctionTypeForPartialApplication(FunctionOperator *func, unsigned arity);
   inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
@@ -193,6 +188,7 @@ private:
   TypeExpr *inferTupleType(Cursor ast);
   TypeExpr *inferTupleExpression(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
+  TypeExpr *declareFunctionParameter(ParameterDescriptor desc);
   ParameterDescriptor describeParameter(Node node);
   SmallVector<ParameterDescriptor> describeParameters(SmallVector<Node> parameters);
 

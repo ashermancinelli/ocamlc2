@@ -538,45 +538,66 @@ TypeExpr *Unifier::declareConcrete(Node node) {
 }
 
 ParameterDescriptor Unifier::describeParameter(Node node) {
+  TRACE();
   assert(node.getType() == "parameter");
-  auto children = getChildren(node);
-  ParameterDescriptor desc{node, std::nullopt, false, false, std::nullopt};
-  auto it = node.getCursor();
-  assert(it.gotoFirstChild());
-  unsigned nesting = 0;
-  while (it.gotoNextSibling()) {
-    auto child = it.getCurrentNode();
-    if (child.getType() == "?") {
-      DBGS("Optional parameter\n");
-      desc.isOptional = true;
-    } else if (child.getType() == "=") {
-      DBGS("Default value\n");
-      assert(it.gotoNextSibling());
-      desc.defaultValue = it.getCurrentNode();
-    } else if (child.getType() == "~") {
-      DBGS("Labeled parameter\n");
-      desc.isLabeled = true;
-      assert(it.gotoNextSibling());
-    } else if (child.getType() == ":") {
-      assert(it.gotoNextSibling());
-      desc.type = it.getCurrentNode();
-    } else if (child.getType() == "(" or child.getType() == ")") {
-      nesting += child.getType() == "(" ? 1 : -1;
-      if (nesting == 1) {
-        (void)nesting;
-      }
-      continue;
-    } else if (child.getType() == "value_pattern") {
-      desc.value = child;
-    }
+  const auto children = getChildren(node);
+  auto pattern = [&] {
+    const auto pattern = node.getChildByFieldName("pattern");
+    assert(!pattern.isNull() && "Expected pattern for parameter");
+    return (pattern.getType() == "unit") ? std::nullopt : toOptional(pattern);
+  }();
+  const auto prefix = node.getChild(0);
+  const bool isOptional = prefix.getType() == "?";
+  const bool isLabeled = prefix.getType() == "~" or isOptional;
+  auto type = toOptional(node.getChildByFieldName("type"));
+  if (pattern.has_value() && pattern->getType() == "typed_pattern") {
+    type = toOptional(pattern->getChildByFieldName("type"));
+    pattern = toOptional(pattern->getChildByFieldName("pattern"));
   }
+  const auto defaultValue = toOptional(node.getChildByFieldName("default"));
+  const auto *labelIter = llvm::find_if(children, [](Node n) {
+    return n.getType() == "label_name";
+  });
+  const auto label = [&] -> std::optional<llvm::StringRef> {
+    if (labelIter != children.end()) {
+      DBGS("Describing labeled parameter\n");
+      return getTextSaved(*labelIter);
+    } else if (isOptional) {
+      DBGS("Describing optional parameter\n");
+      assert(pattern && "Expected pattern for optional parameter");
+      return getTextSaved(*pattern);
+    }
+    return std::nullopt;
+  }();
+  const auto labelKind = isOptional  ? ParameterDescriptor::LabelKind::Optional
+                         : isLabeled ? ParameterDescriptor::LabelKind::Labeled
+                                     : ParameterDescriptor::LabelKind::None;
+  const auto desc =
+      ParameterDescriptor{pattern, labelKind, label, type, defaultValue};
   return desc;
 }
 
-SmallVector<ParameterDescriptor> Unifier::describeParameters(SmallVector<Node> parameters) {
-  return llvm::map_to_vector(parameters, [&](Node n) -> ParameterDescriptor {
+SmallVector<ParameterDescriptor>
+Unifier::describeParameters(SmallVector<Node> parameters) {
+  auto descs = llvm::map_to_vector(parameters, [&](Node n) -> ParameterDescriptor {
     return describeParameter(n);
   });
+  assert(descs.back().labelKind != ParameterDescriptor::LabelKind::Optional &&
+         "Expected last parameter to be non-optional");
+  return descs;
+}
+
+TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc) {
+  if (!desc.pattern) {
+    return getUnitType();
+  }
+  auto *tv = createTypeVariable();
+  auto *type = desc.type ? infer(desc.type.value()) : tv;
+  if (!desc.type) {
+    concreteTypes.insert(tv);
+  }
+  declare(desc.pattern.value(), type);
+  return type;
 }
 
 TypeExpr *Unifier::declareFunctionParameter(Node node) {
@@ -602,14 +623,14 @@ TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> paramete
   auto parameterDescriptors = describeParameters(parameters);
   auto [returnType, types] = [&]() { 
     detail::Scope scope(this);
-    SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
-      return declareFunctionParameter(n);
+    SmallVector<TypeExpr*> types = llvm::map_to_vector(parameterDescriptors, [&](auto desc) -> TypeExpr* {
+      return declareFunctionParameter(desc);
     });
     auto *returnType = infer(body);
     return std::make_pair(returnType, types);
   }();
   types.push_back(returnType);
-  auto *funcType = getFunctionType(types);
+  auto *funcType = getFunctionType(types, parameterDescriptors);
   declare(name, funcType);
   return funcType;
 }
