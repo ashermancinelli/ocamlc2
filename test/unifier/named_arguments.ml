@@ -1,11 +1,22 @@
-let f ~a:int ~b ?(c:int = 0) = a + b + c;;
-let g ?(a = 1) ?b c = a + c;;
+let f ~a:a2 = a2;;
+let g ?(b:int = 0) () = b;;
+let h ?c x = match c with
+    | Some c -> c
+    | None -> x;;
+let j ?(a = 0) () = a;;
+let k ~a = a;;
 
-(*
 let () =
-    let x = 1 in
-    let y = 2 in
-    let c = f ~a:x ~b:y in
+    print_int @@ f ~a:2;
+    print_int @@ g ~b:1 ();
+    print_int @@ g ();
+    print_int @@ h ~c:3 4;
+    print_int @@ h 1;
+    print_int @@ j ~a:4 ();
+    print_int @@ j ();
+    print_int @@ k ~a:5;
+    print_endline "";;
+(*
     Printf.printf "c = %d\n" c;;
 
 RUN: p3 --freestanding --dump-types %s | FileCheck %s
