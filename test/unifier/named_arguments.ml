@@ -1,4 +1,4 @@
-
+let a (b : int) : int = b;;
 let f ~a:a2 = a2;;
 let g ?(b:int = 0) () = b;;
 let h ?c x = match c with

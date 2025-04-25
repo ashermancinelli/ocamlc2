@@ -645,21 +645,16 @@ TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
 TypeExpr* Unifier::inferLetBinding(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
-  SmallVector<Node> parameters;
   const bool isRecursive = isLetBindingRecursive(ast.copy());
-  auto name = node.getNamedChild(0),
-       body = node.getNamedChild(node.getNumNamedChildren() - 1);
-  TypeExpr* declaredReturnType = nullptr;
-  const auto numChildren = node.getNumNamedChildren();
-  for (unsigned i = 1; i < numChildren - 1; ++i) {
-    auto n = node.getNamedChild(i);
-    if (n.getType() == "parameter") {
-      parameters.push_back(n);
-    } else {
-      assert(i == numChildren - 2);
-      declaredReturnType = infer(n);
-    }
-  }
+  auto name = node.getChildByFieldName("pattern");
+  auto body = node.getChildByFieldName("body");
+  assert(!name.isNull() && !body.isNull() && "Expected name and body");
+  const auto parameters = llvm::filter_to_vector(getNamedChildren(node), [](Node n) {
+    return n.getType() == "parameter";
+  });
+  auto declaredReturnTypeNode = node.getChildByFieldName("type");
+  TypeExpr *declaredReturnType =
+      declaredReturnTypeNode.isNull() ? nullptr : infer(declaredReturnTypeNode);
   TypeExpr* inferredReturnType = nullptr;
   if (parameters.empty()) {
     assert(!isRecursive && "Expected non-recursive let binding for non-function");
