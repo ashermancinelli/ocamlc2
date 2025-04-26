@@ -571,7 +571,7 @@ ParameterDescriptor Unifier::describeParameter(Node node) {
                          : isLabeled ? ParameterDescriptor::LabelKind::Labeled
                                      : ParameterDescriptor::LabelKind::None;
   const auto desc =
-      ParameterDescriptor{pattern, labelKind, label, type, defaultValue};
+      ParameterDescriptor{labelKind, label, type, defaultValue};
   return desc;
 }
 
@@ -585,17 +585,22 @@ Unifier::describeParameters(SmallVector<Node> parameters) {
   return descs;
 }
 
-TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc) {
-  if (!desc.pattern) {
+TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc, Node node) {
+  DBGS("declareFunctionParameter: " << node.getSExpr().get() << '\n');
+  auto pattern = node.getChildByFieldName("pattern");
+  if (pattern.getType() == "unit") {
     return getUnitType();
+  } else if (pattern.getType() == "typed_pattern") {
+    auto *type = infer(desc.type.value());
+    pattern = pattern.getChildByFieldName("pattern");
+    setType(pattern, type);
+    return declare(pattern, type);
+  } else {
+    auto *type = createTypeVariable();
+    concreteTypes.insert(type);
+    setType(pattern, type);
+    return declare(pattern, type);
   }
-  auto *tv = createTypeVariable();
-  auto *type = desc.type ? infer(desc.type.value()) : tv;
-  if (!desc.type) {
-    concreteTypes.insert(tv);
-  }
-  declare(desc.pattern.value(), type);
-  return type;
 }
 
 TypeExpr *Unifier::declareFunctionParameter(Node node) {
@@ -621,8 +626,9 @@ TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> paramete
   auto parameterDescriptors = describeParameters(parameters);
   auto [returnType, types] = [&]() { 
     detail::Scope scope(this);
-    SmallVector<TypeExpr*> types = llvm::map_to_vector(parameterDescriptors, [&](auto desc) -> TypeExpr* {
-      return declareFunctionParameter(desc);
+    SmallVector<TypeExpr*> types = llvm::map_to_vector(llvm::zip(parameterDescriptors, parameters), [&](auto arg) -> TypeExpr* {
+      auto [desc, param] = arg;
+      return declareFunctionParameter(desc, param);
     });
     auto *returnType = infer(body);
     return std::make_pair(returnType, types);
@@ -838,30 +844,154 @@ TypeExpr* Unifier::inferValuePath(Cursor ast) {
   return getType(pathParts);
 }
 
+std::pair<FunctionOperator *, TypeExpr *>
+Unifier::normalizeFunctionType(TypeExpr *declaredType,
+                               SmallVector<Node> arguments) {
+  TRACE();
+  auto *declaredFuncType = llvm::dyn_cast<FunctionOperator>(declaredType);
+  if (!declaredFuncType) {
+    DBGS("Not a function type: " << *declaredType << '\n');
+    // If we don't have a function operator then we can't know anything about the callee
+    // and there's nothing we can normalize at this point.
+    auto inferredTypes = llvm::map_to_vector(arguments, [&](auto arg) {
+      return infer(arg);
+    });
+    inferredTypes.push_back(createTypeVariable());
+    auto *inferredType = getFunctionType(inferredTypes);
+    return std::make_pair(inferredType, declaredType);
+  }
+  DBGS("Normalizing function type: " << *declaredFuncType << '\n');
+  auto descs = declaredFuncType->parameterDescriptors;
+  auto functionTypeArgs = declaredFuncType->getArgs();
+  auto [actualLabeled, actualPositional] = getLabeledArguments(arguments);
+  SmallVector<TypeExpr*> normalizedArgumentTypes;
+  SmallVector<TypeExpr*> missingDeclaredArguments; // for partial application
+  SmallVector<TypeExpr*> passedDeclaredArguments; // for partial application
+  SmallVector<ParameterDescriptor> missingDescs;
+  SmallVector<ParameterDescriptor> passedDescs;
+  auto it = actualPositional.begin();
+  for (auto [i, desc] : enumerate(descs)) {
+    DBGS("Normalizing argument " << i << " with descriptor " << desc << '\n');
+    auto *declaredArgType = functionTypeArgs[i];
+    if (desc.isPositional()) {
+      if (it == actualPositional.end()) {
+        if (declaredArgType == getVarargsType()) {
+          DBGS("WARNING: fragile handling of varargs.\n")
+          continue;
+        }
+        missingDeclaredArguments.push_back(declaredArgType);
+        missingDescs.push_back(desc);
+      } else {
+        auto arg = *it++;
+        auto *type = infer(arg);
+        normalizedArgumentTypes.push_back(type);
+        setType(arg, type);
+        passedDeclaredArguments.push_back(declaredArgType);
+        passedDescs.push_back(desc);
+      }
+    } else {
+      auto label = desc.label;
+      assert(label.has_value() && "Expected labeled argument");
+      auto actual = llvm::find_if(
+          actualLabeled, [&](auto pair) { return pair.first == label; });
+      if (actual == actualLabeled.end()) {
+        if (desc.isOptional()) {
+          if (desc.defaultValue) {
+            normalizedArgumentTypes.push_back(infer(*desc.defaultValue));
+            passedDeclaredArguments.push_back(declaredArgType);
+            passedDescs.push_back(desc);
+          } else {
+            normalizedArgumentTypes.push_back(getOptionalType());
+            missingDeclaredArguments.push_back(declaredArgType);
+            missingDescs.push_back(desc);
+          }
+        } else {
+          missingDeclaredArguments.push_back(declaredArgType);
+          missingDescs.push_back(desc);
+        }
+      } else {
+        auto arg = actual->second;
+        auto *type = infer(arg);
+        setType(arg, type);
+        normalizedArgumentTypes.push_back(type);
+        passedDeclaredArguments.push_back(declaredArgType);
+        passedDescs.push_back(desc);
+        actualLabeled.erase(actual);
+      }
+    }
+  }
+  assert(missingDeclaredArguments.size() == missingDescs.size());
+  assert(passedDeclaredArguments.size() == passedDescs.size());
+  assert(actualLabeled.empty() && "Expected all labeled arguments to be consumed");
+
+  normalizedArgumentTypes.push_back(createTypeVariable());
+  auto *normalizedInferredFuncType = getFunctionType(normalizedArgumentTypes, passedDescs);
+
+  auto *reDeclaredFuncType = [&] {
+    if (missingDeclaredArguments.empty()) {
+      DBGS("No missing arguments, returning original function type\n");
+      // If there were no missing arguments then the declared function type is already normalized
+      return declaredFuncType;
+    }
+    if (missingDeclaredArguments.size() == 1 && declaredFuncType->isVarargs()) {
+      DBGS("WARNING: fragile handling of varargs.\n")
+      return declaredFuncType;
+    }
+
+    DBGS("Missed " << missingDeclaredArguments.size() << " arguments\n");
+
+    // Otherwise, collect the passed declared arguments and create a new function type
+    // with those arguments and returning a function type taking the remaining arguments.
+    auto remainingDeclaredArguments = missingDeclaredArguments;
+    auto *declaredReturnType = declaredFuncType->back();
+    remainingDeclaredArguments.push_back(declaredReturnType);
+    auto *partiallyAppliedFuncType = getFunctionType(remainingDeclaredArguments, missingDescs);
+    DBGS("Partially applied function type: " << *partiallyAppliedFuncType << '\n');
+    passedDeclaredArguments.push_back(partiallyAppliedFuncType);
+    auto *curriedInferredFuncType = getFunctionType(passedDeclaredArguments, passedDescs);
+    DBGS("Curried inferred function type: " << *curriedInferredFuncType << '\n');
+    return curriedInferredFuncType;
+  }();
+  return {normalizedInferredFuncType, reDeclaredFuncType};
+}
+
+std::pair<SmallVector<std::pair<llvm::StringRef, Node>>, std::set<Node>>
+Unifier::getLabeledArguments(SmallVector<Node> arguments) {
+  TRACE();
+  SmallVector<std::pair<llvm::StringRef, Node>> labeledArguments;
+  std::set<Node> positionalArguments;
+  for (auto arg : arguments) {
+    DBGS("arg: " << arg.getID() << '\n');
+    DBGS("arg: " << arg.getType() << '\n');
+    if (arg.getType() == "labeled_argument") {
+      labeledArguments.emplace_back(getTextSaved(arg.getNamedChild(0)),
+                                    arg.getChildByFieldName("expression"));
+    } else {
+      positionalArguments.insert(arg);
+    }
+  }
+  return std::make_pair(std::move(labeledArguments), std::move(positionalArguments));
+}
+
 TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
+  DBGS(node.getSExpr().get() << '\n');
   assert(node.getType() == "application_expression");
-  assert(ast.gotoFirstChild());
-  auto id = ast.getCurrentNode();
-  SmallVector<TypeExpr*> args;
-  while (ast.gotoNextSibling()) {
-    args.push_back(infer(ast.getCurrentNode()));
+  const auto function = node.getChildByFieldName("function");
+  auto declaredFuncType = infer(function);
+  auto arguments = getArguments(node);
+  for (auto arg : arguments) {
+    DBGS("arg: " << arg.getSExpr().get() << '\n');
   }
-  args.push_back(createTypeVariable());
-  auto declaredFuncType = infer(id);
-  auto *funcType = [&] -> TypeExpr* {
-    if (auto *func = llvm::dyn_cast<FunctionOperator>(declaredFuncType)) {
-      return getFunctionTypeForPartialApplication(func, args.size() - 1);
-    }
-    return declaredFuncType;
-  }();
-  auto inferredFuncType = getFunctionType(args);
-  if (failed(unify(funcType, inferredFuncType))) {
+  DBGS("found " << arguments.size() << " arguments\n");
+  auto [normalizedInferredFunctionType, normalizedDeclaredFunctionType] =
+      normalizeFunctionType(declaredFuncType, arguments);
+  if (failed(unify(normalizedInferredFunctionType, normalizedDeclaredFunctionType))) {
     assert(false && "Failed to unify declared and inferred function types");
     return nullptr;
   }
-  return inferredFuncType->back();
+  return normalizedInferredFunctionType->back();
 }
 
 FunctionOperator *Unifier::getFunctionTypeForPartialApplication(FunctionOperator *func, unsigned arity) {
@@ -1385,6 +1515,9 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
           return clone(arg, mapping);
         }));
     // DBGS("cloning type operator: " << op->getName() << '\n');
+    if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
+      return getFunctionType(args, func->parameterDescriptors);
+    }
     return createTypeOperator(op->getName(), args);
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
     // DBGS("cloning type variable: " << *tv << '\n');

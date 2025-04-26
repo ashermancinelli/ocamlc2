@@ -101,6 +101,10 @@ public:
     return create<FunctionOperator>(args, parameterDescriptors);
   }
   FunctionOperator *getFunctionTypeForPartialApplication(FunctionOperator *func, unsigned arity);
+
+  std::pair<FunctionOperator *, TypeExpr *> normalizeFunctionType(TypeExpr *declaredType, SmallVector<Node> arguments);
+  std::pair<SmallVector<std::pair<llvm::StringRef, Node>>, std::set<Node>> getLabeledArguments(SmallVector<Node> arguments);
+
   inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
     return createTypeOperator(TypeOperator::getTupleOperatorName(), args);
   }
@@ -112,6 +116,12 @@ public:
     return createTypeOperator(TypeOperator::getArrayOperatorName(), {type});
   }
   inline auto *getArrayType() { return getArrayTypeOf(createTypeVariable()); }
+  inline auto *getOptionalTypeOf(TypeExpr *type) {
+    return createTypeOperator(TypeOperator::getOptionalOperatorName(), {type});
+  }
+  inline auto *getOptionalType() {
+    return getOptionalTypeOf(createTypeVariable());
+  }
   inline auto *getRecordType(ArrayRef<TypeExpr *> fields) {
     return createTypeOperator(TypeOperator::getRecordOperatorName(), fields);
   }
@@ -189,7 +199,7 @@ private:
   TypeExpr *inferTupleType(Cursor ast);
   TypeExpr *inferTupleExpression(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
-  TypeExpr *declareFunctionParameter(ParameterDescriptor desc);
+  TypeExpr *declareFunctionParameter(ParameterDescriptor desc, Node node);
   ParameterDescriptor describeParameter(Node node);
   SmallVector<ParameterDescriptor> describeParameters(SmallVector<Node> parameters);
 

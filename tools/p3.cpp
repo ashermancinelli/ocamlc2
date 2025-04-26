@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
   auto exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);
   llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
   TRACE();
-  ocamlc2::ts::Unifier unifier;
+  ocamlc2::Unifier unifier;
   if (not Freestanding) {
     unifier.loadStdlibInterfaces(exe);
   }

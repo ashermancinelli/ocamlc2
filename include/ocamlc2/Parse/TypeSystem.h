@@ -3,6 +3,8 @@
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/ASTPasses.h"
 #include "ocamlc2/Parse/TSUtil.h"
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <memory>
 #include <string>
@@ -52,6 +54,7 @@ struct TypeOperator : public TypeExpr {
   consteval static llvm::StringRef getIntOperatorName() { return "int"; }
   consteval static llvm::StringRef getFloatOperatorName() { return "float"; }
   consteval static llvm::StringRef getBoolOperatorName() { return "bool"; }
+  consteval static llvm::StringRef getOptionalOperatorName() { return "option"; }
   inline TypeExpr *back() const { return args.back(); }
 
 private:
@@ -71,11 +74,18 @@ struct VarargsOperator : public TypeOperator {
 };
 
 struct FunctionOperator : public TypeOperator {
-  FunctionOperator(llvm::ArrayRef<TypeExpr *> args,
-                   llvm::ArrayRef<ParameterDescriptor> parameterDescriptors={})
-      : TypeOperator(TypeOperator::getFunctionOperatorName(), args),
-        parameterDescriptors(parameterDescriptors) {}
-  std::vector<ParameterDescriptor> parameterDescriptors;
+  FunctionOperator(
+      llvm::ArrayRef<TypeExpr *> args,
+      llvm::ArrayRef<ParameterDescriptor> descs = {})
+      : TypeOperator(TypeOperator::getFunctionOperatorName(), args) {
+    if (descs.empty()) {
+      this->parameterDescriptors = llvm::SmallVector<ParameterDescriptor>(args.size() - 1);
+    } else {
+      assert(descs.size() == args.size() - 1 && "parameter descriptors and arguments must be the same size");
+      std::copy(descs.begin(), descs.end(), std::back_inserter(parameterDescriptors));
+    }
+  }
+  llvm::SmallVector<ParameterDescriptor> parameterDescriptors;
   static inline bool classof(const TypeExpr *expr) {
     if (expr->getKind() == Kind::Operator) {
       auto *op = llvm::cast<TypeOperator>(expr);

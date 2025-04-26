@@ -1,8 +1,12 @@
 #include "ocamlc2/Parse/TSUtil.h"
 #include "ocamlc2/Support/Colors.h"
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/Support/raw_ostream.h>
 #include <cpp-tree-sitter.h>
+
+#define DEBUG_TYPE "tsutil"
+#include "ocamlc2/Support/Debug.h.inc"
 
 using namespace ts;
 
@@ -70,7 +74,7 @@ dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
   return os;
 }
 
-llvm::SmallVector<ts::Node> getChildren(const ts::Node &node) {
+llvm::SmallVector<ts::Node> getChildren(const ts::Node node) {
   llvm::SmallVector<ts::Node> children;
   for (unsigned i = 0; i < node.getNumChildren(); ++i) {
     children.push_back(node.getChild(i));
@@ -78,10 +82,24 @@ llvm::SmallVector<ts::Node> getChildren(const ts::Node &node) {
   return children;
 }
 
-llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node &node) {
+llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node node) {
   llvm::SmallVector<ts::Node> children;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     children.push_back(node.getNamedChild(i));
+  }
+  return children;
+}
+
+llvm::SmallVector<ts::Node> getArguments(const ts::Node node) {
+  TRACE();
+  assert(node.getType() == "application_expression" && "expecting application_expression");
+  llvm::SmallVector<ts::Node> children;
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    if (node.getFieldNameForNamedChild(i) == "argument") {
+      DBGS("child: " << child.getSExpr().get() << '\n');
+      children.push_back(child);
+    }
   }
   return children;
 }

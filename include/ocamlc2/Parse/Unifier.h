@@ -16,7 +16,7 @@
 #include <ocamlc2/Parse/TypeSystem.h>
 
 namespace ocamlc2 {
-
+inline namespace old {
 struct Unifier {
   Unifier() { }
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr*>;
@@ -152,4 +152,5 @@ private:
   Unifier unifier;
 };
 
+}
 } // namespace ocamlc2

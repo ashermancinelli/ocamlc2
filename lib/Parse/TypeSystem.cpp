@@ -17,6 +17,29 @@
 
 namespace ocamlc2 {
 
+TypeVariable::TypeVariable() : TypeExpr(Kind::Variable) {
+  static int id = 0;
+  this->id = id++;
+}
+
+bool TypeExpr::operator==(const TypeExpr& other) const {
+  if (auto *to = llvm::dyn_cast<TypeOperator>(this)) {
+    if (auto *toOther = llvm::dyn_cast<TypeOperator>(&other)) {
+      return *to == *toOther;
+    }
+  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(this)) {
+    if (auto *tvOther = llvm::dyn_cast<TypeVariable>(&other)) {
+      return *tv == *tvOther;
+    }
+  }
+  return false;
+}
+
+bool TypeVariable::operator==(const TypeVariable& other) const {
+  return id == other.id;
+}
+
+inline namespace old {
 namespace { 
 struct StringArena {
   std::set<std::string> pool;
@@ -124,31 +147,9 @@ TypeExpr* Unifier::getType(const llvm::StringRef name) {
   return nullptr;
 }
 
-TypeVariable::TypeVariable() : TypeExpr(Kind::Variable) {
-  static int id = 0;
-  this->id = id++;
-}
-
-bool TypeExpr::operator==(const TypeExpr& other) const {
-  if (auto *to = llvm::dyn_cast<TypeOperator>(this)) {
-    if (auto *toOther = llvm::dyn_cast<TypeOperator>(&other)) {
-      return *to == *toOther;
-    }
-  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(this)) {
-    if (auto *tvOther = llvm::dyn_cast<TypeVariable>(&other)) {
-      return *tv == *tvOther;
-    }
-  }
-  return false;
-}
-
-bool TypeVariable::operator==(const TypeVariable& other) const {
-  return id == other.id;
-}
-
 TypeExpr* Unifier::infer(const ASTNode* ast) {
   auto *type = inferType(ast);
-  ast->typeExpr = type;
+  // ast->typeExpr = type;
   DBGS("\nInferred type: " << *type << " for:\n" << *ast << '\n');
   return type;
 }
@@ -740,5 +741,6 @@ bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
   assert(false && "Unknown type expression");
 }
 
+}
 } // namespace ocamlc2
 
