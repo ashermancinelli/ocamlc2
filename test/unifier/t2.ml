@@ -7,6 +7,5 @@ let () =
 let foo () = 1 + 2;;
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: foo : (λ unit int)
+RUN: p3 %s --dump-types | FileCheck %s.ref
 *)

@@ -15,11 +15,5 @@ let () =
   (List.iter f l' ; List.iter (fun x -> print_endline "---") l');
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: message : string
-CHECK: let: print : (λ unit unit)
-CHECK: let: map : (λ (λ '[[a:.+]] '[[b:.+]]) (list '[[a]]) (list '[[b]]))
-CHECK: let: l : (list int)
-CHECK: let: l' : (list int)
-CHECK: let: f : (λ int unit)
+RUN: p3 %s --dump-types | FileCheck %s.ref
 *)

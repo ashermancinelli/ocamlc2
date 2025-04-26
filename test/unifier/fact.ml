@@ -9,7 +9,5 @@ let x = factorial 10
 
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: factorial : (λ int int)
-CHECK: let: x : int
+RUN: p3 %s --dump-types | FileCheck %s.ref
 *)

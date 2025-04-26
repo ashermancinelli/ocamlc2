@@ -7,6 +7,5 @@ let f lb ub =
         done;;
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: f : (λ int int unit)
+RUN: p3 %s --dump-types | FileCheck %s.ref
 *)

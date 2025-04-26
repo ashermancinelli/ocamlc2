@@ -10,6 +10,5 @@ print_int (area A);
 print_endline "";;
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: area : (λ shape int)
+RUN: p3 %s --dump-types | FileCheck %s.ref
 *)

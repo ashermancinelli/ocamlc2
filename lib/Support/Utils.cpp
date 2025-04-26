@@ -65,6 +65,7 @@ static constexpr std::string_view OCamlStdlibInterfaces[] = {
   "list",
   "map",
   "option",
+  "float",
   // "bytes.mli",
   // "char.mli",
   // "exn.mli",

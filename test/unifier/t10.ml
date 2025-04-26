@@ -11,6 +11,5 @@ let test x =
 let () = print_string (test 7) 
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: test : (λ int string)
+RUN: p3 %s --dump-types | FileCheck %s.ref
 *)

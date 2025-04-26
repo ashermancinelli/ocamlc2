@@ -87,6 +87,7 @@ private:
   }
 
 public:
+  [[noreturn]] void error(llvm::StringRef message);
 
   TypeExpr *getBoolType();
   TypeExpr *getFloatType();

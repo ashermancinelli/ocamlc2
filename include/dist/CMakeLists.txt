@@ -6,6 +6,7 @@ set(INTERFACES
     list.mli
     map.mli
     option.mli
+    float.mli
     stdlib.mli
 )
 add_custom_target(stdlib-interfaces ALL

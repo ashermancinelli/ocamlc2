@@ -151,11 +151,16 @@ TypeExpr* Unifier::getType(const std::string_view name) {
   return getType(stringArena.save(name));
 }
 
+void Unifier::error(llvm::StringRef message) {
+  llvm::errs() << "Error during type inference: " << message << '\n';
+  std::exit(1);
+}
+
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
   if (auto *type = maybeGetType(name)) {
     return type;
   }
-  assert(false && "Type not declared");
+  error("Type not declared: " + name.str());
 }
 
 TypeExpr* Unifier::maybeGetType(const llvm::StringRef name) {
@@ -362,7 +367,7 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
     // If we have a single argument, matches will be directly against it and not wrapped
     // in a tuple type.
     if (failed(unify(argsType, declaredArgs[0]))) {
-      assert(false && "Failed to unify constructor pattern argument with constructor type operator argument");
+      error("Failed to unify constructor pattern argument with constructor type operator argument");
       return nullptr;
     }
     return varaintType;
@@ -372,8 +377,8 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
                       "arguments as the constructor type operator");
     for (auto [arg, declaredArg] : llvm::zip(args, declaredArgs)) {
       if (failed(unify(arg, declaredArg))) {
-        assert(false && "Failed to unify constructor pattern argument with "
-                        "constructor type operator argument");
+        error("Failed to unify constructor pattern argument with "
+              "constructor type operator argument");
         return nullptr;
       }
     }
@@ -449,13 +454,13 @@ TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
   const auto bodyNode = hasGuard ? node.getNamedChild(2) : node.getNamedChild(1);
   auto *matchCaseType = infer(node.getNamedChild(0));
   if (failed(unify(matchCaseType, matcheeType))) {
-    assert(false && "Failed to unify match case type with matchee type");
+    error("Failed to unify match case type with matchee type");
     return nullptr;
   }
   if (hasGuard) {
     auto *guardType = infer(node.getNamedChild(1));
     if (failed(unify(guardType, getBoolType()))) {
-      assert(false && "Failed to unify guard type with bool type");
+      error("Failed to unify guard type with bool type");
       return nullptr;
     }
   }
@@ -470,7 +475,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
   auto matchee = node.getNamedChild(0);
   const auto namedChildren = node.getNumNamedChildren();
   if (matchee.getType() == "match_case") {
-    assert(false && "NYI");
+    error("NYI: match expression with match case");
     // If we don't get a match-case, we're implicitly creating
     // a function with the matchee not available as a symbol yet.
     auto *matcheeType = createTypeVariable();
@@ -482,7 +487,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
       // size .gt. 1, because the implicit matchee is the first element of the case types
       if (functionType.size() > 1) {
         if (failed(unify(type, functionType.back()))) {
-          assert(false && "Failed to unify case type with previous case type");
+          error("Failed to unify case type with previous case type");
           return nullptr;
         }
       }
@@ -499,7 +504,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
       auto caseNode = node.getNamedChild(i++);
       auto *type = inferMatchCase(matcheeType, caseNode);
       if (resultType != nullptr && failed(unify(type, resultType))) {
-        assert(false && "Failed to unify case type with previous case type");
+        error("Failed to unify case type with previous case type");
         return nullptr;
       }
       resultType = type;

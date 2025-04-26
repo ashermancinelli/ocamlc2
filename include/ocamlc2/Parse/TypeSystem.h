@@ -150,11 +150,20 @@ T& operator<<(T& os, const TypeOperator& op) {
   if (args.empty()) {
     return os << name;
   }
-  os << '(';
   for (auto *arg : args) {
     os << *arg << ' ';
   }
-  return os << name << ')';
+  return os << name;
+}
+
+template<typename T>
+T& operator<<(T& os, const TupleOperator& tuple) {
+  auto args = tuple.getArgs();
+  os << *args.front();
+  for (auto *arg : args.drop_front()) {
+    os << " * " << *arg;
+  }
+  return os;
 }
 
 template<typename T>
@@ -197,6 +206,8 @@ template<typename T>
 T& operator<<(T& os, const TypeExpr& type) {
   if (auto *fo = llvm::dyn_cast<FunctionOperator>(&type)) {
     os << *fo;
+  } else if (auto *to = llvm::dyn_cast<TupleOperator>(&type)) {
+    os << *to;
   } else if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
     os << *to;
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {

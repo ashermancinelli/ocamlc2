@@ -10,7 +10,5 @@ let () = partially_apply_varargs "world";;
 *)
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
-CHECK: let: add1 : (λ int int)
-CHECK: let: show : (λ unit unit)
+RUN: p3 %s --dump-types | FileCheck %s.ref
 *)
