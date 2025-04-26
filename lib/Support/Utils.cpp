@@ -40,6 +40,7 @@ std::string filePathToModuleName(fs::path path) {
 }
 
 namespace ANSIColors {
+using namespace ocamlc2::CL;
 const char* red() { return Color ? "\033[31m" : ""; }
 const char* green() { return Color ? "\033[32m" : ""; }
 const char* yellow() { return Color ? "\033[33m" : ""; }
@@ -71,20 +72,24 @@ static constexpr std::string_view OCamlStdlibInterfaces[] = {
   // "set.mli",
 };
 
-SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe) {
-  DBGS("exe: " << exe << "\n");
+static fs::path distDirFromExe(fs::path exe) {
   exe = fs::absolute(exe);
   auto bindir = exe.parent_path();
   auto install_root = bindir.parent_path();
-  auto include_dir = install_root / "include" / "dist";
+  return install_root / "include" / "dist";
+}
+
+static fs::path resolvePath(fs::path exe, std::string_view interface) {
+  static auto include_dir = distDirFromExe(exe);
+  return include_dir / (std::string(interface) + ".mli");
+}
+
+SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe) {
+  DBGS("exe: " << exe << "\n");
+  if (ocamlc2::CL::StdlibOnly) {
+    return {resolvePath(exe, "stdlib")};
+  }
   return llvm::to_vector(llvm::map_range(OCamlStdlibInterfaces, [&](std::string_view interface) {
-    auto path = include_dir / (std::string(interface) + ".mli");
-    if (!fs::exists(path)) {
-      llvm::errs() << "OCaml interface file not found: " << path << "\n"
-                   << "OCamlC2 was installed incorrectly. Please check your "
-                      "OCaml installation.\n";
-      exit(1);
-    }
-    return path;
+    return resolvePath(exe, interface);
   }));
 }

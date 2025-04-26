@@ -147,27 +147,40 @@ template<typename T>
 T& operator<<(T& os, const TypeOperator& op) {
   auto args = op.getArgs();
   auto name = op.getName().str();
-  if (auto pos = name.find("StdlibMM"); pos != std::string::npos) {
-    name = name.substr(pos + 8);
-  }
   if (args.empty()) {
     return os << name;
   }
-  os << '(' << op.getName();
+  os << '(';
   for (auto *arg : args) {
-    os << ' ' << *arg;
+    os << *arg << ' ';
   }
-  return os << ')';
+  return os << name << ')';
 }
 
 template<typename T>
-T& operator<<(T& os, const TypeExpr& type) {
-  if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
-    os << *to;
-  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
-    os << *tv;
+T& operator<<(T& os, const FunctionOperator& func) {
+  const auto argList = func.getArgs();
+  const auto *returnType = argList.back();
+  const auto args = argList.drop_back();
+  assert(!args.empty() && "function type must have at least one argument");
+  const auto &descs = func.parameterDescriptors;
+  assert(args.size() == descs.size() && "argument list and parameter descriptors must be the same size");
+  auto argIter = llvm::zip(descs, args);
+  os << '(';
+  auto showArg = [&](auto desc, auto *arg) -> T& {
+    if (desc.isOptional()) {
+      os << "?";
+    }
+    if (desc.isNamed()) {
+      os << desc.label.value() << ":";
+    }
+    return os << *arg;
+  };
+  for (auto [desc, arg] : argIter) {
+    showArg(desc, arg) << " -> ";
   }
-  return os;
+  os << *returnType;
+  return os << ')';
 }
 
 template<typename T>
@@ -176,6 +189,18 @@ T& operator<<(T& os, const TypeVariable& var) {
     os << *var.instance;
   } else {
     os << var.getName();
+  }
+  return os;
+}
+
+template<typename T>
+T& operator<<(T& os, const TypeExpr& type) {
+  if (auto *fo = llvm::dyn_cast<FunctionOperator>(&type)) {
+    os << *fo;
+  } else if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
+    os << *to;
+  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
+    os << *tv;
   }
   return os;
 }

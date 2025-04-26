@@ -17,6 +17,7 @@ let () =
     sink @@ h 1;
     sink @@ j ~a:4 ();
     sink @@ j ();
+    sink @@ foo ~z:1 2;
     sink @@ k ~a:5;;
 (*
     Printf.printf "c = %d\n" c;;

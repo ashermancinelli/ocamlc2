@@ -229,35 +229,14 @@ void Unifier::initializeEnvironment() {
   {
 
     // Builtin constructors
-    auto *Optional =
-        createTypeOperator("Optional", {(T1 = createTypeVariable())});
+    auto *Optional = getOptionalType();
     declare("None", Optional);
-    declare("Some", getFunctionType({T1, Optional}));
+    declare("Some", getFunctionType({Optional->back(), Optional}));
   }
   declarePath({"String", "concat"}, getFunctionType({T_string, getListTypeOf(T_string), T_string}));
   {
     detail::ModuleScope ms{*this, "Printf"};
-    declare("printf", getFunctionType({T_string, getType(std::string_view("varargs!")), T_unit}));
-  }
-
-  declarePath({"Float", "pi"}, T_float);
-
-  auto *Array = getArrayType();
-  auto *List = getListType();
-  declare("list", List);
-  declarePath(
-      {"List", "iter"},
-      getFunctionType({getFunctionType({List->back(), T_unit}), List, T_unit}));
-  declare("Nil", getFunctionType({List}));
-  declare("Cons", getFunctionType({List->back(), List, List}));
-  declarePath({"Array", "length"}, getFunctionType({Array, T_int}));
-  {
-    detail::ModuleScope ms{*this, "List"};
-    declare("map", getFunctionType({getFunctionType({T1, T2}), getListTypeOf(T1),
-                                        getListTypeOf(T2)}));
-    declare("fold_left",
-            getFunctionType({getFunctionType({T1, T2, T1}), T1, List, T2}));
-    declare("fold_right", getType(std::string_view("fold_left")));
+    declare("printf", getFunctionType({T_string, getVarargsType(), T_unit}));
   }
 }
 
@@ -280,7 +259,7 @@ TypeExpr* Unifier::infer(ts::Node const& ast) {
 
 void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
   static std::set<uintptr_t> seen;
-  if (!DumpTypes or isLoadingStdlib or seen.count(node.getID())) {
+  if (!CL::DumpTypes or isLoadingStdlib or seen.count(node.getID())) {
     return;
   }
   seen.insert(node.getID());
@@ -564,6 +543,9 @@ ParameterDescriptor Unifier::describeParameter(Node node) {
       DBGS("Describing optional parameter\n");
       assert(pattern && "Expected pattern for optional parameter");
       return getTextSaved(*pattern);
+    } else if (isLabeled) {
+      DBGS("Describing labeled parameter\n");
+      return getTextSaved(*pattern);
     }
     return std::nullopt;
   }();
@@ -586,18 +568,32 @@ Unifier::describeParameters(SmallVector<Node> parameters) {
 }
 
 TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc, Node node) {
-  DBGS("declareFunctionParameter: " << node.getSExpr().get() << '\n');
+  DBGS(node.getSExpr().get() << '\n');
   auto pattern = node.getChildByFieldName("pattern");
   if (pattern.getType() == "unit") {
     return getUnitType();
   } else if (pattern.getType() == "typed_pattern") {
+    TRACE();
     auto *type = infer(desc.type.value());
     pattern = pattern.getChildByFieldName("pattern");
     setType(pattern, type);
     return declare(pattern, type);
   } else {
-    auto *type = createTypeVariable();
-    concreteTypes.insert(type);
+    TRACE();
+    TypeExpr *type;
+    if (desc.type.has_value()) {
+      TRACE();
+      type = infer(desc.type.value());
+    } else {
+      TRACE();
+      auto *tv = createTypeVariable();
+      concreteTypes.insert(tv);
+      type = tv;
+    }
+    if (desc.isOptional() && not desc.hasDefaultValue()) {
+      TRACE();
+      type = getOptionalTypeOf(type);
+    }
     setType(pattern, type);
     return declare(pattern, type);
   }
@@ -860,7 +856,10 @@ Unifier::normalizeFunctionType(TypeExpr *declaredType,
     auto *inferredType = getFunctionType(inferredTypes);
     return std::make_pair(inferredType, declaredType);
   }
-  DBGS("Normalizing function type: " << *declaredFuncType << '\n');
+  DBGS("Normalizing function type: " << *declaredFuncType << " with arguments:\n");
+  DBG(llvm::for_each(arguments, [&](auto arg) {
+    DBGS(arg.getType() << ' ' << getText(arg) << '\n');
+  }));
   auto descs = declaredFuncType->parameterDescriptors;
   auto functionTypeArgs = declaredFuncType->getArgs();
   auto [actualLabeled, actualPositional] = getLabeledArguments(arguments);
@@ -901,9 +900,10 @@ Unifier::normalizeFunctionType(TypeExpr *declaredType,
             passedDeclaredArguments.push_back(declaredArgType);
             passedDescs.push_back(desc);
           } else {
-            normalizedArgumentTypes.push_back(getOptionalType());
-            missingDeclaredArguments.push_back(declaredArgType);
-            missingDescs.push_back(desc);
+            auto *Optional = getOptionalType();
+            normalizedArgumentTypes.push_back(Optional);
+            passedDeclaredArguments.push_back(Optional);
+            passedDescs.push_back(desc);
           }
         } else {
           missingDeclaredArguments.push_back(declaredArgType);
@@ -912,6 +912,9 @@ Unifier::normalizeFunctionType(TypeExpr *declaredType,
       } else {
         auto arg = actual->second;
         auto *type = infer(arg);
+        if (desc.isOptional() and not desc.hasDefaultValue()) {
+          type = getOptionalTypeOf(type);
+        }
         setType(arg, type);
         normalizedArgumentTypes.push_back(type);
         passedDeclaredArguments.push_back(declaredArgType);
@@ -961,8 +964,6 @@ Unifier::getLabeledArguments(SmallVector<Node> arguments) {
   SmallVector<std::pair<llvm::StringRef, Node>> labeledArguments;
   std::set<Node> positionalArguments;
   for (auto arg : arguments) {
-    DBGS("arg: " << arg.getID() << '\n');
-    DBGS("arg: " << arg.getType() << '\n');
     if (arg.getType() == "labeled_argument") {
       labeledArguments.emplace_back(getTextSaved(arg.getNamedChild(0)),
                                     arg.getChildByFieldName("expression"));
@@ -976,14 +977,10 @@ Unifier::getLabeledArguments(SmallVector<Node> arguments) {
 TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
-  DBGS(node.getSExpr().get() << '\n');
   assert(node.getType() == "application_expression");
   const auto function = node.getChildByFieldName("function");
   auto declaredFuncType = infer(function);
   auto arguments = getArguments(node);
-  for (auto arg : arguments) {
-    DBGS("arg: " << arg.getSExpr().get() << '\n');
-  }
   DBGS("found " << arguments.size() << " arguments\n");
   auto [normalizedInferredFunctionType, normalizedDeclaredFunctionType] =
       normalizeFunctionType(declaredFuncType, arguments);

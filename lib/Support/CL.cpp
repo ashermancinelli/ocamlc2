@@ -3,13 +3,16 @@
 
 using namespace llvm;
 
+namespace ocamlc2::CL {
 bool Debug = false;
 bool RunGDB = false;
 bool Color = true;
 bool DumpTypes = false;
 bool Freestanding = false;
-
-cl::OptionCategory OcamlOptions("OCaml Options", "");
+bool StdlibOnly = false;
+llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
+}
+using namespace ocamlc2::CL;
 
 static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
                                   cl::location(RunGDB), cl::cat(OcamlOptions));
@@ -25,6 +28,9 @@ static cl::opt<bool, true> dumpTypes("dump-types", cl::desc("Dump types"),
                                      cl::location(DumpTypes),
                                      cl::cat(OcamlOptions));
 
+static cl::alias DdumpTypes("d", cl::desc("Dump types"),
+                            cl::aliasopt(dumpTypes), cl::cat(OcamlOptions));
+
 static cl::opt<bool>
     noColor("no-color", cl::desc("Disable color output"),
             cl::cb<void, bool>([](bool value) { Color = !value; }),
@@ -34,6 +40,13 @@ static cl::opt<bool>
     freestanding("freestanding", cl::desc("Enable freestanding mode"),
                  cl::cb<void, bool>([](bool value) { Freestanding = value; }),
                  cl::cat(OcamlOptions));
+static cl::alias Ffreestanding("f", cl::desc("Enable freestanding mode"),
+                              cl::aliasopt(freestanding), cl::cat(OcamlOptions));
+
+static cl::opt<bool, true> clStdlibOnly("fstdlib-only",
+                                  cl::desc("Enable stdlib-only mode"),
+                                  cl::location(StdlibOnly),
+                                  cl::cat(OcamlOptions));
 
 void maybeReplaceWithGDB(int argc, char **argv) {
   if (!RunGDB) {

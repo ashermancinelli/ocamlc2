@@ -75,18 +75,22 @@ struct ParameterDescriptor {
   std::optional<llvm::StringRef> label;
   std::optional<ts::Node> type;
   std::optional<ts::Node> defaultValue;
-  [[nodiscard]] inline bool isPositional() const { return not label.has_value(); }
+  [[nodiscard]] inline bool isNamed() const {
+    return labelKind == LabelKind::Labeled or labelKind == LabelKind::Optional;
+  }
+  [[nodiscard]] inline bool isPositional() const { return not isNamed(); }
   [[nodiscard]] inline bool isOptional() const { return labelKind == LabelKind::Optional; }
+  [[nodiscard]] inline bool hasDefaultValue() const { return defaultValue.has_value(); }
   template <typename T>
   friend T &operator<<(T &os, const ParameterDescriptor &desc) {
     os << "ParameterDescriptor(";
-    os << "labelKind: " << desc.labelKind << ", ";
-    os << "label: " << desc.label << ", ";
+    os << "labelKind: " << desc.labelKind;
+    os << ", label: " << desc.label;
     if (desc.type) {
-      os << "type: " << desc.type.value().getType() << ", ";
+      os << ", type: " << desc.type.value().getType();
     }
     if (desc.defaultValue) {
-      os << "defaultValue: " << desc.defaultValue.value().getType();
+      os << ", defaultValue: " << desc.defaultValue.value().getType();
     }
     os << ")";
     return os;

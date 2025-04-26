@@ -23,14 +23,14 @@ static cl::list<std::string> inputFilenames(cl::Positional,
                                             cl::desc("<input ocaml file name>"),
                                             cl::Required, cl::OneOrMore,
                                             cl::value_desc("filename"),
-                                            cl::cat(OcamlOptions));
+                                            cl::cat(ocamlc2::CL::OcamlOptions));
 
 int main(int argc, char* argv[]) {
   auto exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);
   llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
   TRACE();
   ocamlc2::Unifier unifier;
-  if (not Freestanding) {
+  if (not CL::StdlibOnly) {
     unifier.loadStdlibInterfaces(exe);
   }
   for (auto &filepath : inputFilenames) {
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
     auto *te = unifier.getType(rootNode.getID());
     DBGS("Inferred type: " << *te << '\n');
   }
-  if (DumpTypes) {
+  if (CL::DumpTypes) {
     unifier.dumpTypes(llvm::outs());
   }
 

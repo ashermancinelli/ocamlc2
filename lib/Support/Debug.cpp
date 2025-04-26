@@ -9,6 +9,6 @@ static cl::opt<std::string> debugOnly("Lonly", cl::desc("Enable debug type"), cl
 
 namespace ocamlc2 {
   bool debug_enabled(const std::string &debug_type) {
-    return Debug || debugOnly == debug_type;
+    return CL::Debug || debugOnly == debug_type;
   }
 }
