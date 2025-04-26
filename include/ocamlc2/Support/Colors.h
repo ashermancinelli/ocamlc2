@@ -1,6 +1,7 @@
 #pragma once
 #include <llvm/ADT/StringRef.h>
 
+namespace ocamlc2 {
 namespace ANSIColors {
   const char* red();
   const char* green();
@@ -16,3 +17,4 @@ namespace ANSIColors {
   const char* reverse();
   const char* strikethrough();
 }
+} // namespace ocamlc2

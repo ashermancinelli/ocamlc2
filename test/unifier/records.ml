@@ -3,16 +3,13 @@ RUN: p3 --freestanding --dtypes %s | FileCheck %s.ref
 XFAIL: *
 *)
 type ptype = TNormal | TFire | TWater
-type mon = {name : string; hp : int; ptype : ptype}
+type mon = {name : string; hp : int; ty : ptype}
 
-let mon1 = {name = "Bulbasaur"; hp = 100; ptype = TNormal}
-let mon2 = {name = "Charmander"; hp = 100; ptype = TFire}
-let mon3 = {name = "Squirtle"; hp = 100; ptype = TWater}
+let mon1 = {name = "Bulbasaur"; hp = 100; ty = TNormal}
+let mon2 = {name = "Charmander"; hp = 100; ty = TFire}
+let mon3 = {name = "Squirtle"; hp = 100; ty = TWater}
 
 let mon_list = [mon1; mon2; mon3]
 
-let mon_list_of_type (ptype : ptype) : mon list =
-  List.filter (fun mon -> mon.ptype = ptype) mon_list
-
-let mon_list_of_type TNormal = mon_list_of_type TNormal
-
+let mon_list_of_type (ty : ptype) : mon list =
+  List.filter (fun m -> m.ty = ty) mon_list

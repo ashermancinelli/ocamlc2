@@ -7,12 +7,15 @@
     X;                                                                         \
   }
 #define DBGS(...)                                                              \
-  if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                    \
-    llvm::errs() << "[" << ANSIColors::blue() << DEBUG_TYPE << ":"             \
-                 << FUNCTION_NAME << ":" << __LINE__ << ANSIColors::reset()    \
-                 << "]" << " " << ANSIColors::italic() << __VA_ARGS__          \
-                 << ANSIColors::reset();                                       \
-  }
+  [&](const auto *__ajm_func, auto __ajm_line) {                               \
+    if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                  \
+      llvm::errs() << "[" << ocamlc2::ANSIColors::blue() << DEBUG_TYPE << ":"  \
+                   << __ajm_func << ":" << __ajm_line                          \
+                   << ocamlc2::ANSIColors::reset() << "]" << " "               \
+                   << ocamlc2::ANSIColors::italic() << __VA_ARGS__             \
+                   << ocamlc2::ANSIColors::reset();                            \
+    }                                                                          \
+  }(FUNCTION_NAME, __LINE__)
 #else
 #error "DEBUG_TYPE is not defined"
 #endif
@@ -21,6 +24,6 @@
 #ifndef OCAMLC2_DEBUG_H
 #define OCAMLC2_DEBUG_H
 namespace ocamlc2 {
-  bool debug_enabled(const std::string &debug_type);
+bool debug_enabled(const std::string &debug_type);
 }
 #endif

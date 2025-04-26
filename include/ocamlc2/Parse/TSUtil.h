@@ -44,9 +44,9 @@ private:
   }
 };
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const ts::Point &point);
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const ts::Extent<ts::Point> &extent);
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const ts::Cursor &cursor);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ts::Point point);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ts::Extent<ts::Point> extent);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ts::Cursor cursor);
 llvm::raw_ostream &
 dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
      unsigned indent = 0, bool showUnnamed = false,

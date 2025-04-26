@@ -3,6 +3,7 @@
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/ASTPasses.h"
 #include "ocamlc2/Parse/TSUtil.h"
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringRef.h>
@@ -20,10 +21,17 @@
 namespace ocamlc2 {
 
 struct TypeExpr {
+  // clang-format off
   enum Kind {
-    Operator,
-    Variable,
+    Operator = 0b0000'0001,
+    Variable = 0b0000'0010,
+    Record   = 0b0000'0101,
+    Function = 0b0000'1001,
+    Tuple    = 0b0001'0001,
+    Varargs  = 0b0010'0001,
+    Wildcard = 0b0100'0001,
   };
+  // clang-format on
   TypeExpr(Kind kind) : kind(kind) {}
   virtual ~TypeExpr() = default;
   virtual llvm::StringRef getName() const = 0;
@@ -36,17 +44,15 @@ private:
 
 struct TypeOperator : public TypeExpr {
   TypeOperator(llvm::StringRef name, llvm::ArrayRef<TypeExpr*> args={}) : TypeExpr(Kind::Operator), args(args), name(name) {}
+  TypeOperator(TypeExpr::Kind kind, llvm::StringRef name="<error>", llvm::ArrayRef<TypeExpr*> args={}) : TypeExpr(kind), args(args), name(name) {}
   inline llvm::StringRef getName() const override { return name; }
   inline llvm::ArrayRef<TypeExpr*> getArgs() const { return args; }
-  static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Operator; }
+  static inline bool classof(const TypeExpr* expr) { return (expr->getKind() & Kind::Operator) != 0; }
   template<typename T> friend T& operator<<(T& os, const TypeOperator& op);
   inline TypeExpr* at(size_t index) const { return args[index]; }
-  consteval static llvm::StringRef getFunctionOperatorName() { return "λ"; }
-  consteval static llvm::StringRef getTupleOperatorName() { return "*"; }
   consteval static llvm::StringRef getConstructorOperatorName() { return "V"; }
   consteval static llvm::StringRef getListOperatorName() { return "list"; }
   consteval static llvm::StringRef getArrayOperatorName() { return "array"; }
-  consteval static llvm::StringRef getRecordOperatorName() { return "record"; }
   consteval static llvm::StringRef getUnitOperatorName() { return "unit"; }
   consteval static llvm::StringRef getWildcardOperatorName() { return "_"; }
   consteval static llvm::StringRef getVarargsOperatorName() { return "varargs!"; }
@@ -57,27 +63,46 @@ struct TypeOperator : public TypeExpr {
   consteval static llvm::StringRef getOptionalOperatorName() { return "option"; }
   inline TypeExpr *back() const { return args.back(); }
 
-private:
+protected:
   llvm::SmallVector<TypeExpr*> args;
+private:
   std::string name;
 };
 
-struct VarargsOperator : public TypeOperator {
-  VarargsOperator() : TypeOperator(TypeOperator::getVarargsOperatorName()) {}
-  static inline bool classof(const TypeExpr *expr) {
-    if (expr->getKind() == Kind::Operator) {
-      auto *op = llvm::cast<TypeOperator>(expr);
-      return op->getName() == TypeOperator::getVarargsOperatorName();
-    }
-    return false;
+struct RecordOperator : public TypeOperator {
+  RecordOperator(llvm::StringRef recordName, llvm::ArrayRef<TypeExpr *> args,
+                 llvm::ArrayRef<llvm::StringRef> fieldNames)
+      : TypeOperator(Kind::Record, recordName, args) {
+    std::copy(fieldNames.begin(), fieldNames.end(),
+              std::back_inserter(this->fieldNames));
+    normalize();
   }
+  static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Record; }
+  inline llvm::ArrayRef<llvm::StringRef> getFieldNames() const { return fieldNames; }
+private:
+  llvm::SmallVector<llvm::StringRef> fieldNames;
+  void normalize() {
+    auto zipped = llvm::to_vector(llvm::zip(args, fieldNames));
+    llvm::sort(zipped, [](auto a, auto b) {
+      return std::get<1>(a) < std::get<1>(b);
+    });
+    args = llvm::map_to_vector(
+        zipped, [](auto a) -> TypeExpr * { return std::get<0>(a); });
+    fieldNames = llvm::map_to_vector(
+        zipped, [](auto a) -> llvm::StringRef { return std::get<1>(a); });
+  }
+};
+
+struct VarargsOperator : public TypeOperator {
+  VarargsOperator() : TypeOperator(Kind::Varargs, TypeOperator::getVarargsOperatorName()) {}
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Varargs; }
 };
 
 struct FunctionOperator : public TypeOperator {
   FunctionOperator(
       llvm::ArrayRef<TypeExpr *> args,
       llvm::ArrayRef<ParameterDescriptor> descs = {})
-      : TypeOperator(TypeOperator::getFunctionOperatorName(), args) {
+      : TypeOperator(Kind::Function, "function", args) {
     if (descs.empty()) {
       this->parameterDescriptors = llvm::SmallVector<ParameterDescriptor>(args.size() - 1);
     } else {
@@ -86,13 +111,7 @@ struct FunctionOperator : public TypeOperator {
     }
   }
   llvm::SmallVector<ParameterDescriptor> parameterDescriptors;
-  static inline bool classof(const TypeExpr *expr) {
-    if (expr->getKind() == Kind::Operator) {
-      auto *op = llvm::cast<TypeOperator>(expr);
-      return op->getName() == TypeOperator::getFunctionOperatorName();
-    }
-    return false;
-  }
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Function; }
   inline bool isVarargs() const {
     for (auto *arg : getArgs()) {
       if (llvm::isa<VarargsOperator>(arg)) {
@@ -104,14 +123,8 @@ struct FunctionOperator : public TypeOperator {
 };
 
 struct TupleOperator : public TypeOperator {
-  TupleOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(TypeOperator::getTupleOperatorName(), args) {}
-  static inline bool classof(const TypeExpr *expr) {
-    if (expr->getKind() == Kind::Operator) {
-      auto *op = llvm::cast<TypeOperator>(expr);
-      return op->getName() == TypeOperator::getTupleOperatorName();
-    }
-    return false;
-  }
+  TupleOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(Kind::Tuple, "*", args) {}
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Tuple; }
 };
 
 struct UnitOperator : public TypeOperator {
@@ -171,9 +184,25 @@ T& operator<<(T& os, const TupleOperator& tuple) {
 }
 
 template<typename T>
+T& operator<<(T& os, const RecordOperator& record) {
+  auto fieldNames = record.getFieldNames();
+  auto fieldTypes = record.getArgs();
+  assert(fieldNames.size() == fieldTypes.size() && "field names and field types must be the same size");
+  auto zipped = llvm::zip(fieldNames, fieldTypes);
+  auto first = zipped.begin();
+  auto [name, type] = *first;
+  os << "{" << name << ":" << *type;
+  for (auto [name, type] : llvm::drop_begin(zipped)) {
+    os << "; " << name << ":" << *type;
+  }
+  return os << '}';
+}
+
+template<typename T>
 T& operator<<(T& os, const FunctionOperator& func) {
   const auto argList = func.getArgs();
   const auto *returnType = argList.back();
+  if (!returnType) return os << "<error>";
   const auto args = argList.drop_back();
   assert(!args.empty() && "function type must have at least one argument");
   const auto &descs = func.parameterDescriptors;
@@ -190,8 +219,10 @@ T& operator<<(T& os, const FunctionOperator& func) {
     return os << *arg;
   };
   for (auto [desc, arg] : argIter) {
+    if (!arg) return os << "<error>";
     showArg(desc, arg) << " -> ";
   }
+  if (!returnType) return os << "<error>";
   os << *returnType;
   return os << ')';
 }
@@ -212,6 +243,8 @@ T& operator<<(T& os, const TypeExpr& type) {
     os << *fo;
   } else if (auto *to = llvm::dyn_cast<TupleOperator>(&type)) {
     os << *to;
+  } else if (auto *ro = llvm::dyn_cast<RecordOperator>(&type)) {
+    os << *ro;
   } else if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
     os << *to;
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {

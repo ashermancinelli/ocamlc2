@@ -21,6 +21,7 @@
 #include <memory>
 #include <vector>
 #include <utility>
+#include "ocamlc2/Parse/TypeSystem.h"
 #include "ocamlc2/Support/Utils.h"
 #define DEBUG_TYPE "mlirgen"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -110,11 +111,8 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(const ocamlc2::TypeExpr *
   if (type == nullptr) {
     return error(loc) << "Type for node was not inferred at unification-time";
   }
-  if (const auto *to = llvm::dyn_cast<ocamlc2::TypeOperator>(type)) {
+  if (const auto *to = llvm::dyn_cast<ocamlc2::FunctionOperator>(type)) {
     const auto typeOperatorArgs = to->getArgs();
-    if (to->getName() != TypeOperator::getFunctionOperatorName()) {
-      return error(loc) << "Could not get MLIR function type from unified type: " << *type;
-    }
     auto args = llvm::drop_end(typeOperatorArgs);
     auto nonUnitArgs = llvm::make_filter_range(
         args, [](auto *arg) { return !llvm::isa<UnitOperator>(arg); });
@@ -143,7 +141,7 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::TypeExpr *type,
         return error(loc) << "Unknown basic type operator: " << *type;
       }
       return mlirType;
-    } else if (to->getName() == TypeOperator::getFunctionOperatorName()) {
+    } else if (llvm::isa<ocamlc2::FunctionOperator>(type)) {
       return mlirFunctionType(type, loc);
     }
     return error(loc) << "Unknown type operator: " << *type;

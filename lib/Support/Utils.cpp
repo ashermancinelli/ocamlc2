@@ -7,8 +7,12 @@
 #include <iostream>
 #include <filesystem>
 #include <llvm/Support/raw_ostream.h>
+#include "ocamlc2/Parse/TSUtil.h"
+#include <cpp-tree-sitter.h>
 #define DEBUG_TYPE "utils"
 #include "ocamlc2/Support/Debug.h.inc"
+
+namespace ocamlc2 {
 namespace fs = std::filesystem;
 
 FailureOr<std::string> slurpFile(const std::string &path) {
@@ -100,3 +104,21 @@ SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe) {
     }));
   }
 }
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Diagnostic &diag) {
+  os << diag.file;
+  if (diag.range) {
+    os << ':' << diag.range->start << '-' << diag.range->end;
+  }
+  os << ':';
+  switch (diag.kind) {
+    case DiagKind::Error: os << "error: "; break;
+    case DiagKind::Warning: os << "warning: "; break;
+    case DiagKind::Note: os << "note: "; break;
+  }
+  os << diag.message;
+
+  return os;
+}
+
+} // namespace ocamlc2

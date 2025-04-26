@@ -5,8 +5,9 @@
 #include "llvm/ADT/StringSet.h"
 #include <filesystem>
 #include <cpp-tree-sitter.h>
-namespace fs = std::filesystem;
 
+namespace ocamlc2 {
+namespace fs = std::filesystem;
 mlir::FailureOr<std::string> slurpFile(const std::string &path);
 
 struct StringArena {
@@ -28,3 +29,18 @@ std::string filePathToModuleName(fs::path path);
 ts::Language getOCamlLanguage();
 ts::Language getOCamlInterfaceLanguage();
 llvm::SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe);
+
+enum DiagKind {
+  Error,
+  Warning,
+  Note,
+};
+struct Diagnostic {
+  DiagKind kind;
+  std::string message;
+  std::string file;
+  std::optional<ts::Extent<ts::Point>> range;
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Diagnostic &diag);
+};
+
+} // namespace ocamlc2

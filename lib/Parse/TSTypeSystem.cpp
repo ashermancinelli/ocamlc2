@@ -19,7 +19,41 @@
 #define DEBUG_TYPE "typesystem"
 #include "ocamlc2/Support/Debug.h.inc"
 
-#define ERROR(...) error(__VA_ARGS__, __FILE__, __LINE__)
+#define ERROR(...) DBGS("error\n"), error(__VA_ARGS__, __FILE__, __LINE__)
+#define RNULL(...) return ERROR(__VA_ARGS__)
+#define RNULL_IF(cond, ...)                                                    \
+  if (cond) {                                                                  \
+    RNULL(__VA_ARGS__);                                                        \
+  }
+#define ORNULL(cond)                                                           \
+  if (!cond) {                                                                 \
+    ERROR("nullptr");                                                         \
+    return nullptr;                                                            \
+  }
+#define ORFAIL(cond)                                                           \
+  if (!cond) {                                                                 \
+    ERROR("failure");                                                         \
+    return failure();                                                          \
+  }
+#define FAIL(...)                                                              \
+  {                                                                            \
+    ERROR(__VA_ARGS__);                                                        \
+    return failure();                                                          \
+  }
+#define FAIL_IF(cond, ...)                                                     \
+  if (cond) {                                                                  \
+    ERROR(__VA_ARGS__);                                                        \
+    return failure();                                                          \
+  }
+#define RNULL_IF_NULL(ptr, ...) RNULL_IF(ptr == nullptr, __VA_ARGS__)
+#define SSWRAP(...)                                                            \
+  [&] {                                                                        \
+    std::stringstream ss;                                                      \
+    ss << __VA_ARGS__;                                                         \
+    return ss.str();                                                           \
+  }()
+#define UNIFY_OR_RNULL(a, b) RNULL_IF(failed(unify(a, b)), "failed to unify")
+#define UNIFY_OR_FAIL(a, b) FAIL_IF(failed(unify(a, b)), "failed to unify")
 
 namespace ocamlc2 {
 using namespace std::string_literals;
@@ -95,6 +129,10 @@ void Unifier::popModule() {
   popModuleSearchPath();
 }
 
+llvm::StringRef Unifier::getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path) {
+  return stringArena.save(getHashedPath(path));
+}
+
 std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
   if (currentModule.size() > 0) {
     auto currentModulePath = currentModule;
@@ -105,7 +143,8 @@ std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
 }
 
 TypeExpr* Unifier::declare(llvm::StringRef name, TypeExpr* type) {
-  auto str = stringArena.save(getHashedPath({name}));
+  ORNULL(type);
+  auto str = getHashedPathSaved({name});
   DBGS("Declaring: " << str << " as " << *type << '\n');
   if (name == getWildcardType()->getName() or name == getUnitType()->getName()) {
     DBGS("probably declaring a wildcard variable in a constructor pattern or "
@@ -154,28 +193,27 @@ TypeExpr* Unifier::getType(const std::string_view name) {
   return getType(stringArena.save(name));
 }
 
-void Unifier::error(std::string message, const char* filename, long lineno) {
-  llvm::errs() << "Error during type inference: " << message << '\n';
-  llvm::errs() << "\nOccurred at " << filename << ':' << lineno << '\n';
-  std::exit(1);
+nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
+  TRACE();
+  if (diagnostics.size() >= 5) return nullptr;
+  message += SSWRAP("\n" << "at " << filename << ":" << lineno);
+  diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, node.getPointRange());
+  return nullptr;
 }
 
-// void Unifier::error(llvm::Twine message, ts::Node node) {
-//   error(message.str(), node);
-// }
-
-void Unifier::error(std::string message, ts::Node node, const char* filename, long lineno) {
-  show(node.getCursor(), true);
-  auto range = node.getPointRange();
-  llvm::errs() << sources.back().filepath << ':' << range << ':';
-  error(message, filename, lineno);
+nullptr_t Unifier::error(std::string message, const char* filename, unsigned long lineno) {
+  TRACE();
+  if (diagnostics.size() >= 5) return nullptr;
+  message += SSWRAP("\n" << "at " << filename << ":" << lineno);
+  diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, std::nullopt);
+  return nullptr;
 }
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
   if (auto *type = maybeGetType(name)) {
     return type;
   }
-  ERROR("Type not declared: " + name.str());
+  RNULL("Type not declared: " + name.str());
 }
 
 TypeExpr* Unifier::maybeGetType(const llvm::StringRef name) {
@@ -205,23 +243,21 @@ TypeExpr *Unifier::maybeGetTypeWithName(const llvm::StringRef name) {
   return nullptr;
 }
 
-void Unifier::initializeEnvironment() {
+LogicalResult Unifier::initializeEnvironment() {
   DBGS("Initializing environment\n");
   pushModuleSearchPath("Stdlib");
 
   // We need to insert these directly because other type initializations require
   // varargs, wildcard, etc to define themselves.
-  for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•", "varargs!"}) {
+  for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
     auto str = stringArena.save(name);
     DBGS("Declaring type operator: " << str << '\n');
     env.insert(str, createTypeOperator(str));
   }
+  auto *varargs = create<VarargsOperator>();
+  declare(varargs->getName(), varargs);
 
   pushModule("Stdlib");
-  for (std::string_view name : {"int", "float", "bool", "string"}) {
-    declare(name, getFunctionType({createTypeVariable(), getType(name)}));
-  }
-
   auto *T_bool = getBoolType();
   auto *T_float = getFloatType();
   auto *T_int = getIntType();
@@ -258,6 +294,7 @@ void Unifier::initializeEnvironment() {
     detail::ModuleScope ms{*this, "Printf"};
     declare("printf", getFunctionType({T_string, getVarargsType(), T_unit}));
   }
+  return success();
 }
 
 llvm::raw_ostream& Unifier::show(bool showUnnamed, bool showTypes) {
@@ -305,6 +342,8 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
   DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
   DBG(show(cursor.copy(), true));
   auto *te = inferType(cursor.copy());
+  ORNULL(te);
+  RNULL_IF(anyFatalErrors(), "Failed to infer type");
   DBGS("Inferred type:\n");
   setType(cursor.getCurrentNode(), te);
   maybeDumpTypes(cursor.getCurrentNode(), te);
@@ -343,7 +382,7 @@ SmallVector<Node> Unifier::flattenType(std::string_view nodeType, Node node) {
   return nodes;
 }
 
-ParameterDescriptor Unifier::describeFunctionArgumentType(Node node) {
+FailureOr<ParameterDescriptor> Unifier::describeFunctionArgumentType(Node node) {
   static constexpr std::string_view passthroughTypes[] = {
       "type_variable", "constructed_type", "type_constructor_path",
       "parenthesized_type", "tuple_type", };
@@ -357,8 +396,7 @@ ParameterDescriptor Unifier::describeFunctionArgumentType(Node node) {
                                     : ParameterDescriptor::LabelKind::Labeled;
     return ParameterDescriptor(labelKind, getTextSaved(label), typeNode, std::nullopt);
   }
-  auto message = ("Unknown function argument type: " + node.getType()).str();
-  ERROR(message, node);
+  FAIL(SSWRAP("Unknown function argument type: " << node.getType()), node);
 }
 
 TypeExpr* Unifier::inferLabeledArgumentType(Cursor ast) {
@@ -374,14 +412,18 @@ TypeExpr* Unifier::inferFunctionType(Cursor ast) {
   assert(node.getType() == "function_type");
   auto leftChild = node.getNamedChild(0);
   SmallVector<TypeExpr*> types = {infer(leftChild)};
+  ORNULL(types.front());
   auto rightChild = node.getNamedChild(1);
   auto nodes = flattenFunctionType(rightChild);
   SmallVector<ParameterDescriptor> parameterDescriptors;
   for (auto [i, n] : llvm::enumerate(nodes)) {
     auto *childType = infer(n);
+    ORNULL(childType);
     types.push_back(childType);
     DBGS(i << ": " << *childType << '\n');
-    parameterDescriptors.push_back(describeFunctionArgumentType(n));
+    auto desc = describeFunctionArgumentType(n);
+    RNULL_IF(failed(desc), "Failed to describe function argument type");
+    parameterDescriptors.push_back(desc.value());
   }
   return getFunctionType(types, parameterDescriptors);
 }
@@ -397,6 +439,7 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
     assert(ctorTypeOperator && "Expected constructor type operator");
     return ctorTypeOperator;
   }();
+  ORNULL(ctorType);
   auto declaredArgs = SmallVector<TypeExpr*>(ctorType->getArgs());
   if (declaredArgs.empty()) {
     // If we get an empty type operator, we're matching against a constructor
@@ -415,21 +458,14 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
   if (declaredArgs.size() == 1) {
     // If we have a single argument, matches will be directly against it and not wrapped
     // in a tuple type.
-    if (failed(unify(argsType, declaredArgs[0]))) {
-      ERROR("Failed to unify constructor pattern argument with constructor type operator argument");
-      return nullptr;
-    }
+    UNIFY_OR_RNULL(argsType, declaredArgs[0]);
     return varaintType;
   } else {
     auto args = llvm::cast<TypeOperator>(argsType)->getArgs();
     assert(args.size() == declaredArgs.size() && "Expected constructor pattern to have the same number of "
                       "arguments as the constructor type operator");
     for (auto [arg, declaredArg] : llvm::zip(args, declaredArgs)) {
-      if (failed(unify(arg, declaredArg))) {
-        ERROR("Failed to unify constructor pattern argument with "
-              "constructor type operator argument");
-        return nullptr;
-      }
+      UNIFY_OR_RNULL(arg, declaredArg);
     }
     return varaintType;
   }
@@ -457,9 +493,7 @@ TypeExpr* Unifier::inferTuplePattern(ts::Node node) {
   SmallVector<TypeExpr*> types;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto *childType = infer(node.getNamedChild(i));
-    if (auto *childTupleType = llvm::dyn_cast<TypeOperator>(childType);
-        childTupleType &&
-        childTupleType->getName() == TypeOperator::getTupleOperatorName()) {
+    if (auto *childTupleType = llvm::dyn_cast<TupleOperator>(childType)) {
       std::copy(childTupleType->getArgs().begin(),
                 childTupleType->getArgs().end(), std::back_inserter(types));
     } else {
@@ -502,16 +536,10 @@ TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
   const auto hasGuard = namedChildren == 3;
   const auto bodyNode = hasGuard ? node.getNamedChild(2) : node.getNamedChild(1);
   auto *matchCaseType = infer(node.getNamedChild(0));
-  if (failed(unify(matchCaseType, matcheeType))) {
-    ERROR("Failed to unify match case type with matchee type");
-    return nullptr;
-  }
+  UNIFY_OR_RNULL(matchCaseType, matcheeType);
   if (hasGuard) {
     auto *guardType = infer(node.getNamedChild(1));
-    if (failed(unify(guardType, getBoolType()))) {
-      ERROR("Failed to unify guard type with bool type");
-      return nullptr;
-    }
+    UNIFY_OR_RNULL(guardType, getBoolType());
   }
   auto *bodyType = infer(bodyNode);
   setType(bodyNode, bodyType);
@@ -524,7 +552,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
   auto matchee = node.getNamedChild(0);
   const auto namedChildren = node.getNumNamedChildren();
   if (matchee.getType() == "match_case") {
-    ERROR("NYI: match expression with match case");
+    RNULL("NYI: match expression with match case");
     // If we don't get a match-case, we're implicitly creating
     // a function with the matchee not available as a symbol yet.
     auto *matcheeType = createTypeVariable();
@@ -535,10 +563,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
       auto *type = inferMatchCase(matcheeType, node.getNamedChild(i++));
       // size .gt. 1, because the implicit matchee is the first element of the case types
       if (functionType.size() > 1) {
-        if (failed(unify(type, functionType.back()))) {
-          ERROR("Failed to unify case type with previous case type");
-          return nullptr;
-        }
+        UNIFY_OR_RNULL(type, functionType.back());
       }
       functionType.push_back(type);
     }
@@ -552,9 +577,8 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
     while (i < namedChildren) {
       auto caseNode = node.getNamedChild(i++);
       auto *type = inferMatchCase(matcheeType, caseNode);
-      if (resultType != nullptr && failed(unify(type, resultType))) {
-        ERROR("Failed to unify case type with previous case type");
-        return nullptr;
+      if (resultType != nullptr) {
+        UNIFY_OR_RNULL(type, resultType);
       }
       resultType = type;
     }
@@ -683,8 +707,10 @@ TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> paramete
     auto *returnType = infer(body);
     return std::make_pair(returnType, types);
   }();
+  ORNULL(returnType);
   types.push_back(returnType);
   auto *funcType = getFunctionType(types, parameterDescriptors);
+  ORNULL(funcType);
   declare(name, funcType);
   return funcType;
 }
@@ -702,16 +728,15 @@ TypeExpr *Unifier::inferLetBindingRecursiveFunction(Node name, SmallVector<Node>
     types.push_back(bodyType);
     return getFunctionType(types);
   }();
-  if (failed(unify(funcType, tv))) {
-    assert(false && "Failed to unify function type with type variable");
-    return nullptr;
-  }
+  ORNULL(funcType);
+  RNULL_IF(failed(unify(funcType, tv)), "Failed to unify function type with type variable");
   return funcType;
 }
 
 TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
   DBGS("variable let binding, no parameters\n");
   auto *bodyType = infer(body);
+  ORNULL(bodyType);
   declare(name, bodyType);
   return bodyType;
 }
@@ -732,13 +757,13 @@ TypeExpr* Unifier::inferLetBinding(Cursor ast) {
       declaredReturnTypeNode.isNull() ? nullptr : infer(declaredReturnTypeNode);
   TypeExpr* inferredReturnType = nullptr;
   if (parameters.empty()) {
-    assert(!isRecursive && "Expected non-recursive let binding for non-function");
+    assert(!isRecursive && "recursive let binding with no parameters");
     inferredReturnType = inferLetBindingValue(name, body);
-    if (declaredReturnType != nullptr &&
-        failed(unify(inferredReturnType, declaredReturnType))) {
-      assert(false &&
-             "Failed to unify inferred return type with declared return type");
-      return nullptr;
+    ORNULL(inferredReturnType);
+    if (declaredReturnType != nullptr) {
+      RNULL_IF(
+          failed(unify(inferredReturnType, declaredReturnType)),
+          "Failed to unify inferred return type with declared return type");
     }
     return inferredReturnType;
   } else {
@@ -752,11 +777,7 @@ TypeExpr* Unifier::inferLetBinding(Cursor ast) {
       SmallVector<TypeExpr*> typeVars = llvm::map_to_vector(parameters, [&] (auto) -> TypeExpr* { return createTypeVariable(); });
       typeVars.push_back(declaredReturnType);
       auto *expectedType = getFunctionType(typeVars);
-      if (failed(unify(inferredReturnType, expectedType))) {
-        assert(false &&
-               "Failed to unify inferred return type with declared return type");
-        return nullptr;
-      }
+      UNIFY_OR_RNULL(inferredReturnType, expectedType);
     }
     return inferredReturnType;
   }
@@ -768,27 +789,17 @@ TypeExpr* Unifier::inferIfExpression(Cursor ast) {
   auto childCount = node.getNumNamedChildren();
   DBGS("ternary with " << childCount << " children\n");
   auto *condition = infer(node.getNamedChild(0));
-  if (failed(unify(condition, getBoolType()))) {
-    assert(false &&
-           "Failed to unify condition of if expression with bool type");
-    return nullptr;
-  }
+  UNIFY_OR_RNULL(condition, getBoolType());
   switch (childCount) {
     case 3: {
       auto *thenBranch = infer(node.getNamedChild(1));
       auto *elseBranch = infer(node.getNamedChild(2));
-      if (failed(unify(thenBranch, elseBranch))) {
-        assert(false && "Failed to unify then branch of if expression with else branch");
-        return nullptr;
-      }
+      UNIFY_OR_RNULL(thenBranch, elseBranch);
       return thenBranch;
     }
     case 2: {
       auto *thenBranch = infer(node.getNamedChild(0));
-      if (failed(unify(getUnitType(), thenBranch))) {
-        assert(false && "Failed to unify then branch of if expression with unit type");
-        return nullptr;
-      }
+      UNIFY_OR_RNULL(getUnitType(), thenBranch);
       return thenBranch;
     }
     default: {
@@ -824,14 +835,8 @@ TypeExpr* Unifier::inferForExpression(Cursor ast) {
   assert(ast.getCurrentNode().getType() == "do_clause");
   auto body = ast.getCurrentNode();
   assert(!ast.gotoNextSibling());
-  if (failed(unify(infer(firstBound), getIntType()))) {
-    assert(false && "Failed to unify first bound");
-    return nullptr;
-  }
-  if (failed(unify(infer(secondBound), getIntType()))) {
-    assert(false && "Failed to unify second bound");
-    return nullptr;
-  }
+  UNIFY_OR_RNULL(infer(firstBound), getIntType());
+  UNIFY_OR_RNULL(infer(secondBound), getIntType());
   (void)infer(body);
   return getUnitType();
 }
@@ -916,6 +921,8 @@ Unifier::normalizeFunctionType(TypeExpr *declaredType,
   }));
   auto descs = declaredFuncType->parameterDescriptors;
   auto functionTypeArgs = declaredFuncType->getArgs();
+  const auto isVarargs = declaredFuncType->isVarargs();
+  DBGS("isVarargs: " << isVarargs << '\n');
   auto [actualLabeled, actualPositional] = getLabeledArguments(arguments);
   SmallVector<TypeExpr*> normalizedArgumentTypes;
   SmallVector<TypeExpr*> missingDeclaredArguments; // for partial application
@@ -928,8 +935,8 @@ Unifier::normalizeFunctionType(TypeExpr *declaredType,
     auto *declaredArgType = functionTypeArgs[i];
     if (desc.isPositional()) {
       if (it == actualPositional.end()) {
-        if (declaredArgType == getVarargsType()) {
-          DBGS("WARNING: fragile handling of varargs.\n")
+        if (llvm::isa<VarargsOperator>(declaredArgType)) {
+          DBGS("WARNING: fragile handling of varargs.\n");
           continue;
         }
         missingDeclaredArguments.push_back(declaredArgType);
@@ -943,6 +950,7 @@ Unifier::normalizeFunctionType(TypeExpr *declaredType,
         passedDescs.push_back(desc);
       }
     } else {
+      assert(!isVarargs && "Varargs should not have labeled arguments");
       auto label = desc.label;
       assert(label.has_value() && "Expected labeled argument");
       auto actual = llvm::find_if(
@@ -991,7 +999,7 @@ Unifier::normalizeFunctionType(TypeExpr *declaredType,
       return declaredFuncType;
     }
     if (missingDeclaredArguments.size() == 1 && declaredFuncType->isVarargs()) {
-      DBGS("WARNING: fragile handling of varargs.\n")
+      DBGS("WARNING: fragile handling of varargs.\n");
       return declaredFuncType;
     }
 
@@ -1034,14 +1042,12 @@ TypeExpr* Unifier::inferApplicationExpression(Cursor ast) {
   assert(node.getType() == "application_expression");
   const auto function = node.getChildByFieldName("function");
   auto declaredFuncType = infer(function);
+  ORNULL(declaredFuncType);
   auto arguments = getArguments(node);
   DBGS("found " << arguments.size() << " arguments\n");
   auto [normalizedInferredFunctionType, normalizedDeclaredFunctionType] =
       normalizeFunctionType(declaredFuncType, arguments);
-  if (failed(unify(normalizedInferredFunctionType, normalizedDeclaredFunctionType))) {
-    assert(false && "Failed to unify declared and inferred function types");
-    return nullptr;
-  }
+  UNIFY_OR_RNULL(normalizedInferredFunctionType, normalizedDeclaredFunctionType);
   return normalizedInferredFunctionType->back();
 }
 
@@ -1085,10 +1091,7 @@ TypeExpr* Unifier::inferArrayExpression(Cursor ast) {
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     auto *childType = infer(child);
-    if (failed(unify(childType, elementType))) {
-      assert(false && "Failed to unify array element type with itself");
-      return nullptr;
-    }
+    RNULL_IF(failed(unify(childType, elementType)), "failed to unify");
   }
   return getArrayTypeOf(elementType);
 }
@@ -1117,15 +1120,9 @@ TypeExpr* Unifier::inferArrayGetExpression(Cursor ast) {
   assert(node.getType() == "array_get_expression");
   auto inferredArrayType = infer(node.getNamedChild(0));
   auto indexType = infer(node.getNamedChild(1));
-  if (failed(unify(indexType, getIntType()))) {
-    assert(false && "Failed to unify index type with int type");
-    return nullptr;
-  }
+  RNULL_IF(failed(unify(indexType, getIntType())), "failed to unify");
   auto *arrayType = getArrayType();
-  if (failed(unify(arrayType, inferredArrayType))) {
-    assert(false && "Failed to unify array type with itself");
-    return nullptr;
-  }
+  RNULL_IF(failed(unify(arrayType, inferredArrayType)), "failed to unify");
   return arrayType->back();
 }
 
@@ -1135,17 +1132,18 @@ TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
   assert(node.getType() == "infix_expression");
   assert(ast.gotoFirstChild());
   auto lhsType = infer(ast.getCurrentNode());
+  ORNULL(lhsType);
   assert(ast.gotoNextSibling());
   auto op = ast.getCurrentNode();
   assert(ast.gotoNextSibling());
   auto rhsType = infer(ast.getCurrentNode());
+  ORNULL(rhsType);
   assert(!ast.gotoNextSibling());
   auto *opType = getType(op);
+  ORNULL(opType);
   auto *funcType = getFunctionType({lhsType, rhsType, createTypeVariable()});
-  if (failed(unify(opType, funcType))) {
-    assert(false && "Failed to unify operator type with function type");
-    return nullptr;
-  }
+  ORNULL(funcType);
+  UNIFY_OR_RNULL(opType, funcType);
   return funcType->back();
 }
 
@@ -1154,10 +1152,8 @@ TypeExpr* Unifier::inferGuard(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "guard");
   auto *type = infer(node.getNamedChild(0));
-  if (failed(unify(type, getBoolType()))) {
-    assert(false && "Failed to unify guard type with bool type");
-    return nullptr;
-  }
+  ORNULL(type);
+  UNIFY_OR_RNULL(type, getBoolType());
   return getBoolType();
 }
 
@@ -1178,10 +1174,8 @@ TypeExpr* Unifier::inferListExpression(Cursor ast) {
   SmallVector<TypeExpr*> args;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto *type = infer(node.getNamedChild(i));
-    if (not args.empty() && failed(unify(type, args.back()))) {
-      assert(false && "Failed to unify list element type with previous element type");
-      return nullptr;
-    }
+    RNULL_IF((not args.empty() && failed(unify(type, args.back()))),
+             "Failed to unify list element type with previous element type");
     args.push_back(type);
   }
   return getListTypeOf(args.back());
@@ -1291,6 +1285,98 @@ TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
   return type;
 }
 
+TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  auto children = llvm::filter_to_vector(getNamedChildren(node), [](Node n) {
+    return n.getType() == "field_expression";
+  });
+  assert(node.getType() == "record_expression");
+  auto fieldExpressions = llvm::map_to_vector(children, [&](Node n) {
+    auto *type = infer(n.getChildByFieldName("body"));
+    return setType(n, type);
+  });
+  auto fieldNames = llvm::map_to_vector(children, [&](Node n) {
+    auto children = getNamedChildren(n);
+    auto name = llvm::find_if(children, [](Node n) {
+      return n.getType() == "field_path";
+    });
+    assert(name != children.end() && "Expected field path");
+    return getTextSaved(*name);
+  });
+  // Just so the record type itself will do the normalization for us
+  auto *anonRecordType = getRecordType("<anon>", fieldExpressions, fieldNames);
+  auto anonRecordTypes = anonRecordType->getArgs();
+  auto anonRecordFieldNames = anonRecordType->getFieldNames();
+  for (auto [recordName, seenFieldNames] : seenRecordFields) {
+    if (seenFieldNames.size() != fieldExpressions.size()) {
+      continue;
+    }
+    auto *maybeSeenRecordType = getType(recordName);
+    auto *seenRecordType = llvm::dyn_cast<RecordOperator>(maybeSeenRecordType);
+    RNULL_IF_NULL(seenRecordType, "Expected record type");
+    auto seenRecordTypes = seenRecordType->getArgs();
+
+    // If we're able to unify the seen record type with what we know about the record type
+    // for the current expression, then we have found a match.
+    if (llvm::equal(seenFieldNames, anonRecordFieldNames)) {
+      if (llvm::all_of_zip(anonRecordTypes, seenRecordTypes, [this](auto *a, auto *b) {
+        return succeeded(unify(a, b));
+      })) {
+        return seenRecordType;
+      }
+    }
+  }
+  return ERROR("No matching record type found", node);
+}
+
+TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "field_get_expression");
+  auto record = node.getChildByFieldName("record");
+  auto *declaredType = getType(record);
+  auto field = getTextSaved(node.getChildByFieldName("field"));
+  if (auto *recordOp = llvm::dyn_cast<RecordOperator>(declaredType)) {
+    auto fields = recordOp->getFieldNames();
+    auto fieldTypeIt = llvm::find(fields, field);
+    if (fieldTypeIt == fields.end()) {
+      return ERROR(SSWRAP("Field '" << field << "' not found in record type: " << *declaredType), node);
+    }
+    auto index = std::distance(fields.begin(), fieldTypeIt);
+    return recordOp->at(index);
+  }
+  for (auto [recordName, fieldNames] : seenRecordFields) {
+    if (auto it = llvm::find(fieldNames, field); it != fieldNames.end()) {
+      auto *recordTypeVar = getType(recordName);
+      auto *recordType = llvm::dyn_cast<RecordOperator>(recordTypeVar);
+      if (not recordType) {
+        std::stringstream ss;
+        ss << "Type " << *recordTypeVar
+           << " was saved as a record type, but was not a record type when it "
+              "was retrieved later.";
+        RNULL(ss.str(), node);
+      }
+      auto index = std::distance(fieldNames.begin(), it);
+      return recordType->at(index);
+    }
+  }
+  std::stringstream ss;
+  ss << "Unbound record field '" << field << "'";
+  RNULL(ss.str(), node);
+}
+
+TypeExpr* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Cursor ast) {
+  auto *type = inferRecordDeclaration(std::move(ast));
+  ORNULL(type);
+  auto *recordType = llvm::dyn_cast<RecordOperator>(type);
+  ORNULL(recordType);
+  auto fieldNames = recordType->getFieldNames();
+  DBGS("Recording field names for record type: " << recordName << '\n');
+  seenRecordFields.emplace_back(recordName, fieldNames);
+  return getRecordType(recordName, recordType->getArgs(), fieldNames);
+}
+
 TypeExpr* Unifier::inferRecordDeclaration(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -1303,12 +1389,13 @@ TypeExpr* Unifier::inferRecordDeclaration(Cursor ast) {
     auto name = child.getNamedChild(0);
     auto type = infer(child.getNamedChild(1));
     auto text = getTextSaved(name);
+    if (llvm::find(fieldNames, text) != fieldNames.end()) {
+      RNULL("Duplicate field name", name);
+    }
     fieldNames.push_back(text);
     fieldTypes.push_back(type);
   }
-  auto recordName = getTextSaved(node.getNamedChild(0));
-  recordTypeFieldOrder[recordName] = fieldNames;
-  return getRecordType(fieldTypes);
+  return getRecordType("<anon>", fieldTypes, fieldNames);
 }
 
 TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
@@ -1362,7 +1449,14 @@ TypeExpr* Unifier::inferVariantDeclaration(TypeExpr *variantType, Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "variant_declaration");
-  return inferVariantConstructor(variantType, node.getNamedChild(0).getCursor());
+  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
+    auto child = node.getNamedChild(i);
+    if (child.getType() != "constructor_declaration")
+      continue;
+    auto *ctorType = inferVariantConstructor(variantType, child.getCursor());
+    setType(child, ctorType);
+  }
+  return variantType;
 }
 
 TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
@@ -1379,23 +1473,35 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto name = node.getChildByFieldName("name");
   auto equation = toOptional(node.getChildByFieldName("equation"));
   auto body = toOptional(node.getChildByFieldName("body"));
-  TypeExpr *thisType = createTypeOperator(getTextSaved(name), typeVars);
+  auto typeName = getTextSaved(name);
+  TypeExpr *thisType = createTypeOperator(typeName, typeVars);
   if (equation) {
     DBGS("Type binding is a type alias\n");
     // This is a type alias and we can disregard the original type operator.
     // we MUST disregard the original type operator so type aliases are fully
     // transparent.
     thisType = infer(*equation);
+    ORNULL(thisType);
   } 
-  declare(name, thisType);
   if (body) {
-    DBGS("Type binding is a variant declaration\n");
-    for (unsigned i = 0; i < body->getNumNamedChildren(); ++i) {
-      auto child = body->getNamedChild(i);
-      if (child.getType() == "comment") continue;
-      auto *ctorType = inferVariantConstructor(thisType, child.getCursor());
-      setType(child, ctorType);
+    if (body->getType() == "variant_declaration") {
+      // Variant constructors return the type of the variant, so declare it before inferring
+      // the full variant type.
+      declare(name, thisType);
+      ORNULL(inferVariantDeclaration(thisType, body->getCursor()));
+      return thisType;
+    } else if (body->getType() == "record_declaration") {
+      // Record declarations need the full record type inferred before declaring
+      // the record type.
+      auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
+      ORNULL(recordType);
+      return declare(name, recordType);
+    } else {
+      RNULL("Unknown type binding body type", *body);
     }
+  } else {
+    DBGS("Type alias to type constructor");
+    ORNULL(declare(name, thisType));
   }
   return thisType;
 }
@@ -1419,9 +1525,8 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
              "Type operator has different number of arguments than type "
              "arguments");
       for (auto [toArg, typeArg] : llvm::zip(toArgs, typeArgs)) {
-        if (failed(unify(toArg, typeArg))) {
-          assert(false && "Failed to unify type operator argument");
-        }
+        RNULL_IF(failed(unify(toArg, typeArg)),
+                 "Failed to unify type operator argument");
       }
       return typeOperator;
     }
@@ -1471,6 +1576,8 @@ TypeExpr *Unifier::inferValuePattern(Cursor ast) {
 //    one of the subtypes is varargs. If so, we can unify the types if the
 //    other type is a function type.
 LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
+  ORFAIL(a);
+  ORFAIL(b);
   static size_t count = 0;
   auto *wildcard = getWildcardType();
   a = prune(a);
@@ -1484,10 +1591,7 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
     }
     if (*a != *b) {
       DBGS("Unifying type variable with different type\n");
-      if (isSubType(a, b)) {
-        assert(false && "Recursive unification");
-        return failure();
-      }
+      FAIL_IF(isSubType(a, b), "Recursive unification");
       tva->instance = b;
     } else {
       DBGS("Unifying type variable with itself, fallthrough\n");
@@ -1497,10 +1601,9 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
     if (llvm::isa<TypeVariable>(b)) {
       return unify(b, a);
     } else if (auto *tob = llvm::dyn_cast<TypeOperator>(b)) {
-
       // Check if we have any varargs types in the arguments - if so, the forms are allowed
       // to be different.
-      auto fHasVarargs = [&](TypeExpr* arg) { return isVarargs(arg); };
+      auto fHasVarargs = [&](TypeExpr* arg) { return llvm::isa<VarargsOperator>(arg); };
       const bool hasVarargs = llvm::any_of(toa->getArgs(), fHasVarargs) or
                               llvm::any_of(tob->getArgs(), fHasVarargs);
       DBGS("has varargs: " << hasVarargs << '\n');
@@ -1513,26 +1616,22 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
       // Usual type checking - if we don't have a special case, then we need operator types to
       // match in form.
       const bool sizesMatch = toa->getArgs().size() == tob->getArgs().size() or hasVarargs;
-      if (toa->getName() != tob->getName() or not sizesMatch) {
-        llvm::errs() << "Could not unify types: " << *toa << " and " << *tob << '\n';
-        assert(false);
-      }
+      FAIL_IF(toa->getName() != tob->getName() or not sizesMatch,
+              SSWRAP("Could not unify types: " << *toa << " and " << *tob));
 
       for (auto [aa, bb] : llvm::zip(toa->getArgs(), tob->getArgs())) {
+        ORFAIL(aa);
+        ORFAIL(bb);
         if (isVarargs(aa) or isVarargs(bb)) {
           DBGS("Unifying with varargs, unifying return types and giving up\n");
-          if (failed(unify(toa->back(), tob->back()))) {
-            return failure();
-          }
+          FAIL_IF(failed(unify(toa->back(), tob->back())), "failed to unify");
           return success();
         }
         if (isWildcard(aa) or isWildcard(bb)) {
           DBGS("Unifying with wildcard, skipping unification for this element type\n");
           continue;
         }
-        if (failed(unify(aa, bb))) {
-          return failure();
-        }
+        FAIL_IF(failed(unify(aa, bb)), "failed to unify");
       }
     }
   }
@@ -1555,8 +1654,11 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
     // DBGS("cloning type operator: " << op->getName() << '\n');
     if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
       return getFunctionType(args, func->parameterDescriptors);
+    } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
+      return getRecordType(record->getName(), args, record->getFieldNames());
+    } else {
+      return createTypeOperator(op->getKind(), op->getName(), args);
     }
-    return createTypeOperator(op->getName(), args);
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
     // DBGS("cloning type variable: " << *tv << '\n');
     if (isGeneric(tv, concreteTypes)) {
@@ -1583,10 +1685,7 @@ TypeExpr* Unifier::prune(TypeExpr* type) {
 }
 
 bool Unifier::isVarargs(TypeExpr* type) {
-  if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
-    return op->getName() == getVarargsType()->getName();
-  }
-  return false;
+  return llvm::isa<VarargsOperator>(type);
 }
 
 TypeExpr* Unifier::inferExternal(Cursor ast) {
@@ -1646,7 +1745,7 @@ TypeExpr *Unifier::getWildcardType() {
 }
 
 TypeExpr *Unifier::getVarargsType() { 
-  static TypeExpr *type = getType(TypeOperator::getVarargsOperatorName());
+  static TypeExpr *type = create<VarargsOperator>();
   return type;
 }
 
@@ -1746,18 +1845,36 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferTupleExpression(std::move(ast));
   } else if (node.getType() == "labeled_argument_type") {
     return inferLabeledArgumentType(std::move(ast));
+  } else if (node.getType() == "record_expression") {
+    return inferRecordExpression(std::move(ast));
+  } else if (node.getType() == "field_get_expression") {
+    return inferFieldGetExpression(std::move(ast));
   }
-  auto message = "Unknown node type: "s + node.getType();
-  ERROR(message.str(), node);
+  const auto message = ("Unknown node type: "s + node.getType()).str();
+  RNULL(message, node);
 }
 
 Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)) {
-  initializeEnvironment();
+  if (failed(initializeEnvironment())) {
+    llvm::errs() << "Failed to initialize environment\n";
+    exit(1);
+  }
 }
 
 Unifier::Unifier(std::string filepath) : rootScope(std::make_unique<detail::Scope>(this)) {
-  initializeEnvironment();
+  if (failed(initializeEnvironment())) {
+    llvm::errs() << "Failed to initialize environment\n";
+    exit(1);
+  }
   loadSourceFile(filepath);
+}
+
+void Unifier::loadSource(llvm::StringRef source) {
+  DBGS("Source:\n" << source << "\n");
+  ::ts::Language language = getOCamlLanguage();
+  ::ts::Parser parser{language};
+  auto tree = parser.parseString(source);
+  sources.emplace_back("-", source.str(), std::move(tree));
 }
 
 void Unifier::loadSourceFile(fs::path filepath) {
@@ -1814,10 +1931,20 @@ void Unifier::loadStdlibInterfaces(fs::path exe) {
 }
 
 void Unifier::dumpTypes(llvm::raw_ostream &os) {
+  if (!diagnostics.empty()) {
+    return showErrors();
+  }
   for (auto [name, sourceIndex, node] : nodesToDump) {
     std::string_view source = sources[sourceIndex].source;
     os << name << ": " << ocamlc2::getText(node.getNamedChild(0), source)
        << " : " << *getType(node.getID()) << '\n';
+  }
+}
+
+bool Unifier::anyFatalErrors() const { return !diagnostics.empty(); }
+void Unifier::showErrors() {
+  for (auto diag : diagnostics) {
+    llvm::errs() << diag << "\n";
   }
 }
 

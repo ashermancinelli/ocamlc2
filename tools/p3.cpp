@@ -8,6 +8,7 @@
 #include <llvm/Support/FileSystem.h>
 #include <memory>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/PrettyStackTrace.h>
 #include <cpp-tree-sitter.h>
 #include <tree_sitter/api.h>
 #include <tree_sitter/tree-sitter-ocaml.h>
@@ -28,11 +29,18 @@ static cl::list<std::string> inputFilenames(cl::Positional,
 int main(int argc, char* argv[]) {
   auto exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);
   llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
+  llvm::EnablePrettyStackTrace();
+  TRACE();
+  CL::maybeReplaceWithGDB(argc, argv);
   TRACE();
   ocamlc2::Unifier unifier;
   unifier.loadStdlibInterfaces(exe);
   for (auto &filepath : inputFilenames) {
     unifier.loadSourceFile(filepath);
+    if (failed(unifier)) {
+      unifier.showErrors();
+      return 1;
+    }
     if (CL::DParseTree) {
       unifier.showParseTree();
     }

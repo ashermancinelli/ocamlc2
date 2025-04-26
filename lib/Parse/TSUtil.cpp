@@ -11,13 +11,13 @@
 using namespace ts;
 
 namespace ocamlc2 {
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TSPoint &point) {
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, TSPoint point) {
   return os << point.row << ":" << point.column;
 }
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Extent<Point> &extent) {
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, Extent<Point> extent) {
   return os << extent.start << "-" << extent.end;
 }
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Cursor &cursor) {
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, Cursor cursor) {
   return os << cursor.getCurrentNode().getType();
 }
 

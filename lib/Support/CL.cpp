@@ -4,6 +4,9 @@
 using namespace llvm;
 
 namespace ocamlc2::CL {
+namespace {
+static std::string debugger = "lldb";
+}
 bool Debug = false;
 bool RunGDB = false;
 bool Color = true;
@@ -13,15 +16,35 @@ bool StdlibOnly = false;
 bool DParseTree = false;
 bool DTypedTree = false;
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
+
+void maybeReplaceWithGDB(int argc, char **argv) {
+  if (!RunGDB) {
+    return;
+  }
+  std::vector<char *> newArgs;
+  newArgs.push_back(const_cast<char *>(debugger.c_str()));
+  newArgs.push_back(const_cast<char *>("--"));
+  newArgs.push_back(argv[0]);
+  for (int i = 1; i < argc; i++) {
+    std::string arg = argv[i];
+    if (arg == "-gdb" or arg == "--gdb") {
+      continue;
+    }
+    newArgs.push_back(argv[i]);
+  }
+  newArgs.push_back(nullptr);
+  auto debuggerExe = debugger.c_str();
+  execvp(debuggerExe, newArgs.data());
+}
 }
 using namespace ocamlc2::CL;
 
 static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
                                   cl::location(RunGDB), cl::cat(OcamlOptions));
 
-static cl::opt<std::string> debugger("debugger",
+static cl::opt<std::string, true> clDebugger("debugger",
                                      cl::desc("The debugger to use"),
-                                     cl::init("lldb"), cl::cat(OcamlOptions));
+                                     cl::location(debugger), cl::cat(OcamlOptions));
 
 static cl::opt<bool, true> debug("L", cl::desc("Enable debug mode"),
                                  cl::location(Debug), cl::cat(OcamlOptions));
@@ -59,23 +82,3 @@ static cl::opt<bool, true> clDTypedTree("dtypedtree",
                                   cl::desc("Enable typed tree dump"),
                                   cl::location(DTypedTree),
                                   cl::cat(OcamlOptions));
-
-void maybeReplaceWithGDB(int argc, char **argv) {
-  if (!RunGDB) {
-    return;
-  }
-  std::vector<char *> newArgs;
-  newArgs.push_back(const_cast<char *>(debugger.getValue().c_str()));
-  newArgs.push_back(const_cast<char *>("--"));
-  newArgs.push_back(argv[0]);
-  for (int i = 1; i < argc; i++) {
-    std::string arg = argv[i];
-    if (arg == "-gdb" or arg == "--gdb") {
-      continue;
-    }
-    newArgs.push_back(argv[i]);
-  }
-  newArgs.push_back(nullptr);
-  auto debuggerExe = debugger.getValue().c_str();
-  execvp(debuggerExe, newArgs.data());
-}

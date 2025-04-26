@@ -6,4 +6,5 @@ val rev : 'a list -> 'a list
 val append : 'a list -> 'a list -> 'a list
 val concat : 'a list list -> 'a list
 val iter : ('a -> unit) -> 'a list -> unit
+val filter : ('a -> bool) -> 'a list -> 'a list
 

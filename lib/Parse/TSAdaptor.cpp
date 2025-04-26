@@ -8,6 +8,7 @@
 #include "ocamlc2/Support/Colors.h"
 
 extern "C" const TSLanguage* tree_sitter_ocaml();
+using namespace ocamlc2;
 
 FailureOr<TSTree *> parseOCaml(const std::string &source) {
   TSParser *parser = ts_parser_new();

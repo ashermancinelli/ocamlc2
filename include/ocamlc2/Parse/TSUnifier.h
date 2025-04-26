@@ -4,6 +4,7 @@
 #include "ocamlc2/Parse/ASTPasses.h"
 #include "ocamlc2/Parse/TSUtil.h"
 #include "ocamlc2/Support/LLVMCommon.h"
+#include "ocamlc2/Support/Utils.h"
 #include <llvm/ADT/StringRef.h>
 #include <memory>
 #include <string>
@@ -42,6 +43,9 @@ struct Unifier {
   // an interface or implementation.
   void loadSourceFile(fs::path filepath);
 
+  // Load a string directly as if it were a source file.
+  void loadSource(llvm::StringRef source);
+
   // Load an implementation (.ml) file.
   void loadImplementationFile(fs::path filepath);
 
@@ -55,6 +59,12 @@ struct Unifier {
   // for debugging and testing.
   void dumpTypes(llvm::raw_ostream &os);
 
+  [[nodiscard]] bool anyFatalErrors() const;
+  void showErrors();
+
+  [[nodiscard]] operator LogicalResult() const {
+    return failure(anyFatalErrors());
+  }
 
   llvm::raw_ostream &showParseTree();
   llvm::raw_ostream &showTypedTree();
@@ -88,12 +98,13 @@ private:
                                   llvm::ArrayRef<TypeExpr *> args = {}) {
     return create<TypeOperator>(name, args);
   }
+  inline auto *createTypeOperator(TypeOperator::Kind kind,
+                                  llvm::StringRef name,
+                                  llvm::ArrayRef<TypeExpr *> args = {}) {
+    return create<TypeOperator>(kind, name, args);
+  }
 
 public:
-  [[noreturn]] void error(std::string message, const char* filename, long lineno=-1);
-  [[noreturn]] void error(std::string message, ts::Node node, const char* filename, long lineno=-1);
-  // [[noreturn]] void error(llvm::Twine message, ts::Node node);
-
   TypeExpr *getBoolType();
   TypeExpr *getFloatType();
   TypeExpr *getIntType();
@@ -112,7 +123,7 @@ public:
   std::pair<SmallVector<std::pair<llvm::StringRef, Node>>, std::set<Node>> getLabeledArguments(SmallVector<Node> arguments);
 
   inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
-    return createTypeOperator(TypeOperator::getTupleOperatorName(), args);
+    return create<TupleOperator>(args);
   }
   inline auto *getListTypeOf(TypeExpr *type) {
     return createTypeOperator(TypeOperator::getListOperatorName(), {type});
@@ -128,8 +139,8 @@ public:
   inline auto *getOptionalType() {
     return getOptionalTypeOf(createTypeVariable());
   }
-  inline auto *getRecordType(ArrayRef<TypeExpr *> fields) {
-    return createTypeOperator(TypeOperator::getRecordOperatorName(), fields);
+  inline auto *getRecordType(llvm::StringRef recordName, ArrayRef<TypeExpr *> fields, ArrayRef<llvm::StringRef> fieldNames) {
+    return create<RecordOperator>(recordName, fields, fieldNames);
   }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
@@ -142,7 +153,7 @@ public:
   SmallVector<SourceFile> sources;
 
 private:
-  void initializeEnvironment();
+  LogicalResult initializeEnvironment();
 
   LogicalResult unify(TypeExpr *a, TypeExpr *b);
 
@@ -157,59 +168,66 @@ private:
   // instantiated variables.
   TypeExpr *prune(TypeExpr *type);
 
+  // \c infer is just a wrapper around this method which does some printing and
+  // caches the type for a given node id. This method does the actual work.
   TypeExpr *inferType(Cursor ast);
-  TypeExpr *inferValuePath(Cursor ast);
+
+  TypeExpr *inferApplicationExpression(Cursor ast);
+  TypeExpr *inferArrayExpression(Cursor ast);
+  TypeExpr *inferArrayGetExpression(Cursor ast);
+  TypeExpr *inferCompilationUnit(Cursor ast);
+  TypeExpr *inferConcatExpression(Cursor ast);
+  TypeExpr *inferConstructedType(Cursor ast);
   TypeExpr *inferConstructorPath(Cursor ast);
+  TypeExpr *inferConstructorPattern(Cursor ast);
+  TypeExpr *inferExternal(Cursor ast);
+  TypeExpr *inferForExpression(Cursor ast);
+  TypeExpr *inferFunctionExpression(Cursor ast);
+  TypeExpr *inferFunctionSpecification(Cursor ast);
+  TypeExpr *inferFunctionType(Cursor ast);
+  TypeExpr *inferGuard(Cursor ast);
+  TypeExpr *inferIfExpression(Cursor ast);
+  TypeExpr *inferInfixExpression(Cursor ast);
+  TypeExpr *inferLabeledArgumentType(Cursor ast);
   TypeExpr *inferLetBinding(Cursor ast);
   TypeExpr *inferLetBindingFunction(Node name, SmallVector<Node> parameters, Node body);
   TypeExpr *inferLetBindingRecursiveFunction(Node name, SmallVector<Node> parameters, Node body);
   TypeExpr *inferLetBindingValue(Node name, Node body);
   TypeExpr *inferLetExpression(Cursor ast);
-  TypeExpr *inferForExpression(Cursor ast);
-  TypeExpr *inferCompilationUnit(Cursor ast);
-  TypeExpr *inferApplicationExpression(Cursor ast);
-  TypeExpr *inferConcatExpression(Cursor ast);
-  TypeExpr *inferInfixExpression(Cursor ast);
-  TypeExpr *inferIfExpression(Cursor ast);
-  TypeExpr *inferMatchExpression(Cursor ast);
-  TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
-  TypeExpr *inferPattern(ts::Node node);
-  TypeExpr *inferTuplePattern(ts::Node node);
-  TypeExpr *inferProductExpression(Cursor ast);
-  TypeExpr *inferValuePattern(Cursor ast);
-  TypeExpr *inferParenthesizedPattern(Cursor ast);
-  TypeExpr *inferConstructorPattern(Cursor ast);
-  TypeExpr *inferGuard(Cursor ast);
-  TypeExpr *inferArrayExpression(Cursor ast);
-  TypeExpr *inferArrayGetExpression(Cursor ast);
   TypeExpr *inferListExpression(Cursor ast);
-  TypeExpr *inferFunctionExpression(Cursor ast);
-  TypeExpr *inferModuleDefinition(Cursor ast);
+  TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
+  TypeExpr *inferMatchExpression(Cursor ast);
   TypeExpr *inferModuleBinding(Cursor ast);
+  TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);
-  TypeExpr *inferValueSpecification(Cursor ast);
-  TypeExpr *inferFunctionSpecification(Cursor ast);
-  TypeExpr *inferTypeExpression(Cursor ast);
-  TypeExpr *inferTypeConstructorPath(Cursor ast);
-  TypeExpr *inferSequenceExpression(Cursor ast);
-  TypeExpr *inferTypeDefinition(Cursor ast);
-  TypeExpr *inferTypeBinding(Cursor ast);
-  TypeExpr *inferVariantDeclaration(TypeExpr *variantType, Cursor ast);
-  TypeExpr *inferVariantConstructor(TypeExpr *variantType, Cursor ast);
-  TypeExpr *inferRecordDeclaration(Cursor ast);
-  TypeExpr *inferConstructedType(Cursor ast);
-  TypeExpr *inferFunctionType(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
-  TypeExpr *inferExternal(Cursor ast);
-  TypeExpr *inferTupleType(Cursor ast);
+  TypeExpr *inferParenthesizedPattern(Cursor ast);
+  TypeExpr *inferPattern(ts::Node node);
+  TypeExpr *inferProductExpression(Cursor ast);
+  TypeExpr *inferRecordDeclaration(llvm::StringRef recordName, Cursor ast);
+  TypeExpr *inferRecordDeclaration(Cursor ast);
+  TypeExpr *inferRecordExpression(Cursor ast);
+  TypeExpr *inferSequenceExpression(Cursor ast);
   TypeExpr *inferTupleExpression(Cursor ast);
-  TypeExpr *inferLabeledArgumentType(Cursor ast);
+  TypeExpr *inferTuplePattern(ts::Node node);
+  TypeExpr *inferTupleType(Cursor ast);
+  TypeExpr *inferTypeBinding(Cursor ast);
+  TypeExpr *inferTypeConstructorPath(Cursor ast);
+  TypeExpr *inferTypeDefinition(Cursor ast);
+  TypeExpr *inferTypeExpression(Cursor ast);
+  TypeExpr *inferValuePath(Cursor ast);
+  TypeExpr *inferValuePattern(Cursor ast);
+  TypeExpr *inferValueSpecification(Cursor ast);
+  TypeExpr *inferVariantConstructor(TypeExpr *variantType, Cursor ast);
+  TypeExpr *inferVariantDeclaration(TypeExpr *variantType, Cursor ast);
+  TypeExpr *inferFieldGetExpression(Cursor ast);
+
   TypeExpr *declareFunctionParameter(Node node);
   TypeExpr *declareFunctionParameter(ParameterDescriptor desc, Node node);
   ParameterDescriptor describeParameter(Node node);
   SmallVector<ParameterDescriptor> describeParameters(SmallVector<Node> parameters);
-  ParameterDescriptor describeFunctionArgumentType(Node node);
+  FailureOr<ParameterDescriptor> describeFunctionArgumentType(Node node);
 
   inline SmallVector<Node> flattenFunctionType(Node node) {
     return flattenType("function_type", node);
@@ -272,6 +290,7 @@ private:
   void popModuleSearchPath();
   void popModule();
   std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
+  llvm::StringRef getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path);
   std::vector<std::string> getPathParts(Node node);
   void maybeDumpTypes(Node node, TypeExpr *type);
 
@@ -311,9 +330,10 @@ private:
   // argument types.
   llvm::DenseMap<ts::NodeID, ParameterDescriptor> parameterDescSidecar;
 
-  // Record the order of fields in record types so the constructor can be
-  // treated like a function after fields are reordered.
-  llvm::DenseMap<StringRef, SmallVector<StringRef>> recordTypeFieldOrder;
+  // Record the record fields seen so far so we can infer the use of a field
+  // on an uninferred variable can automatically promote to the last seen record
+  // type with a matching field name.
+  llvm::SmallVector<std::pair<llvm::StringRef, llvm::SmallVector<llvm::StringRef>>> seenRecordFields;
 
   // Root scope for the unifier, created when the unifier is constructed.
   // Sometimes we need to declare stdlib types before actually loading the
@@ -324,6 +344,9 @@ private:
   // debugging steps when loading the stdlib, as it becomes very noisy when
   // looking at inference of user code.
   bool isLoadingStdlib = false;
+  SmallVector<Diagnostic> diagnostics;
+  nullptr_t error(std::string message, ts::Node node, const char* filename, unsigned long lineno);
+  nullptr_t error(std::string message, const char* filename, unsigned long lineno);
 
   // RAII wrappers for pushing and popping search paths and environment scopes.
   friend struct detail::ModuleSearchPathScope;
