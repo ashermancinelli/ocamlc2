@@ -150,10 +150,14 @@ T& operator<<(T& os, const TypeOperator& op) {
   if (args.empty()) {
     return os << name;
   }
-  for (auto *arg : args) {
-    os << *arg << ' ';
+  if (args.size() == 1) {
+    return os << *args.front() << ' ' << name;
   }
-  return os << name;
+  os << '(' << *args.front();
+  for (auto *arg : args.drop_front()) {
+    os << ", " << *arg;
+  }
+  return os << ") " << name;
 }
 
 template<typename T>
