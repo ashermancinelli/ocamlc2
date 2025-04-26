@@ -30,9 +30,7 @@ int main(int argc, char* argv[]) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
   TRACE();
   ocamlc2::Unifier unifier;
-  if (not CL::StdlibOnly) {
-    unifier.loadStdlibInterfaces(exe);
-  }
+  unifier.loadStdlibInterfaces(exe);
   for (auto &filepath : inputFilenames) {
     unifier.loadSourceFile(filepath);
     DBG(llvm::errs() << "AST:\n"; unifier.show(true);)

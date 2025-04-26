@@ -87,7 +87,9 @@ private:
   }
 
 public:
-  [[noreturn]] void error(llvm::StringRef message);
+  [[noreturn]] void error(std::string message, const char* filename, long lineno=-1);
+  [[noreturn]] void error(std::string message, ts::Node node, const char* filename, long lineno=-1);
+  // [[noreturn]] void error(llvm::Twine message, ts::Node node);
 
   TypeExpr *getBoolType();
   TypeExpr *getFloatType();
@@ -199,10 +201,12 @@ private:
   TypeExpr *inferExternal(Cursor ast);
   TypeExpr *inferTupleType(Cursor ast);
   TypeExpr *inferTupleExpression(Cursor ast);
+  TypeExpr *inferLabeledArgumentType(Cursor ast);
   TypeExpr *declareFunctionParameter(Node node);
   TypeExpr *declareFunctionParameter(ParameterDescriptor desc, Node node);
   ParameterDescriptor describeParameter(Node node);
   SmallVector<ParameterDescriptor> describeParameters(SmallVector<Node> parameters);
+  ParameterDescriptor describeFunctionArgumentType(Node node);
 
   inline SmallVector<Node> flattenFunctionType(Node node) {
     return flattenType("function_type", node);
@@ -299,6 +303,10 @@ private:
 
   // Sidecar for caching inferred types
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
+
+  // Sidecar for caching parameter descriptors when inferring function
+  // argument types.
+  llvm::DenseMap<ts::NodeID, ParameterDescriptor> parameterDescSidecar;
 
   // Record the order of fields in record types so the constructor can be
   // treated like a function after fields are reordered.

@@ -19,7 +19,10 @@
 #define DEBUG_TYPE "typesystem"
 #include "ocamlc2/Support/Debug.h.inc"
 
+#define ERROR(...) error(__VA_ARGS__, __FILE__, __LINE__)
+
 namespace ocamlc2 {
+using namespace std::string_literals;
 using namespace llvm;
 using std::move;
 
@@ -151,16 +154,28 @@ TypeExpr* Unifier::getType(const std::string_view name) {
   return getType(stringArena.save(name));
 }
 
-void Unifier::error(llvm::StringRef message) {
+void Unifier::error(std::string message, const char* filename, long lineno) {
   llvm::errs() << "Error during type inference: " << message << '\n';
+  llvm::errs() << "\nOccurred at " << filename << ':' << lineno << '\n';
   std::exit(1);
+}
+
+// void Unifier::error(llvm::Twine message, ts::Node node) {
+//   error(message.str(), node);
+// }
+
+void Unifier::error(std::string message, ts::Node node, const char* filename, long lineno) {
+  show(node.getCursor(), true);
+  auto range = node.getPointRange();
+  llvm::errs() << sources.back().filepath << ':' << range << ':';
+  error(message, filename, lineno);
 }
 
 TypeExpr* Unifier::getType(const llvm::StringRef name) {
   if (auto *type = maybeGetType(name)) {
     return type;
   }
-  error("Type not declared: " + name.str());
+  ERROR("Type not declared: " + name.str());
 }
 
 TypeExpr* Unifier::maybeGetType(const llvm::StringRef name) {
@@ -321,6 +336,31 @@ SmallVector<Node> Unifier::flattenType(std::string_view nodeType, Node node) {
   return nodes;
 }
 
+ParameterDescriptor Unifier::describeFunctionArgumentType(Node node) {
+  static constexpr std::string_view passthroughTypes[] = {
+      "type_variable", "constructed_type", "type_constructor_path",
+      "parenthesized_type", "tuple_type", };
+  if (llvm::is_contained(passthroughTypes, node.getType())) {
+    return ParameterDescriptor{};
+  } else if (node.getType() == "labeled_argument_type") {
+    const auto optional = node.getChild(0).getType() == "?";
+    const auto label = node.getNamedChild(0);
+    const auto typeNode = node.getChildByFieldName("type");
+    const auto labelKind = optional ? ParameterDescriptor::LabelKind::Optional
+                                    : ParameterDescriptor::LabelKind::Labeled;
+    return ParameterDescriptor(labelKind, getTextSaved(label), typeNode, std::nullopt);
+  }
+  auto message = ("Unknown function argument type: " + node.getType()).str();
+  ERROR(message, node);
+}
+
+TypeExpr* Unifier::inferLabeledArgumentType(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "labeled_argument_type");
+  return infer(node.getChildByFieldName("type"));
+}
+
 TypeExpr* Unifier::inferFunctionType(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -329,12 +369,14 @@ TypeExpr* Unifier::inferFunctionType(Cursor ast) {
   SmallVector<TypeExpr*> types = {infer(leftChild)};
   auto rightChild = node.getNamedChild(1);
   auto nodes = flattenFunctionType(rightChild);
+  SmallVector<ParameterDescriptor> parameterDescriptors;
   for (auto [i, n] : llvm::enumerate(nodes)) {
     auto *childType = infer(n);
     types.push_back(childType);
     DBGS(i << ": " << *childType << '\n');
+    parameterDescriptors.push_back(describeFunctionArgumentType(n));
   }
-  return getFunctionType(types);
+  return getFunctionType(types, parameterDescriptors);
 }
 
 TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
@@ -367,7 +409,7 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
     // If we have a single argument, matches will be directly against it and not wrapped
     // in a tuple type.
     if (failed(unify(argsType, declaredArgs[0]))) {
-      error("Failed to unify constructor pattern argument with constructor type operator argument");
+      ERROR("Failed to unify constructor pattern argument with constructor type operator argument");
       return nullptr;
     }
     return varaintType;
@@ -377,7 +419,7 @@ TypeExpr* Unifier::inferConstructorPattern(Cursor ast) {
                       "arguments as the constructor type operator");
     for (auto [arg, declaredArg] : llvm::zip(args, declaredArgs)) {
       if (failed(unify(arg, declaredArg))) {
-        error("Failed to unify constructor pattern argument with "
+        ERROR("Failed to unify constructor pattern argument with "
               "constructor type operator argument");
         return nullptr;
       }
@@ -454,13 +496,13 @@ TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
   const auto bodyNode = hasGuard ? node.getNamedChild(2) : node.getNamedChild(1);
   auto *matchCaseType = infer(node.getNamedChild(0));
   if (failed(unify(matchCaseType, matcheeType))) {
-    error("Failed to unify match case type with matchee type");
+    ERROR("Failed to unify match case type with matchee type");
     return nullptr;
   }
   if (hasGuard) {
     auto *guardType = infer(node.getNamedChild(1));
     if (failed(unify(guardType, getBoolType()))) {
-      error("Failed to unify guard type with bool type");
+      ERROR("Failed to unify guard type with bool type");
       return nullptr;
     }
   }
@@ -475,7 +517,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
   auto matchee = node.getNamedChild(0);
   const auto namedChildren = node.getNumNamedChildren();
   if (matchee.getType() == "match_case") {
-    error("NYI: match expression with match case");
+    ERROR("NYI: match expression with match case");
     // If we don't get a match-case, we're implicitly creating
     // a function with the matchee not available as a symbol yet.
     auto *matcheeType = createTypeVariable();
@@ -487,7 +529,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
       // size .gt. 1, because the implicit matchee is the first element of the case types
       if (functionType.size() > 1) {
         if (failed(unify(type, functionType.back()))) {
-          error("Failed to unify case type with previous case type");
+          ERROR("Failed to unify case type with previous case type");
           return nullptr;
         }
       }
@@ -504,7 +546,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
       auto caseNode = node.getNamedChild(i++);
       auto *type = inferMatchCase(matcheeType, caseNode);
       if (resultType != nullptr && failed(unify(type, resultType))) {
-        error("Failed to unify case type with previous case type");
+        ERROR("Failed to unify case type with previous case type");
         return nullptr;
       }
       resultType = type;
@@ -1708,11 +1750,11 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferTupleType(std::move(ast));
   } else if (node.getType() == "tuple_expression") {
     return inferTupleExpression(std::move(ast));
+  } else if (node.getType() == "labeled_argument_type") {
+    return inferLabeledArgumentType(std::move(ast));
   }
-  show(ast.copy(), true);
-  llvm::errs() << "Unknown node type: " << node.getType() << '\n';
-  assert(false && "Unknown node type");
-  return nullptr;
+  auto message = "Unknown node type: "s + node.getType();
+  ERROR(message.str(), node);
 }
 
 Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)) {

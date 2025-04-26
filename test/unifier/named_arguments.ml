@@ -20,14 +20,5 @@ let () =
     sink @@ foo ~z:1 2;
     sink @@ k ~a:5;;
 (*
-    Printf.printf "c = %d\n" c;;
-
-RUN: p3 --freestanding --dump-types %s | FileCheck %s
-
-https://github.com/tree-sitter/tree-sitter-ocaml/issues/118
-XFAIL: *
-
-CHECK: let: f
-CHECK: let: g
-CHECK: need to update optional/default parameters
+RUN: p3 --freestanding --dump-types %s | FileCheck %s.ref
 *)

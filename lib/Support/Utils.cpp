@@ -87,10 +87,16 @@ static fs::path resolvePath(fs::path exe, std::string_view interface) {
 
 SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe) {
   DBGS("exe: " << exe << "\n");
-  if (ocamlc2::CL::StdlibOnly) {
+  if (ocamlc2::CL::Freestanding) {
+    DBGS("freestanding\n");
+    return {};
+  } else if (ocamlc2::CL::StdlibOnly) {
+    DBGS("stdlib only\n");
     return {resolvePath(exe, "stdlib")};
+  } else {
+    DBGS("full stdlib\n");
+    return llvm::to_vector(llvm::map_range(OCamlStdlibInterfaces, [&](std::string_view interface) {
+      return resolvePath(exe, interface);
+    }));
   }
-  return llvm::to_vector(llvm::map_range(OCamlStdlibInterfaces, [&](std::string_view interface) {
-    return resolvePath(exe, interface);
-  }));
 }
