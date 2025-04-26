@@ -1325,7 +1325,8 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   assert(node.getType() == "type_definition");
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
-    inferTypeBinding(child.getCursor());
+    auto *type = inferTypeBinding(child.getCursor());
+    setType(child, type);
   }
   return getUnitType();
 }
@@ -1375,42 +1376,28 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     typeVars.push_back(createTypeVariable());
     declare(child, typeVars.back());
   }
-  auto name = *namedIterator++;
+  auto name = node.getChildByFieldName("name");
+  auto equation = toOptional(node.getChildByFieldName("equation"));
+  auto body = toOptional(node.getChildByFieldName("body"));
   TypeExpr *thisType = createTypeOperator(getTextSaved(name), typeVars);
-  if (namedIterator == namedChildren.end()) {
-    DBGS("Type binding is a declaration\n");
-    declare(name, thisType);
-    return thisType;
-  }
-  auto body = *namedIterator++;
-  if (body.getType() == "constructed_type") {
+  if (equation) {
     DBGS("Type binding is a type alias\n");
     // This is a type alias and we can disregard the original type operator.
-    auto *rhsType = infer(body);
-    thisType = declare(name, rhsType);
-    if (namedIterator == namedChildren.end()) {
-      return thisType;
-    }
-    body = *namedIterator++;
+    // we MUST disregard the original type operator so type aliases are fully
+    // transparent.
+    thisType = infer(*equation);
   } 
   declare(name, thisType);
-  if (body.getType() == "variant_declaration") {
+  if (body) {
     DBGS("Type binding is a variant declaration\n");
-    assert(namedIterator == namedChildren.end() && "Expected no more children");
-    for (unsigned i = 0; i < body.getNumNamedChildren(); ++i) {
-      auto child = body.getNamedChild(i);
+    for (unsigned i = 0; i < body->getNumNamedChildren(); ++i) {
+      auto child = body->getNamedChild(i);
       if (child.getType() == "comment") continue;
       auto *ctorType = inferVariantConstructor(thisType, child.getCursor());
       setType(child, ctorType);
     }
-    if (namedIterator == namedChildren.end()) {
-      return thisType;
-    }
-    body = *namedIterator++;
   }
-  show(node.getCursor(), true);
-  assert(false && "Unknown type binding type");
-  return getUnitType();
+  return thisType;
 }
 
 TypeExpr* Unifier::inferConstructedType(Cursor ast) {
