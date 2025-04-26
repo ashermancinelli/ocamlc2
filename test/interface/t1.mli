@@ -1,5 +1,5 @@
 (*
-RUN: p3 --dump-types %s | FileCheck %s.ref
+RUN: p3 --dtypes %s | FileCheck %s.ref
 *)
 type 'a array
 val t1 : unit -> unit

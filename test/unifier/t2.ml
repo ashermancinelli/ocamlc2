@@ -7,5 +7,5 @@ let () =
 let foo () = 1 + 2;;
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s.ref
+RUN: p3 %s --dtypes | FileCheck %s.ref
 *)

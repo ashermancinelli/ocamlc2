@@ -10,6 +10,8 @@ bool Color = true;
 bool DumpTypes = false;
 bool Freestanding = false;
 bool StdlibOnly = false;
+bool DParseTree = false;
+bool DTypedTree = false;
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
 }
 using namespace ocamlc2::CL;
@@ -24,7 +26,7 @@ static cl::opt<std::string> debugger("debugger",
 static cl::opt<bool, true> debug("L", cl::desc("Enable debug mode"),
                                  cl::location(Debug), cl::cat(OcamlOptions));
 
-static cl::opt<bool, true> dumpTypes("dump-types", cl::desc("Dump types"),
+static cl::opt<bool, true> dumpTypes("dtypes", cl::desc("Dump types"),
                                      cl::location(DumpTypes),
                                      cl::cat(OcamlOptions));
 
@@ -46,6 +48,16 @@ static cl::alias Ffreestanding("f", cl::desc("Enable freestanding mode"),
 static cl::opt<bool, true> clStdlibOnly("fstdlib-only",
                                   cl::desc("Enable stdlib-only mode"),
                                   cl::location(StdlibOnly),
+                                  cl::cat(OcamlOptions));
+
+static cl::opt<bool, true> clDParseTree("dparsetree",
+                                  cl::desc("Enable parse tree dump"),
+                                  cl::location(DParseTree),
+                                  cl::cat(OcamlOptions));
+
+static cl::opt<bool, true> clDTypedTree("dtypedtree",
+                                  cl::desc("Enable typed tree dump"),
+                                  cl::location(DTypedTree),
                                   cl::cat(OcamlOptions));
 
 void maybeReplaceWithGDB(int argc, char **argv) {

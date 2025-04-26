@@ -20,5 +20,5 @@ let () =
     sink @@ foo ~z:1 2;
     sink @@ k ~a:5;;
 (*
-RUN: p3 --freestanding --dump-types %s | FileCheck %s.ref
+RUN: p3 --freestanding --dtypes %s | FileCheck %s.ref
 *)

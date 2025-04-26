@@ -10,5 +10,5 @@ let () = partially_apply_varargs "world";;
 *)
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s.ref
+RUN: p3 %s --dtypes | FileCheck %s.ref
 *)

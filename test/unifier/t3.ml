@@ -7,5 +7,5 @@ let f lb ub =
         done;;
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s.ref
+RUN: p3 %s --dtypes | FileCheck %s.ref
 *)

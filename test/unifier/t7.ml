@@ -9,7 +9,7 @@ let x = match bval with
   ;;
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s
+RUN: p3 %s --dtypes | FileCheck %s
 CHECK: let: bval : l
 CHECK: let: x : int
 *)

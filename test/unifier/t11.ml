@@ -14,5 +14,5 @@ let () =
   | None -> Printf.printf "3 not found in array\n"
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s.ref
+RUN: p3 %s --dtypes | FileCheck %s.ref
 *)

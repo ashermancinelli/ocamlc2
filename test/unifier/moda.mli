@@ -1,6 +1,6 @@
 val message : string
 
 (*
-RUN: p3 --dump-types %s | FileCheck %s
+RUN: p3 --dtypes %s | FileCheck %s
 CHECK: val: message : string
 *)

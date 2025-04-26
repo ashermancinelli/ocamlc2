@@ -1,5 +1,5 @@
 (*
-RUN: p3 --freestanding --dump-types %s | FileCheck %s.ref
+RUN: p3 --freestanding --dtypes %s | FileCheck %s.ref
 *)
 
 type 'a t = 'a option = None | Some of 'a

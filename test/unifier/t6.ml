@@ -5,5 +5,5 @@ let y = 10 in
     print_int (mean x y);;
 
 (*
-RUN: p3 %s --dump-types | FileCheck %s.ref
+RUN: p3 %s --dtypes | FileCheck %s.ref
 *)
