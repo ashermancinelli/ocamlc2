@@ -15,6 +15,7 @@ bool Freestanding = false;
 bool StdlibOnly = false;
 bool DParseTree = false;
 bool DTypedTree = false;
+bool Repl = false;
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
 
 void maybeReplaceWithGDB(int argc, char **argv) {
@@ -37,7 +38,11 @@ void maybeReplaceWithGDB(int argc, char **argv) {
   execvp(debuggerExe, newArgs.data());
 }
 }
+
 using namespace ocamlc2::CL;
+
+static cl::opt<bool, true> repl("repl", cl::desc("Run the REPL"),
+                               cl::location(Repl), cl::cat(OcamlOptions));
 
 static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
                                   cl::location(RunGDB), cl::cat(OcamlOptions));

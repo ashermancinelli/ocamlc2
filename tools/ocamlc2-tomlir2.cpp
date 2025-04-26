@@ -31,9 +31,9 @@ int main(int argc, char* argv[]) {
   mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "ocamlc2-tomlir2");
   TRACE();
-  maybeReplaceWithGDB(argc, argv);
+  ocamlc2::CL::maybeReplaceWithGDB(argc, argv);
   fs::path filepath = inputFilename.getValue();
-  std::string source = must(slurpFile(filepath));
+  std::string source = must(ocamlc2::slurpFile(filepath));
   DBGS("Source:\n" << source << "\n");
   auto ast = ocamlc2::parse(source, filepath.string());
   DBGS("AST:\n" << *ast << "\n");

@@ -23,6 +23,7 @@
 namespace fs = std::filesystem;
 
 using namespace llvm;
+using namespace ocamlc2;
 static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::desc("<input ocaml file>"),
                                           cl::init("-"),
@@ -35,12 +36,12 @@ int main(int argc, char* argv[]) {
   mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "g3");
   TRACE();
-  maybeReplaceWithGDB(argc, argv);
+  CL::maybeReplaceWithGDB(argc, argv);
   fs::path filepath = inputFilename.getValue();
-  std::string source = must(slurpFile(filepath));
+  std::string source = must(ocamlc2::slurpFile(filepath));
   DBGS("Source:\n" << source << "\n");
   
-  ocamlc2::ts::Unifier unifier(filepath);
+  ocamlc2::Unifier unifier(filepath);
   auto root = unifier.sources.back().tree.getRootNode();
   DBG(
     llvm::errs() << "AST:\n";

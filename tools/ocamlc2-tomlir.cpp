@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "ocamlc2 Ocaml compiler\n");
 
-  if (RunGDB) {
+  if (ocamlc2::CL::RunGDB) {
     DBGS("Running under gdb\n");
     std::vector<char*> newArgs;
     const char *debugger = "lldb";
@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 
   fs::path filepath = inputFilename.getValue();
   assert(fs::exists(filepath) && "File does not exist");
-  std::string source = must(slurpFile(filepath));
+  std::string source = must(ocamlc2::slurpFile(filepath));
   TSTreeAdaptor tree(filepath.string(), source);
   DBGS("OCaml parsed:\n" << tree << "\n");
 

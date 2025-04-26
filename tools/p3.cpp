@@ -52,6 +52,9 @@ int main(int argc, char* argv[]) {
     auto *te = unifier.getType(rootNode.getID());
     DBGS("Inferred type: " << *te << '\n');
   }
+  if (CL::Repl) {
+    
+  }
   if (CL::DumpTypes) {
     unifier.dumpTypes(llvm::outs());
   }

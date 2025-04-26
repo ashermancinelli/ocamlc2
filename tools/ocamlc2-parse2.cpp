@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
   
   auto *cu = llvm::cast<CompilationUnitAST>(ast.get());
   assert(cu && "Compilation unit not found");
-  Unifier unifier;
+  ocamlc2::old::Unifier unifier;
   ASTPassManager passManager;
   passManager.addDefaultPasses();
   passManager.run(cu);

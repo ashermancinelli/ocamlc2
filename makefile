@@ -7,8 +7,10 @@ CBIN             ?= $(LLVM)/bin
 CXX               = $(CBIN)/clang++
 CC                = $(CBIN)/clang
 BUILD_TYPE       ?= Debug
-CXXFLAGS         += -fdiagnostics-color=always -stdlib=libc++
-LDFLAGS          += -stdlib=libc++
+STDLIB           ?= -L$(LLVM)/lib -lc++ -lc++abi -lunwind -stdlib=libc++
+CXXFLAGS         += -fdiagnostics-color=always
+CFLAGS           += -fdiagnostics-color=always
+LDFLAGS          += $(STDLIB) -rpath $(LLVM)/lib
 PREFIX           ?= $(shell pwd)/install
 ARCH              = $(shell uname -s)
 ARGS             += -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(PREFIX)
@@ -18,6 +20,7 @@ ARGS             += -DLLVM_DIR=$(LLVM)/lib/cmake/llvm -DMLIR_DIR=$(LLVM)/lib/cma
 ifeq ($(ARCH),Darwin)
 #CXXFLAGS         += -mmacosx-version-min=$(shell xcrun --sdk macosx --show-sdk-version)
 LDFLAGS          += -Wl,-no_warn_duplicate_libraries
+ARGS             += -DCMAKE_MACOSX_RPATH=1
 endif
 
 ARGS             += -DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS)"
@@ -44,6 +47,8 @@ config:
 
 build:
 	$(NINJA) -C build
+
+all: config build check
 
 install:
 	$(NINJA) -C build install

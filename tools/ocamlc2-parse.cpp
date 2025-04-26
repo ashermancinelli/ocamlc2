@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
   
   fs::path filepath = argv[1];
   assert(fs::exists(filepath) && "File does not exist");
-  std::string source = must(slurpFile(filepath));
+  std::string source = must(ocamlc2::slurpFile(filepath));
   TSTreeAdaptor tree(filepath.string(), source);
 
   llvm::outs() << "Syntax tree for " << filepath << ":" << "\n" << tree << "\n";
