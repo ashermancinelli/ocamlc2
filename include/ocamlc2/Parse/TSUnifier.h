@@ -55,8 +55,11 @@ struct Unifier {
   // for debugging and testing.
   void dumpTypes(llvm::raw_ostream &os);
 
-  llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false);
-  llvm::raw_ostream &show(bool showUnnamed = false);
+
+  llvm::raw_ostream &showParseTree();
+  llvm::raw_ostream &showTypedTree();
+  llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false, bool showTypes = true);
+  llvm::raw_ostream &show(bool showUnnamed = false, bool showTypes = true);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable *>;

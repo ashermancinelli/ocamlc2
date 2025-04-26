@@ -33,6 +33,12 @@ int main(int argc, char* argv[]) {
   unifier.loadStdlibInterfaces(exe);
   for (auto &filepath : inputFilenames) {
     unifier.loadSourceFile(filepath);
+    if (CL::DParseTree) {
+      unifier.showParseTree();
+    }
+    if (CL::DTypedTree) {
+      unifier.showTypedTree();
+    }
     DBG(llvm::errs() << "AST:\n"; unifier.show(true);)
     auto rootNode = unifier.sources.back().tree.getRootNode();
     auto *te = unifier.getType(rootNode.getID());

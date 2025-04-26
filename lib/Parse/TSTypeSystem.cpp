@@ -260,17 +260,24 @@ void Unifier::initializeEnvironment() {
   }
 }
 
-llvm::raw_ostream& Unifier::show(bool showUnnamed) {
-  return show(sources.back().tree.getRootNode().getCursor(), showUnnamed);
+llvm::raw_ostream& Unifier::show(bool showUnnamed, bool showTypes) {
+  return show(sources.back().tree.getRootNode().getCursor(), showUnnamed, showTypes);
+}
+llvm::raw_ostream& Unifier::showParseTree() {
+  return show(true, false);
+}
+llvm::raw_ostream& Unifier::showTypedTree() {
+  return show(false, true);
 }
 
-llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed) {
-  auto showTypes = [this](llvm::raw_ostream &os, ts::Node node) {
+llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed, bool showTypes) {
+  auto showTypesCallback = [this](llvm::raw_ostream &os, ts::Node node) {
     if (auto *te = nodeToType.lookup(node.getID())) {
       os << ANSIColors::magenta() << " " << *te << ANSIColors::reset();
     }
   };
-  return dump(llvm::errs(), cursor.copy(), sources.back().source, 0, showUnnamed, showTypes);
+  auto callback = showTypes ? std::optional{showTypesCallback} : std::nullopt;
+  return dump(llvm::errs(), cursor.copy(), sources.back().source, 0, showUnnamed, callback);
 }
 
 TypeExpr* Unifier::infer(ts::Node const& ast) {
