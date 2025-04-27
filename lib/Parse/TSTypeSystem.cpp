@@ -69,6 +69,14 @@ static constexpr std::string_view pathTypes[] = {
     "constructor_path",
     "type_constructor_path",
 };
+static bool shouldSkip(Node node) {
+  static constexpr std::string_view shouldSkip[] = {
+      "comment",
+      "line_number_directive",
+      ";;",
+  };
+  return llvm::any_of(shouldSkip, [&](auto s) { return node.getType() == s; });
+}
 } // namespace
 
 static std::string getPath(llvm::ArrayRef<llvm::StringRef> path) {
@@ -339,6 +347,11 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
 }
 
 TypeExpr* Unifier::infer(ts::Cursor cursor) {
+  if (shouldSkip(cursor.getCurrentNode())) {
+    if (!cursor.gotoNextSibling()) {
+      return nullptr;
+    }
+  }
   DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
   DBG(show(cursor.copy(), true));
   auto *te = inferType(cursor.copy());
@@ -846,13 +859,6 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   const auto currentModule = filePathToModuleName(sources.back().filepath);
   pushModule(stringArena.save(currentModule));
   auto *t = getUnitType();
-  auto shouldSkip = [](Node node) {
-    static constexpr std::string_view shouldSkip[] = {
-        "comment",
-        ";;",
-    };
-    return llvm::any_of(shouldSkip, [&](auto s) { return node.getType() == s; });
-  };
   if (ast.gotoFirstChild()) {
     do {
       if (!shouldSkip(ast.getCurrentNode())) {
@@ -1885,7 +1891,14 @@ void Unifier::loadSource(llvm::StringRef source) {
 }
 
 void Unifier::loadSourceFile(fs::path filepath) {
-  if (filepath.extension() == ".ml") {
+  if (filepath == "-") {
+    auto source = slurpStdin();
+    if (failed(source)) {
+      llvm::errs() << "Failed to read from stdin\n";
+      return;
+    }
+    loadSource(source.value());
+  } else if (filepath.extension() == ".ml") {
     loadImplementationFile(filepath);
   } else if (filepath.extension() == ".mli") {
     loadInterfaceFile(filepath);

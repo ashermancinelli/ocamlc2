@@ -28,6 +28,18 @@ FailureOr<std::string> slurpFile(const std::string &path) {
   return contents;
 }
 
+mlir::FailureOr<std::string> slurpStdin() {
+  std::string contents;
+  std::string line;
+  while (std::getline(std::cin, line)) {
+    if (std::cin.eof() or std::cin.fail() or std::cin.bad()) {
+      break;
+    }
+    contents += line + '\n';
+  }
+  return contents;
+}
+
 fs::path moduleNameToFilePath(std::string_view name) {
   auto path = std::string(name) + ".ml";
   std::transform(path.begin(), path.end(), path.begin(), ::tolower);
