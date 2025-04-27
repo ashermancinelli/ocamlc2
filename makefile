@@ -61,3 +61,6 @@ i:
 
 p3:
 	$(NINJA) -C build p3
+
+repl: p3
+	./build/bin/p3

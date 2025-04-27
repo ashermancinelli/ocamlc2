@@ -58,7 +58,7 @@ mlir::FailureOr<fs::path> preprocessWithCPPO(const fs::path &path) {
   args.append(std::begin(cppoArgs), std::end(cppoArgs));
   args.push_back(path.string());
   args.push_back("-o");
-  fs::path outputPath = fs::temp_directory_path() / (path.filename().string() + ".cppo" + extension);
+  fs::path outputPath = fs::temp_directory_path() / path.filename();
   args.push_back(outputPath.string());
   auto argsArray = llvm::to_vector(llvm::map_range(
       args, [](const std::string &arg) -> llvm::StringRef { return arg; }));

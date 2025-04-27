@@ -1,6 +1,7 @@
 #include "ocamlc2/Support/Repl.h"
 #include "ocamlc2/Parse/TSUnifier.h"
 #include "ocamlc2/Support/CL.h"
+#include "ocamlc2/Support/Colors.h"
 #include <iostream>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringExtras.h>
@@ -48,6 +49,10 @@ static void runUnderRlwrap(int argc, char **argv, fs::path exe, Unifier &unifier
 
 struct Command {
   virtual void callback(Unifier &unifier, ArrayRef<std::string> args) = 0;
+
+  llvm::raw_ostream& help(llvm::raw_ostream &os) const { return os << help(); }
+  llvm::raw_ostream& name(llvm::raw_ostream &os) const { return os << name(); }
+
   virtual std::string_view help() const = 0;
   virtual std::string_view name() const = 0;
   virtual ~Command() = default;
@@ -112,7 +117,9 @@ struct HelpCommand : public Command {
   void callback(Unifier &unifier, ArrayRef<std::string> args) override {
     llvm::outs() << "Available commands:\n";
     for (const auto &cmd : commands) {
-      llvm::outs() << "  " << cmd->name() << ": " << cmd->help() << '\n';
+      cmd->name(llvm::outs() << "  " << ANSIColors::bold())
+          << ANSIColors::reset() << ": ";
+      cmd->help(llvm::outs()) << '\n';
     }
   }
   std::string_view help() const override {
@@ -140,7 +147,7 @@ struct QuietCommand : public Command {
 };
 
 [[noreturn]] void exitRepl(Unifier &unifier) {
-  llvm::outs() << "Goodbye!\n";
+  llvm::outs() << ANSIColors::faint() << ANSIColors::italic() << "Goodbye!\n" << ANSIColors::reset();
   std::exit(unifier.anyFatalErrors());
 }
 
@@ -163,10 +170,20 @@ struct QuietCommand : public Command {
   }
   unifier.setMaxErrors(1);
   std::string line;
-  std::cout << "OCaml REPL (type '.' on a line by itself to finish the command, or #help for help)\n";
+  std::cout << ANSIColors::bold() << "OCaml REPL" << ANSIColors::reset() << "\n"
+            << ANSIColors::faint() << ANSIColors::italic()
+            << "(type an empty line by itself to finish the command, or #help "
+               "for more commands)\n"
+            << ANSIColors::reset();
+  auto newPrompt = [&] {
+    llvm::outs() << ANSIColors::bold() << "> " << ANSIColors::reset();
+  };
+  auto continuePrompt = [&] {
+    llvm::outs() << ANSIColors::faint() << ". " << ANSIColors::reset();
+  };
   while (true) {
     std::string source = "";
-    llvm::outs() << "> ";
+    newPrompt();
     while (std::getline(std::cin, line)) {
       TRACE();
       if (!std::cin) {
@@ -194,12 +211,13 @@ struct QuietCommand : public Command {
         rest.erase(rest.begin());
         (*it)->callback(unifier, rest);
         source = "";
-        llvm::outs() << "> ";
+        newPrompt();
         continue;
       }
       TRACE();
       sourceSoFar += line + '\n';
       source += line;
+      continuePrompt();
     }
     if (source.empty()) {
       if (std::cin.eof() or std::cin.fail() or std::cin.bad()) {
