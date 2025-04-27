@@ -1,6 +1,6 @@
 (*
 RUN: p3 -f -d -cpp %s | FileCheck %s.ref
-RUN: ocamlc %s -i -pp cppo
+ocamlc %s -i -pp cppo
 *)
 
 module List : sig

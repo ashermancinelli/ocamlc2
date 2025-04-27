@@ -17,7 +17,7 @@ def generate_filecheck_pattern(input_str):
     All subsequent occurrences just reference the capture with '[[TN]]'.
     """
     # Find all type variables in the format 't<number>
-    type_vars = re.findall(r"'t\d+", input_str)
+    type_vars = re.findall(r"'[a-z0-9]+", input_str)
     
     # Create a mapping from each unique type variable to its FileCheck replacement
     var_map = {}

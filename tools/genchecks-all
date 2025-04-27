@@ -1,0 +1,42 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use File::Find;
+use File::Basename;
+use File::Temp qw(tempfile);
+use v5.32;
+
+my $tools = dirname(__FILE__);
+my $root = dirname($tools) . '/test';
+my $yes = 0;
+say $root;
+
+foreach (@ARGV) {
+    if (/-y/ or /-yes/) {
+        $yes = 1;
+    }
+}
+
+find(sub {
+    return unless -f;
+    return unless /\.ml$/ or /\.mli$/;
+    my $file = $File::Find::name;
+    my $ref = $file . '.ref';
+    open my $fh, '<', $file or die "Failed to open $file: $!";
+    my @lines = <$fh>;
+    close $fh;
+    foreach my $line (@lines) {
+        if ($line =~ /RUN: (.+)/) {
+            my $cmd = $1;
+            $cmd =~ s/%s/$file/;
+            $cmd =~ s/\|.+//;
+            say $cmd;
+            my ($tfh, $temp) = tempfile();
+            `$cmd | $tools/genchecks > $temp`;
+            say `diff -u $ref $temp`;
+            `read -p 'look ok? '` unless $yes;
+            `mv $temp $ref`;
+        }
+    }
+}, $root);
+
