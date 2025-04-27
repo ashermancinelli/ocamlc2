@@ -39,6 +39,12 @@ struct Unifier {
   // source file.
   Unifier(std::string filepath);
 
+  llvm::raw_ostream &showType(llvm::raw_ostream &os, llvm::StringRef name);
+
+  // Set the maximum number of errors that can be reported.
+  // -1 indicates no limit.
+  void setMaxErrors(int maxErrors);
+
   // Load a source file. The extension will be checked to determine if it is
   // an interface or implementation.
   void loadSourceFile(fs::path filepath);
@@ -344,6 +350,10 @@ private:
   // debugging steps when loading the stdlib, as it becomes very noisy when
   // looking at inference of user code.
   bool isLoadingStdlib = false;
+
+  // The maximum number of errors that can be reported.
+  int maxErrors = 5;
+
   SmallVector<Diagnostic> diagnostics;
   nullptr_t error(std::string message, ts::Node node, const char* filename, unsigned long lineno);
   nullptr_t error(std::string message, const char* filename, unsigned long lineno);

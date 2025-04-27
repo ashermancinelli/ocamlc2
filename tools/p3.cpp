@@ -34,13 +34,15 @@ int main(int argc, char* argv[]) {
   TRACE();
   CL::maybeReplaceWithGDB(argc, argv);
   TRACE();
-  if (inputFilenames.empty() && !CL::Repl) {
-    llvm::errs() << "No input file provided, and not running REPL.\n" << "Run " << exe.filename() << " --help for more information.\n";
-  }
-  TRACE();
   ocamlc2::Unifier unifier;
+  TRACE();
   unifier.loadStdlibInterfaces(exe);
+  TRACE();
+  if (CL::Repl or CL::InRLWrap or inputFilenames.empty()) {
+    runRepl(argc, argv, exe, unifier);
+  }
   for (auto &filepath : inputFilenames) {
+    llvm::errs() << "Loading file: " << filepath << '\n';
     unifier.loadSourceFile(filepath);
     if (failed(unifier)) {
       unifier.showErrors();
@@ -56,9 +58,6 @@ int main(int argc, char* argv[]) {
     auto rootNode = unifier.sources.back().tree.getRootNode();
     auto *te = unifier.getType(rootNode.getID());
     DBGS("Inferred type: " << *te << '\n');
-  }
-  if (CL::Repl) {
-    runRepl(argc, argv, exe, unifier);
   }
   if (CL::DumpTypes) {
     unifier.dumpTypes(llvm::outs());

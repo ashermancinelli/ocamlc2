@@ -195,7 +195,7 @@ TypeExpr* Unifier::getType(const std::string_view name) {
 
 nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
   TRACE();
-  if (diagnostics.size() >= 5) return nullptr;
+  if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
   message += SSWRAP("\n" << "at " << filename << ":" << lineno);
   diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, node.getPointRange());
   return nullptr;
@@ -203,7 +203,7 @@ nullptr_t Unifier::error(std::string message, ts::Node node, const char* filenam
 
 nullptr_t Unifier::error(std::string message, const char* filename, unsigned long lineno) {
   TRACE();
-  if (diagnostics.size() >= 5) return nullptr;
+  if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
   message += SSWRAP("\n" << "at " << filename << ":" << lineno);
   diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, std::nullopt);
   return nullptr;
@@ -1874,7 +1874,13 @@ void Unifier::loadSource(llvm::StringRef source) {
   ::ts::Language language = getOCamlLanguage();
   ::ts::Parser parser{language};
   auto tree = parser.parseString(source);
-  sources.emplace_back("repl", source.str(), std::move(tree));
+  static const std::string replName = "repl.ml";
+  sources.emplace_back(replName, source.str(), std::move(tree));
+
+  // Make sure the symbols defined in the repl are always visible.
+  auto moduleName = stringArena.save(filePathToModuleName(replName));
+  pushModuleSearchPath(moduleName);
+
   (void)infer(sources.back().tree.getRootNode().getCursor());
 }
 
@@ -1884,7 +1890,7 @@ void Unifier::loadSourceFile(fs::path filepath) {
   } else if (filepath.extension() == ".mli") {
     loadInterfaceFile(filepath);
   } else {
-    llvm::errs() << "Unknown file extension: " << filepath.extension() << '\n';
+    llvm::errs() << "Unknown file extension: " << filepath << '\n';
     assert(false && "Unknown file extension");
   }
   (void)infer(sources.back().tree.getRootNode().getCursor());
@@ -1923,6 +1929,11 @@ llvm::StringRef Unifier::getTextSaved(Node node) {
   return stringArena.save(sv);
 }
 
+void Unifier::setMaxErrors(int maxErrors) {
+  TRACE();
+  this->maxErrors = maxErrors < 0 ? 100 : maxErrors;
+}
+
 void Unifier::loadStdlibInterfaces(fs::path exe) {
   isLoadingStdlib = true;
   for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
@@ -1947,6 +1958,16 @@ void Unifier::showErrors() {
   for (auto diag : diagnostics) {
     llvm::errs() << diag << "\n";
   }
+}
+
+llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name) {
+  name = stringArena.save(name);
+  if (auto *type = maybeGetType(name)) {
+    os << name << " : " << *type;
+  } else {
+    os << "Type unknown for symbol: '" << name << "'\n";
+  }
+  return os;
 }
 
 } // namespace ocamlc2
