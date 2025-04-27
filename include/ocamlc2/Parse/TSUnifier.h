@@ -270,6 +270,17 @@ private:
   TypeExpr *declareType(llvm::StringRef name, TypeExpr *type);
   TypeExpr *maybeGetDeclaredType(llvm::StringRef name);
   TypeExpr *maybeGetDeclaredTypeWithName(llvm::StringRef name);
+  TypeExpr *getDeclaredType(llvm::StringRef name);
+  TypeExpr *getDeclaredType(Node node);
+
+  // Does not error on missing typevariable because TVs are introduced implicitly
+  // in value specifications and we need to create them on-demand, different from
+  // function parameters. e.g. the following declaration does not declare the TV
+  // before using it.
+  //
+  // val access : 'a list -> 'a
+  TypeExpr *getTypeVariable(const llvm::StringRef name);
+  TypeExpr *getTypeVariable(Node node);
 
   // Work with the type of a variable.
   TypeExpr *declareVariable(Node node, TypeExpr *type);
@@ -288,15 +299,6 @@ private:
   // Just associates a type with a node ID so it can be retrieved later
   // for printing and debugging.
   TypeExpr *setType(Node node, TypeExpr *type);
-
-  // Does not error on missing typevariable because TVs are introduced implicitly
-  // in value specifications and we need to create them on-demand, different from
-  // function parameters. e.g. the following declaration does not declare the TV
-  // before using it.
-  //
-  // val access : 'a list -> 'a
-  TypeExpr *getTypeVariable(const llvm::StringRef name);
-  TypeExpr *getTypeVariable(Node node);
 
   llvm::SmallVector<TypeExpr *> getParameterTypes(Cursor parameters);
 
@@ -323,7 +325,8 @@ private:
 
   // Environment for type variables
   Env env;
-  Env typeEnv;
+  // Env typeEnv;
+  llvm::DenseMap<llvm::StringRef, TypeExpr *> typeEnv;
 
   // Set of types that have been declared as concrete, usually because they
   // are type variables for parameters of a function.
@@ -407,15 +410,13 @@ private:
 };
 
 struct Scope {
-  Scope(Unifier *unifier)
-      : unifier(unifier), envScope(unifier->env), typeEnvScope(unifier->typeEnv),
-        concreteTypes(unifier->concreteTypes) {}
-  ~Scope() { unifier->concreteTypes = std::move(concreteTypes); }
+  Scope(Unifier *unifier);
+  ~Scope();
 
 private:
   Unifier *unifier;
   Unifier::EnvScope envScope;
-  Unifier::EnvScope typeEnvScope;
+  // Unifier::EnvScope typeEnvScope;
   Unifier::ConcreteTypes concreteTypes;
 };
 

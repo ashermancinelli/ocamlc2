@@ -100,11 +100,11 @@ TypeExpr* Unifier::getTypeVariable(Node node) {
 
 TypeExpr* Unifier::getTypeVariable(llvm::StringRef name) {
   auto str = stringArena.save(name);
-  if (auto *type = env.lookup(str)) {
+  if (auto *type = typeEnv.lookup(str)) {
     return type;
   }
   auto *type = createTypeVariable();
-  env.insert(str, type);
+  typeEnv.insert({str, type});
   return type;
 }
 
@@ -143,6 +143,7 @@ llvm::StringRef Unifier::getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path
 }
 
 std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
+  TRACE();
   if (currentModule.size() > 0) {
     auto currentModulePath = currentModule;
     currentModulePath.insert(currentModulePath.end(), path.begin(), path.end());
@@ -152,28 +153,61 @@ std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
 }
 
 TypeExpr *Unifier::declareType(Node node, TypeExpr* type) {
+  TRACE();
   ORNULL(type);
   return declareType(getTextSaved(node), type);
 }
 
 TypeExpr *Unifier::declareType(llvm::StringRef name, TypeExpr* type) {
+  TRACE();
   ORNULL(type);
   auto str = getHashedPathSaved({name});
   DBGS("Declaring type: " << str << " as " << *type << '\n');
-  typeEnv.insert(str, type);
+  typeEnv.insert({str, type});
   return type;
 }
 
 TypeExpr *Unifier::maybeGetDeclaredType(llvm::StringRef name) {
-  name = getHashedPathSaved(name);
-  return typeEnv.lookup(name);
+  TRACE();
+  if (auto *type = maybeGetDeclaredTypeWithName(name)) {
+    return type;
+  }
+  for (auto &path : llvm::reverse(moduleSearchPath)) {
+    auto possiblePath = hashPath(std::vector<std::string>{path.str(), name.str()});
+    auto str = stringArena.save(possiblePath);
+    DBGS("Checking module search path: " << path << " with name: " << str << '\n');
+    if (auto *type = maybeGetDeclaredTypeWithName(str)) {
+      return type;
+    }
+  }
+  return nullptr;
 }
 
 TypeExpr *Unifier::maybeGetDeclaredTypeWithName(llvm::StringRef name) {
-  return typeEnv.lookup(name);
+  TRACE();
+  DBGS("Getting type: " << name << '\n');
+  if (auto *type = typeEnv.lookup(name)) {
+    return clone(type);
+  }
+  DBGS("Type not declared: " << name << '\n');
+  return nullptr;
+}
+
+TypeExpr *Unifier::getDeclaredType(llvm::StringRef name) {
+  TRACE();
+  if (auto *type = maybeGetDeclaredType(name)) {
+    return type;
+  }
+  RNULL("Type not declared: " + name.str());
+}
+
+TypeExpr *Unifier::getDeclaredType(Node node) {
+  TRACE();
+  return getDeclaredType(getTextSaved(node));
 }
 
 TypeExpr* Unifier::declareVariable(llvm::StringRef name, TypeExpr* type) {
+  TRACE();
   ORNULL(type);
   auto str = getHashedPathSaved({name});
   DBGS("Declaring: " << str << " as " << *type << '\n');
@@ -190,6 +224,7 @@ TypeExpr* Unifier::declareVariable(llvm::StringRef name, TypeExpr* type) {
 }
 
 TypeExpr* Unifier::declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* type) {
+  TRACE();
   auto hashedPath = hashPath(path);
   DBGS("Declaring path: " << getPath(path) << '(' << hashedPath << ')' << " as " << *type << '\n');
   return declareVariable(hashedPath, type);
@@ -225,6 +260,7 @@ TypeExpr* Unifier::getVariableType(const std::string_view name) {
 }
 
 TypeExpr* Unifier::getVariableType(const llvm::StringRef name) {
+  TRACE();
   if (auto *type = maybeGetVariableType(name)) {
     return type;
   }
@@ -283,10 +319,10 @@ LogicalResult Unifier::initializeEnvironment() {
   for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
     auto str = stringArena.save(name);
     DBGS("Declaring type operator: " << str << '\n');
-    env.insert(str, createTypeOperator(str));
+    typeEnv.insert({str, createTypeOperator(str)});
   }
   auto *varargs = create<VarargsOperator>();
-  declareVariable(varargs->getName(), varargs);
+  declareType(varargs->getName(), varargs);
 
   pushModule("Stdlib");
   auto *T_bool = getBoolType();
@@ -314,7 +350,6 @@ LogicalResult Unifier::initializeEnvironment() {
     declareVariable("@@", concatType);
   }
   {
-
     // Builtin constructors
     auto *Optional = getOptionalType();
     declareVariable("None", Optional);
@@ -1353,7 +1388,7 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
     if (seenFieldNames.size() != fieldExpressions.size()) {
       continue;
     }
-    auto *maybeSeenRecordType = getVariableType(recordName);
+    auto *maybeSeenRecordType = getDeclaredType(recordName);
     auto *seenRecordType = llvm::dyn_cast<RecordOperator>(maybeSeenRecordType);
     RNULL_IF_NULL(seenRecordType, "Expected record type");
     auto seenRecordTypes = seenRecordType->getArgs();
@@ -1389,7 +1424,7 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
   }
   for (auto [recordName, fieldNames] : seenRecordFields) {
     if (auto it = llvm::find(fieldNames, field); it != fieldNames.end()) {
-      auto *recordTypeVar = getVariableType(recordName);
+      auto *recordTypeVar = getDeclaredType(recordName);
       auto *recordType = llvm::dyn_cast<RecordOperator>(recordTypeVar);
       if (not recordType) {
         std::string str;
@@ -1445,8 +1480,7 @@ TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_constructor_path");
-  auto pathParts = getPathParts(node);
-  return getVariableType(pathParts);
+  return getDeclaredType(node);
 }
 
 TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
@@ -1514,7 +1548,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   interface << "type ";
   for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
     typeVars.push_back(createTypeVariable());
-    declareVariable(child, typeVars.back());
+    declareType(child, typeVars.back());
     interface << *typeVars.back();
   }
   auto name = node.getChildByFieldName("name");
@@ -1524,18 +1558,19 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto typeName = getTextSaved(name);
   TypeExpr *thisType = createTypeOperator(typeName, typeVars);
   if (equation) {
-    DBGS("Type binding is a type alias\n");
     // This is a type alias and we can disregard the original type operator.
     // we MUST disregard the original type operator so type aliases are fully
     // transparent.
+    DBGS("Type binding has an equation\n");
     thisType = infer(*equation);
     ORNULL(thisType);
+    DBGS(*thisType << '\n');
   } 
   if (body) {
     if (body->getType() == "variant_declaration") {
       // Variant constructors return the type of the variant, so declare it before inferring
       // the full variant type.
-      declareVariable(name, thisType);
+      declareType(name, thisType);
       ORNULL(inferVariantDeclaration(thisType, body->getCursor()));
       interface << " = " << *thisType;
       return thisType;
@@ -1545,13 +1580,13 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
       ORNULL(recordType);
       interface << " = " << *recordType;
-      return declareVariable(name, recordType);
+      return declareType(name, recordType);
     } else {
       RNULL("Unknown type binding body type", *body);
     }
   } else {
-    DBGS("Type alias to type constructor");
-    ORNULL(declareVariable(name, thisType));
+    DBGS("Type alias to type constructor\n");
+    ORNULL(declareType(name, thisType));
   }
   return thisType;
 }
@@ -1566,7 +1601,7 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
     return infer(child);
   });
   auto text = getTextSaved(name);
-  if (auto *type = maybeGetVariableType(text)) {
+  if (auto *type = maybeGetDeclaredType(text)) {
     DBGS("Type already exists: " << *type << '\n');
     if (auto *typeOperator = llvm::dyn_cast<TypeOperator>(type)) {
       DBGS("Type operator found\n");
@@ -1575,6 +1610,8 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
              "Type operator has different number of arguments than type "
              "arguments");
       for (auto [toArg, typeArg] : llvm::zip(toArgs, typeArgs)) {
+        ORNULL(toArg);
+        ORNULL(typeArg);
         RNULL_IF(failed(unify(toArg, typeArg)),
                  "Failed to unify type operator argument");
       }
@@ -1765,32 +1802,32 @@ bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
 }
 
 TypeExpr *Unifier::getBoolType() { 
-  static TypeExpr *type = getVariableType(TypeOperator::getBoolOperatorName());
+  static TypeExpr *type = getDeclaredType(TypeOperator::getBoolOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getFloatType() { 
-  static TypeExpr *type = getVariableType(TypeOperator::getFloatOperatorName());
+  static TypeExpr *type = getDeclaredType(TypeOperator::getFloatOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getIntType() { 
-  static TypeExpr *type = getVariableType(TypeOperator::getIntOperatorName());
+  static TypeExpr *type = getDeclaredType(TypeOperator::getIntOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getUnitType() { 
-  static TypeExpr *type = getVariableType(TypeOperator::getUnitOperatorName());
+  static TypeExpr *type = getDeclaredType(TypeOperator::getUnitOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getStringType() { 
-  static TypeExpr *type = getVariableType(TypeOperator::getStringOperatorName());
+  static TypeExpr *type = getDeclaredType(TypeOperator::getStringOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getWildcardType() { 
-  static TypeExpr *type = getVariableType(TypeOperator::getWildcardOperatorName());
+  static TypeExpr *type = getDeclaredType(TypeOperator::getWildcardOperatorName());
   return type;
 }
 
@@ -1811,15 +1848,15 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   };
   if (node.getType() == "number") {
     auto text = getText(node);
-    return text.contains('.') ? getVariableType("float") : getVariableType("int");
+    return text.contains('.') ? getDeclaredType("float") : getDeclaredType("int");
   } else if (node.getType() == "float") {
-    return getVariableType("float");
+    return getDeclaredType("float");
   } else if (node.getType() == "boolean") {
     return getBoolType();
   } else if (node.getType() == "unit") {
     return getUnitType();
   } else if (node.getType() == "string") {
-    return getVariableType("string");
+    return getDeclaredType("string");
   } else if (node.getType() == "guard") {
     return inferGuard(std::move(ast));
   } else if (node.getType() == "do_clause") {
@@ -2033,6 +2070,16 @@ llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name
     os << "Type unknown for symbol: '" << name << "'\n";
   }
   return os;
+}
+
+detail::Scope::Scope(Unifier *unifier)
+    : unifier(unifier), envScope(unifier->env),
+      concreteTypes(unifier->concreteTypes) {
+  DBGS("open scope\n");
+}
+detail::Scope::~Scope() {
+  DBGS("close scope\n");
+  unifier->concreteTypes = std::move(concreteTypes);
 }
 
 } // namespace ocamlc2

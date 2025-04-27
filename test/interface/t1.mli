@@ -6,7 +6,7 @@ val t1 : unit -> unit
 val t2 : string -> unit
 val t3 : 'a -> unit
 val map : ('a -> 'b) -> 'a list -> 'b list
-external get : 'a -> int -> 'a = "%array_safe_get"
+external get : 'a -> int -> 'a = "array_safe_get"
 val ( ^ ) : string -> string -> string
 type 'a arrayalias = 'a array
 val t4 : 'a arrayalias -> 'a
