@@ -42,9 +42,11 @@ static void runUnderRlwrap(int argc, char **argv, fs::path exe, Unifier &unifier
     newArgs.emplace_back(argv[i]);
   }
   newArgs.push_back("--in-rlwrap");
-  SmallVector<char *> newArgsC = llvm::map_to_vector(newArgs, [](std::string &s) { return s.data(); });
   DBGS("Running under rlwrap: " << llvm::join(newArgs, " ") << '\n');
+  SmallVector<char *> newArgsC = llvm::map_to_vector(newArgs, [](std::string &s) { return s.data(); });
+  newArgsC.push_back(nullptr);
   execvp(rlwrap.c_str(), newArgsC.data());
+  llvm_unreachable("Should not return");
 }
 
 struct Command {
@@ -117,7 +119,7 @@ struct HelpCommand : public Command {
   void callback(Unifier &unifier, ArrayRef<std::string> args) override {
     llvm::outs() << "Available commands:\n";
     for (const auto &cmd : commands) {
-      cmd->name(llvm::outs() << "  " << ANSIColors::bold())
+      cmd->name(llvm::outs() << "  #" << ANSIColors::bold())
           << ANSIColors::reset() << ": ";
       cmd->help(llvm::outs()) << '\n';
     }
@@ -146,6 +148,32 @@ struct QuietCommand : public Command {
   }
 };
 
+struct ShellCommand : public Command {
+  void callback(Unifier &unifier, ArrayRef<std::string> args) override {
+    if (args.size() != 1) {
+      llvm::errs() << "Usage: #sh <command>\n";
+      return;
+    }
+    SmallVector<StringRef> newArgs = llvm::map_to_vector(args, [](auto &s) { return StringRef(s); });
+    auto path = llvm::sys::findProgramByName(StringRef(args[0]));
+    if (not path) {
+      llvm::errs() << "Command not found: " << args[0] << '\n';
+      return;
+    }
+    DBGS("Running command: " << *path << " " << llvm::join(newArgs, " ") << '\n');
+    int rc = llvm::sys::ExecuteAndWait(*path, newArgs, {}, {}, {});
+    if (rc != 0) {
+      llvm::errs() << "Command failed with status " << rc << '\n';
+    }
+  }
+  std::string_view help() const override {
+    return "Run a shell command";
+  }
+  std::string_view name() const override {
+    return "sh";
+  }
+};
+
 [[noreturn]] void exitRepl(Unifier &unifier) {
   llvm::outs() << ANSIColors::faint() << ANSIColors::italic() << "Goodbye!\n" << ANSIColors::reset();
   std::exit(unifier.anyFatalErrors());
@@ -164,9 +192,11 @@ struct QuietCommand : public Command {
   commands.emplace_back(std::make_unique<ShowSourceCommand>(sourceSoFar));
   commands.emplace_back(std::make_unique<HelpCommand>(commands));
   commands.emplace_back(std::make_unique<QuietCommand>(CL::Quiet));
+  commands.emplace_back(std::make_unique<ShellCommand>());
 
   if (not CL::InRLWrap) {
     runUnderRlwrap(argc, argv, exe, unifier);
+    assert(false && "Should not return");
   }
   unifier.setMaxErrors(1);
   std::string line;
@@ -176,7 +206,7 @@ struct QuietCommand : public Command {
                "for more commands)\n"
             << ANSIColors::reset();
   auto newPrompt = [&] {
-    llvm::outs() << ANSIColors::bold() << "> " << ANSIColors::reset();
+    llvm::outs() << ANSIColors::faint() << "> " << ANSIColors::reset();
   };
   auto continuePrompt = [&] {
     llvm::outs() << ANSIColors::faint() << ". " << ANSIColors::reset();
