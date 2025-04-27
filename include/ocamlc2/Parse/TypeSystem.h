@@ -90,6 +90,19 @@ struct RecordOperator : public TypeOperator {
   }
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Record; }
   inline llvm::ArrayRef<llvm::StringRef> getFieldNames() const { return fieldNames; }
+  inline std::string decl() const {
+    std::string s;
+    llvm::raw_string_ostream ss(s);
+    auto zipped = llvm::zip(fieldNames, args);
+    auto first = zipped.begin();
+    auto [name, type] = *first;
+    ss << "{" << name << ":" << *type;
+    for (auto [name, type] : llvm::drop_begin(zipped)) {
+      ss << "; " << name << ":" << *type;
+    }
+    ss << '}';
+    return ss.str();
+  }
 private:
   llvm::SmallVector<llvm::StringRef> fieldNames;
   void normalize() {
@@ -196,14 +209,7 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const RecordOperator
   auto fieldNames = record.getFieldNames();
   auto fieldTypes = record.getArgs();
   assert(fieldNames.size() == fieldTypes.size() && "field names and field types must be the same size");
-  auto zipped = llvm::zip(fieldNames, fieldTypes);
-  auto first = zipped.begin();
-  auto [name, type] = *first;
-  os << record.getName() << "{" << name << ":" << *type;
-  for (auto [name, type] : llvm::drop_begin(zipped)) {
-    os << "; " << name << ":" << *type;
-  }
-  return os << '}';
+  return os << record.getName();
 }
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const FunctionOperator& func) {

@@ -1444,7 +1444,7 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
   RNULL(ss.str(), node);
 }
 
-TypeExpr* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Cursor ast) {
+RecordOperator* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Cursor ast) {
   auto *type = inferRecordDeclaration(std::move(ast));
   ORNULL(type);
   auto *recordType = llvm::dyn_cast<RecordOperator>(type);
@@ -1455,7 +1455,7 @@ TypeExpr* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Cursor ast
   return getRecordType(recordName, recordType->getArgs(), fieldNames);
 }
 
-TypeExpr* Unifier::inferRecordDeclaration(Cursor ast) {
+RecordOperator* Unifier::inferRecordDeclaration(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "record_declaration");
@@ -1490,6 +1490,7 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     auto *type = inferTypeBinding(child.getCursor());
+    ORNULL(type);
     setType(child, type);
   }
   return getUnitType();
@@ -1573,13 +1574,15 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       declareType(name, thisType);
       ORNULL(inferVariantDeclaration(thisType, body->getCursor()));
       interface << " = " << *thisType;
+      nodesToDump.push_back(interface.str());
       return thisType;
     } else if (body->getType() == "record_declaration") {
       // Record declarations need the full record type inferred before declaring
       // the record type.
       auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
       ORNULL(recordType);
-      interface << " = " << *recordType;
+      interface << " = " << recordType->decl();
+      nodesToDump.push_back(interface.str());
       return declareType(name, recordType);
     } else {
       RNULL("Unknown type binding body type", *body);
@@ -1587,6 +1590,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   } else {
     DBGS("Type alias to type constructor\n");
     ORNULL(declareType(name, thisType));
+    nodesToDump.push_back(interface.str());
   }
   return thisType;
 }

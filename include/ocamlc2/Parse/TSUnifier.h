@@ -211,8 +211,8 @@ private:
   TypeExpr *inferParenthesizedPattern(Cursor ast);
   TypeExpr *inferPattern(ts::Node node);
   TypeExpr *inferProductExpression(Cursor ast);
-  TypeExpr *inferRecordDeclaration(llvm::StringRef recordName, Cursor ast);
-  TypeExpr *inferRecordDeclaration(Cursor ast);
+  RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, Cursor ast);
+  RecordOperator *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferRecordExpression(Cursor ast);
   TypeExpr *inferSequenceExpression(Cursor ast);
   TypeExpr *inferTupleExpression(Cursor ast);
