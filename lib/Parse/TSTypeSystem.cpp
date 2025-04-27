@@ -203,7 +203,7 @@ TypeExpr* Unifier::getType(const std::string_view name) {
 }
 
 nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
-  TRACE();
+  DBGS(message << '\n');
   if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
   message += SSWRAP("\n" << "at " << filename << ":" << lineno);
   diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, node.getPointRange());
@@ -211,7 +211,7 @@ nullptr_t Unifier::error(std::string message, ts::Node node, const char* filenam
 }
 
 nullptr_t Unifier::error(std::string message, const char* filename, unsigned long lineno) {
-  TRACE();
+  DBGS(message << '\n');
   if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
   message += SSWRAP("\n" << "at " << filename << ":" << lineno);
   diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, std::nullopt);
