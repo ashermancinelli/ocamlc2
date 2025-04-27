@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
     runRepl(argc, argv, exe, unifier);
   }
   for (auto &filepath : inputFilenames) {
-    llvm::errs() << "Loading file: " << filepath << '\n';
+    DBGS("Loading file: " << filepath << '\n');
     unifier.loadSourceFile(filepath);
     if (failed(unifier)) {
       unifier.showErrors();

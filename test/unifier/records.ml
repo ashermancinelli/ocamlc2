@@ -1,6 +1,5 @@
 (*
-RUN: p3 --freestanding --dtypes %s | FileCheck %s.ref
-XFAIL: *
+RUN: p3 --dtypes %s | FileCheck %s.ref
 *)
 type ptype = TNormal | TFire | TWater
 type mon = {name : string; hp : int; ty : ptype}

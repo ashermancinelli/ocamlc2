@@ -17,6 +17,7 @@ bool DParseTree = false;
 bool DTypedTree = false;
 bool Repl = false;
 bool InRLWrap = false;
+bool Quiet = false;
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
 
 void maybeReplaceWithGDB(int argc, char **argv) {
@@ -41,6 +42,12 @@ void maybeReplaceWithGDB(int argc, char **argv) {
 }
 
 using namespace ocamlc2::CL;
+
+static cl::opt<bool, true> quiet("quiet", cl::desc("Disable AST and type printing after each command"),
+                                 cl::location(Quiet), cl::cat(OcamlOptions));
+
+static cl::alias Quiet("q", cl::desc("Disable AST and type printing after each command"),
+                       cl::aliasopt(quiet), cl::cat(OcamlOptions));
 
 static cl::opt<bool, true> repl("repl", cl::desc("Run the REPL"),
                                cl::location(Repl), cl::cat(OcamlOptions));
