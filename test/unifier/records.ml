@@ -1,5 +1,6 @@
 (*
-RUN: p3 -f --dtypes %s | FileCheck %s.ref
+RUN: p3 -f -d -cpp %s | FileCheck %s.ref
+RUN: ocamlc %s -i -pp cppo
 *)
 
 module List : sig
@@ -19,5 +20,5 @@ let mon3 = {name = "Squirtle"; hp = 100; ty = TWater}
 
 let mon_list = [mon1; mon2; mon3]
 
-let mon_list_of_type (ty : ptype) : mon list =
-  List.filter (fun m -> m.ty = ty) mon_list
+let mon_list_of_type (ptype : ptype) : mon list =
+  List.filter (fun m -> m.ty = ptype) mon_list

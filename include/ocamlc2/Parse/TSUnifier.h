@@ -269,6 +269,7 @@ private:
                                     llvm::SmallVector<TypeExpr *> &typevars);
   inline bool declared(llvm::StringRef name) { return env.count(name); }
 
+  llvm::StringRef saveString(llvm::StringRef str);
   TypeExpr *getType(const llvm::StringRef name);
   TypeExpr *maybeGetType(const llvm::StringRef name);
   TypeExpr *maybeGetTypeWithName(const llvm::StringRef name);
@@ -311,6 +312,7 @@ private:
 
   // Environment for type variables
   Env env;
+  Env typeEnv;
 
   // Set of types that have been declared as concrete, usually because they
   // are type variables for parameters of a function.
@@ -327,7 +329,7 @@ private:
 
   // It is useful to keep and dump certain nodes and types for debugging
   // and testing. Record them here to be dumped after inference is complete.
-  llvm::SmallVector<std::tuple<std::string, unsigned, ts::Node>> nodesToDump;
+  llvm::SmallVector<std::string> nodesToDump;
 
   // Sidecar for caching inferred types
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
@@ -395,13 +397,14 @@ private:
 
 struct Scope {
   Scope(Unifier *unifier)
-      : unifier(unifier), envScope(unifier->env),
+      : unifier(unifier), envScope(unifier->env), typeEnvScope(unifier->typeEnv),
         concreteTypes(unifier->concreteTypes) {}
   ~Scope() { unifier->concreteTypes = std::move(concreteTypes); }
 
 private:
   Unifier *unifier;
   Unifier::EnvScope envScope;
+  Unifier::EnvScope typeEnvScope;
   Unifier::ConcreteTypes concreteTypes;
 };
 

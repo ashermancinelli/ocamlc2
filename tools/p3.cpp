@@ -6,6 +6,7 @@
 #include "ocamlc2/Support/Repl.h"
 #include <iostream>
 #include <filesystem>
+#include <llvm/ADT/SmallSet.h>
 #include <llvm/Support/FileSystem.h>
 #include <memory>
 #include <llvm/Support/CommandLine.h>
@@ -40,6 +41,11 @@ int main(int argc, char* argv[]) {
   TRACE();
   if (CL::Repl or CL::InRLWrap or inputFilenames.empty()) {
     runRepl(argc, argv, exe, unifier);
+  }
+  auto set = std::set<std::string>(inputFilenames.begin(), inputFilenames.end());
+  if (set.size() != inputFilenames.size()) {
+    llvm::errs() << "Duplicate input file(s)\n";
+    return 1;
   }
   for (auto &filepath : inputFilenames) {
     DBGS("Loading file: " << filepath << '\n');

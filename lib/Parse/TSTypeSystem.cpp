@@ -48,7 +48,8 @@
 #define RNULL_IF_NULL(ptr, ...) RNULL_IF(ptr == nullptr, __VA_ARGS__)
 #define SSWRAP(...)                                                            \
   [&] {                                                                        \
-    std::stringstream ss;                                                      \
+    std::string str;                                                           \
+    llvm::raw_string_ostream ss(str);                                          \
     ss << __VA_ARGS__;                                                         \
     return ss.str();                                                           \
   }()
@@ -335,14 +336,17 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
     return;
   }
   seen.insert(node.getID());
-  const auto sourceIndex = sources.size() - 1;
   if (node.getType() == "let_binding") {
     auto name = node.getNamedChild(0);
     if (name.getType() != "unit") {
-      nodesToDump.push_back(std::make_tuple("let", sourceIndex, node));
+      nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : " << *getType(node.getID())));
     }
   } else if (node.getType() == "value_specification" || node.getType() == "external") {
-    nodesToDump.push_back(std::make_tuple("val", sourceIndex, node));
+    auto name = node.getNamedChild(0);
+    nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : " << *getType(node.getID())));
+  } else if (node.getType() == "type_binding") {
+    auto name = node.getNamedChild(0);
+    nodesToDump.push_back(SSWRAP("type " << getTextSaved(name) << " = " << *getType(node.getID())));
   }
 }
 
@@ -1220,7 +1224,10 @@ TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_definition");
-  return inferModuleBinding(node.getNamedChild(0).getCursor());
+  auto *moduleBinding = inferModuleBinding(node.getNamedChild(0).getCursor());
+  ORNULL(moduleBinding);
+  setType(node, moduleBinding);
+  return moduleBinding;
 }
 
 TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
@@ -1245,12 +1252,14 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
       assert(false && "Unknown module binding child type");
     }
   }
+  nodesToDump.push_back(SSWRAP("module " << getTextSaved(name) << " : sig"));
   if (signature) {
     inferModuleSignature(signature->getCursor());
   }
   if (structure) {
     inferModuleStructure(structure->getCursor());
   }
+  nodesToDump.push_back(SSWRAP("end"));
   return createTypeOperator(
       hashPath(ArrayRef<StringRef>{"Module", getTextSaved(name)}), {});
 }
@@ -1357,7 +1366,8 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
       auto *recordTypeVar = getType(recordName);
       auto *recordType = llvm::dyn_cast<RecordOperator>(recordTypeVar);
       if (not recordType) {
-        std::stringstream ss;
+        std::string str;
+        llvm::raw_string_ostream ss(str);
         ss << "Type " << *recordTypeVar
            << " was saved as a record type, but was not a record type when it "
               "was retrieved later.";
@@ -1367,7 +1377,8 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
       return recordType->at(index);
     }
   }
-  std::stringstream ss;
+  std::string str;
+  llvm::raw_string_ostream ss(str);
   ss << "Unbound record field '" << field << "'";
   RNULL(ss.str(), node);
 }
@@ -1472,11 +1483,16 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto namedChildren = getNamedChildren(node);
   auto *namedIterator = namedChildren.begin();
   SmallVector<TypeExpr*> typeVars;
+  std::string interfaceStr;
+  llvm::raw_string_ostream interface(interfaceStr);
+  interface << "type ";
   for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
     typeVars.push_back(createTypeVariable());
     declare(child, typeVars.back());
+    interface << *typeVars.back();
   }
   auto name = node.getChildByFieldName("name");
+  interface << getTextSaved(name);
   auto equation = toOptional(node.getChildByFieldName("equation"));
   auto body = toOptional(node.getChildByFieldName("body"));
   auto typeName = getTextSaved(name);
@@ -1495,12 +1511,14 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       // the full variant type.
       declare(name, thisType);
       ORNULL(inferVariantDeclaration(thisType, body->getCursor()));
+      interface << " = " << *thisType;
       return thisType;
     } else if (body->getType() == "record_declaration") {
       // Record declarations need the full record type inferred before declaring
       // the record type.
       auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
       ORNULL(recordType);
+      interface << " = " << *recordType;
       return declare(name, recordType);
     } else {
       RNULL("Unknown type binding body type", *body);
@@ -1857,6 +1875,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferFieldGetExpression(std::move(ast));
   }
   const auto message = ("Unknown node type: "s + node.getType()).str();
+  llvm::errs() << message << '\n';
+  assert(false && "Unknown node type");
   RNULL(message, node);
 }
 
@@ -1891,6 +1911,14 @@ void Unifier::loadSource(llvm::StringRef source) {
 }
 
 void Unifier::loadSourceFile(fs::path filepath) {
+  if (CL::PreprocessWithCPPO) {
+    auto preprocessed = preprocessWithCPPO(filepath);
+    if (failed(preprocessed)) {
+      llvm::errs() << "Failed to preprocess file: " << filepath << '\n';
+      return;
+    }
+    filepath = preprocessed.value();
+  }
   if (filepath == "-") {
     auto source = slurpStdin();
     if (failed(source)) {
@@ -1959,10 +1987,8 @@ void Unifier::dumpTypes(llvm::raw_ostream &os) {
   if (!diagnostics.empty()) {
     return showErrors();
   }
-  for (auto [name, sourceIndex, node] : nodesToDump) {
-    std::string_view source = sources[sourceIndex].source;
-    os << name << ": " << ocamlc2::getText(node.getNamedChild(0), source)
-       << " : " << *getType(node.getID()) << '\n';
+  for (auto node : nodesToDump) {
+    os << node << '\n';
   }
 }
 

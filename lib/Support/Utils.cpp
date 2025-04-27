@@ -7,14 +7,28 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <llvm/Support/Program.h>
 #include <llvm/Support/raw_ostream.h>
 #include "ocamlc2/Parse/TSUtil.h"
 #include <cpp-tree-sitter.h>
+#include <unistd.h>
+#include "ocamlc2/OCamlC2Config.h"
 #define DEBUG_TYPE "utils"
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace ocamlc2 {
 namespace fs = std::filesystem;
+
+namespace {
+  static constexpr const char* cppoArgs[] = {
+    "-D", "OCAMLC2",
+    "-D", "OCAML_VERSION=" OCAML_VERSION,
+    "-D", "OCAMLC2_VERSION=" OCAMLC2_VERSION,
+    "-D", "OCAMLC2_LINKER_FLAGS=" OCAMLC2_LINKER_FLAGS,
+    "-D", "OCAMLC2_COMPILER=" OCAML_COMPILER,
+    "-D", "CPPO_EXECUTABLE=" CPPO_EXECUTABLE,
+  };
+}
 
 FailureOr<std::string> slurpFile(const std::string &path) {
   std::ifstream file(path);
@@ -26,6 +40,34 @@ FailureOr<std::string> slurpFile(const std::string &path) {
   std::string contents((std::istreambuf_iterator<char>(file)),
                        std::istreambuf_iterator<char>());
   return contents;
+}
+
+mlir::FailureOr<fs::path> preprocessWithCPPO(const fs::path &path) {
+  static const fs::path cppo = CPPO_EXECUTABLE;
+  if (!fs::exists(cppo)) {
+    return mlir::failure();
+  }
+  const auto extension = [&] -> std::string {
+    if (path == "-") {
+      return ".ml";
+    } else {
+      return path.extension().string();
+    }
+  }();
+  auto args = llvm::SmallVector<std::string>{cppo.string()};
+  args.append(std::begin(cppoArgs), std::end(cppoArgs));
+  args.push_back(path.string());
+  args.push_back("-o");
+  fs::path outputPath = fs::temp_directory_path() / (path.filename().string() + ".cppo" + extension);
+  args.push_back(outputPath.string());
+  auto argsArray = llvm::to_vector(llvm::map_range(
+      args, [](const std::string &arg) -> llvm::StringRef { return arg; }));
+  std::optional<llvm::StringRef> redirects[] = {std::nullopt, outputPath.c_str(), std::nullopt};
+  int rc = llvm::sys::ExecuteAndWait(cppo.string(), argsArray, std::nullopt, redirects);
+  if (rc == -1) {
+    return mlir::failure();
+  }
+  return outputPath;
 }
 
 mlir::FailureOr<std::string> slurpStdin() {

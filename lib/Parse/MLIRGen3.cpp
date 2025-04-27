@@ -37,6 +37,14 @@ using mlir::LogicalResult;
 
 static StringArena stringArena;
 
+#define SSWRAP(x)                                                              \
+  [&] {                                                                        \
+    std::string str;                                                           \
+    llvm::raw_string_ostream ss(str);                                          \
+    ss << x;                                                                   \
+    return ss.str();                                                           \
+  }()
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   TRACE();
   const auto children = getNamedChildren(node);
@@ -127,7 +135,7 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(const ocamlc2::TypeExpr *
     return mlir::FunctionType::get(builder.getContext(), successfulArgTypes, {returnType});
   }
   return error(loc) << "Could get MLIR type from unified function type: "
-                     << *type;
+                     << SSWRAP(*type);
 }
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::TypeExpr *type,
@@ -138,20 +146,20 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const ocamlc2::TypeExpr *type,
     if (args.empty()) {
       auto mlirType = mlirTypeFromBasicTypeOperator(to->getName());
       if (failed(mlirType)) {
-        return error(loc) << "Unknown basic type operator: " << *type;
+        return error(loc) << "Unknown basic type operator: " << SSWRAP(*type);
       }
       return mlirType;
     } else if (llvm::isa<ocamlc2::FunctionOperator>(type)) {
       return mlirFunctionType(type, loc);
     }
-    return error(loc) << "Unknown type operator: " << *type;
+    return error(loc) << "Unknown type operator: " << SSWRAP(*type);
   } else if (const auto *tv = llvm::dyn_cast<ocamlc2::TypeVariable>(type)) {
     if (tv->instantiated()) {
       return mlirType(tv->instance, loc);
     }
-    return error(loc) << "Uninstantiated type variable: " << *type;
+    return error(loc) << "Uninstantiated type variable: " << SSWRAP(*type);
   }
-  return error(loc) << "Unknown type: " << *type;
+  return error(loc) << "Unknown type: " << SSWRAP(*type);
 }
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const Node node) {

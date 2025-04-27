@@ -7,6 +7,7 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -19,6 +20,16 @@
 #include <ocamlc2/Parse/ScopedHashTable.h>
 
 namespace ocamlc2 {
+
+// Forward declarations
+struct TypeExpr;
+struct TypeOperator;
+struct RecordOperator;
+struct FunctionOperator;
+struct TupleOperator;
+struct TypeVariable;
+struct UnitOperator;
+struct VarargsOperator;
 
 struct TypeExpr {
   // clang-format off
@@ -37,7 +48,7 @@ struct TypeExpr {
   virtual llvm::StringRef getName() const = 0;
   Kind getKind() const { return kind; }
   bool operator==(const TypeExpr& other) const;
-  template<typename T> friend T& operator<<(T& os, const TypeExpr& type);
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type);
 private:
   Kind kind;
 };
@@ -48,7 +59,7 @@ struct TypeOperator : public TypeExpr {
   inline llvm::StringRef getName() const override { return name; }
   inline llvm::ArrayRef<TypeExpr*> getArgs() const { return args; }
   static inline bool classof(const TypeExpr* expr) { return (expr->getKind() & Kind::Operator) != 0; }
-  template<typename T> friend T& operator<<(T& os, const TypeOperator& op);
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op);
   inline TypeExpr* at(size_t index) const { return args[index]; }
   consteval static llvm::StringRef getConstructorOperatorName() { return "V"; }
   consteval static llvm::StringRef getListOperatorName() { return "list"; }
@@ -149,15 +160,14 @@ struct TypeVariable : public TypeExpr {
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Variable; }
   inline bool instantiated() const { return instance != nullptr; }
   bool operator==(const TypeVariable& other) const;
-  template<typename T> friend T& operator<<(T& os, const TypeVariable& var);
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var);
   TypeExpr* instance = nullptr;
 private:
   int id;
   mutable std::optional<std::string> name = std::nullopt;
 };
 
-template<typename T>
-T& operator<<(T& os, const TypeOperator& op) {
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op) {
   auto args = op.getArgs();
   auto name = op.getName().str();
   if (args.empty()) {
@@ -173,8 +183,7 @@ T& operator<<(T& os, const TypeOperator& op) {
   return os << ") " << name;
 }
 
-template<typename T>
-T& operator<<(T& os, const TupleOperator& tuple) {
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TupleOperator& tuple) {
   auto args = tuple.getArgs();
   os << *args.front();
   for (auto *arg : args.drop_front()) {
@@ -183,23 +192,21 @@ T& operator<<(T& os, const TupleOperator& tuple) {
   return os;
 }
 
-template<typename T>
-T& operator<<(T& os, const RecordOperator& record) {
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const RecordOperator& record) {
   auto fieldNames = record.getFieldNames();
   auto fieldTypes = record.getArgs();
   assert(fieldNames.size() == fieldTypes.size() && "field names and field types must be the same size");
   auto zipped = llvm::zip(fieldNames, fieldTypes);
   auto first = zipped.begin();
   auto [name, type] = *first;
-  os << "{" << name << ":" << *type;
+  os << record.getName() << "{" << name << ":" << *type;
   for (auto [name, type] : llvm::drop_begin(zipped)) {
     os << "; " << name << ":" << *type;
   }
   return os << '}';
 }
 
-template<typename T>
-T& operator<<(T& os, const FunctionOperator& func) {
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const FunctionOperator& func) {
   const auto argList = func.getArgs();
   const auto *returnType = argList.back();
   if (!returnType) return os << "<error>";
@@ -209,7 +216,7 @@ T& operator<<(T& os, const FunctionOperator& func) {
   assert(args.size() == descs.size() && "argument list and parameter descriptors must be the same size");
   auto argIter = llvm::zip(descs, args);
   os << '(';
-  auto showArg = [&](auto desc, auto *arg) -> T& {
+  auto showArg = [&](auto desc, auto *arg) -> llvm::raw_ostream& {
     if (desc.isOptional()) {
       os << "?";
     }
@@ -227,8 +234,7 @@ T& operator<<(T& os, const FunctionOperator& func) {
   return os << ')';
 }
 
-template<typename T>
-T& operator<<(T& os, const TypeVariable& var) {
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
   if (var.instantiated()) {
     os << *var.instance;
   } else {
@@ -237,8 +243,7 @@ T& operator<<(T& os, const TypeVariable& var) {
   return os;
 }
 
-template<typename T>
-T& operator<<(T& os, const TypeExpr& type) {
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type) {
   if (auto *fo = llvm::dyn_cast<FunctionOperator>(&type)) {
     os << *fo;
   } else if (auto *to = llvm::dyn_cast<TupleOperator>(&type)) {

@@ -9,7 +9,5 @@ let bval : l = B 2 in
     ;;
 
 (*
-RUN: p3 %s --dtypes | FileCheck %s
-CHECK: let: bval : l
-CHECK: let: x : int
+RUN: p3 %s --dtypes | FileCheck %s.ref
 *)

@@ -1,5 +1,8 @@
 #include "ocamlc2/Support/CL.h"
 #include <unistd.h>
+#include "ocamlc2/OCamlC2Config.h"
+#include <llvm/Support/FileSystem.h>
+#include <filesystem>
 
 using namespace llvm;
 
@@ -7,6 +10,7 @@ namespace ocamlc2::CL {
 namespace {
 static std::string debugger = "lldb";
 }
+namespace fs = std::filesystem;
 bool Debug = false;
 bool RunGDB = false;
 bool Color = true;
@@ -18,6 +22,8 @@ bool DTypedTree = false;
 bool Repl = false;
 bool InRLWrap = false;
 bool Quiet = false;
+bool PreprocessWithCPPO = false;
+
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
 
 void maybeReplaceWithGDB(int argc, char **argv) {
@@ -42,6 +48,11 @@ void maybeReplaceWithGDB(int argc, char **argv) {
 }
 
 using namespace ocamlc2::CL;
+
+static cl::opt<bool, true> preprocessWithCPPO("cpp",
+                                             cl::desc("Preprocess with CPPO"),
+                                             cl::location(PreprocessWithCPPO),
+                                             cl::cat(OcamlOptions));
 
 static cl::opt<bool, true> quiet("quiet", cl::desc("Disable AST and type printing after each command"),
                                  cl::location(Quiet), cl::cat(OcamlOptions));

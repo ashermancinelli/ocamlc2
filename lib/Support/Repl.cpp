@@ -5,6 +5,7 @@
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/Program.h>
+#include <llvm/Support/Process.h>
 #include <unistd.h>
 
 #define DEBUG_TYPE "repl"
@@ -144,6 +145,10 @@ struct QuietCommand : public Command {
 }
 
 [[noreturn]] void runRepl(int argc, char **argv, fs::path exe, Unifier &unifier) {
+  if (!llvm::sys::Process::StandardInIsUserInput()) {
+    llvm::errs() << "Error: Standard input is not a tty, can't start REPL\n";
+    std::exit(1);
+  }
   std::string sourceSoFar;
   static std::vector<std::unique_ptr<Command>> commands;
   commands.emplace_back(std::make_unique<TypeCommand>());

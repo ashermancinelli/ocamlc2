@@ -115,6 +115,7 @@ add_subdirectory(test)
 # Print configuration information
 message(STATUS "OCaml compiler found: ${OCAML_COMPILER}")
 message(STATUS "OCaml version: ${OCAML_VERSION}")
+message(STATUS "cppo executable: ${CPPO_EXECUTABLE}")
 
 # Configure version header
 configure_file(

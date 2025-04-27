@@ -10,6 +10,7 @@ namespace ocamlc2 {
 namespace fs = std::filesystem;
 mlir::FailureOr<std::string> slurpFile(const std::string &path);
 mlir::FailureOr<std::string> slurpStdin();
+mlir::FailureOr<fs::path> preprocessWithCPPO(const fs::path &path);
 
 struct StringArena {
   llvm::StringSet<> pool;
