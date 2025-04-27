@@ -90,8 +90,8 @@ struct Unifier {
     typeArena.push_back(std::make_unique<T>(std::forward<Args>(args)...));
     return static_cast<T *>(typeArena.back().get());
   }
-  TypeExpr *getType(ts::Node node);
-  TypeExpr *getType(ts::NodeID id);
+  TypeExpr *getVariableType(ts::Node node);
+  TypeExpr *getVariableType(ts::NodeID id);
   inline std::string_view getText(ts::Node node) {
     return ocamlc2::getText(node, sources.back().source);
   }
@@ -271,12 +271,12 @@ private:
   inline bool declared(llvm::StringRef name) { return env.count(name); }
 
   llvm::StringRef saveString(llvm::StringRef str);
-  TypeExpr *getType(const llvm::StringRef name);
-  TypeExpr *maybeGetType(const llvm::StringRef name);
-  TypeExpr *maybeGetTypeWithName(const llvm::StringRef name);
-  TypeExpr *getType(std::string_view name);
-  TypeExpr *getType(std::vector<std::string> path);
-  TypeExpr *getType(const char *name);
+  TypeExpr *getVariableType(const llvm::StringRef name);
+  TypeExpr *maybeGetVariableType(const llvm::StringRef name);
+  TypeExpr *maybeGetVariableTypeWithName(const llvm::StringRef name);
+  TypeExpr *getVariableType(std::string_view name);
+  TypeExpr *getVariableType(std::vector<std::string> path);
+  TypeExpr *getVariableType(const char *name);
   TypeExpr *setType(Node node, TypeExpr *type);
 
   // Does not error on missing typevariable because TVs are introduced implicitly

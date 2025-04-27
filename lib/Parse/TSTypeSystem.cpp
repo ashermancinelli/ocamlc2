@@ -178,28 +178,28 @@ TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
   return type;
 }
 
-TypeExpr* Unifier::getType(ts::NodeID id) {
+TypeExpr* Unifier::getVariableType(ts::NodeID id) {
   return nodeToType.lookup(id);
 }
 
-TypeExpr* Unifier::getType(const char *name) {
-  return getType(stringArena.save(name));
+TypeExpr* Unifier::getVariableType(const char *name) {
+  return getVariableType(stringArena.save(name));
 }
 
-TypeExpr* Unifier::getType(Node node) {
+TypeExpr* Unifier::getVariableType(Node node) {
   DBGS("Getting type for: " << node.getType() << '\n');
   if (llvm::is_contained(pathTypes, node.getType())) {
-    return getType(getPathParts(node));
+    return getVariableType(getPathParts(node));
   }
-  return getType(getTextSaved(node));
+  return getVariableType(getTextSaved(node));
 }
 
-TypeExpr* Unifier::getType(std::vector<std::string> path) {
+TypeExpr* Unifier::getVariableType(std::vector<std::string> path) {
   auto hashedPath = hashPath(path);
-  return getType(stringArena.save(hashedPath));
+  return getVariableType(stringArena.save(hashedPath));
 }
-TypeExpr* Unifier::getType(const std::string_view name) {
-  return getType(stringArena.save(name));
+TypeExpr* Unifier::getVariableType(const std::string_view name) {
+  return getVariableType(stringArena.save(name));
 }
 
 nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
@@ -218,23 +218,23 @@ nullptr_t Unifier::error(std::string message, const char* filename, unsigned lon
   return nullptr;
 }
 
-TypeExpr* Unifier::getType(const llvm::StringRef name) {
-  if (auto *type = maybeGetType(name)) {
+TypeExpr* Unifier::getVariableType(const llvm::StringRef name) {
+  if (auto *type = maybeGetVariableType(name)) {
     return type;
   }
   RNULL("Type not declared: " + name.str());
 }
 
-TypeExpr* Unifier::maybeGetType(const llvm::StringRef name) {
+TypeExpr* Unifier::maybeGetVariableType(const llvm::StringRef name) {
   DBGS("Getting type: " << name << '\n');
-  if (auto *type = maybeGetTypeWithName(name)) {
+  if (auto *type = maybeGetVariableTypeWithName(name)) {
     return type;
   }
   for (auto &path : llvm::reverse(moduleSearchPath)) {
     auto possiblePath = hashPath(std::vector<std::string>{path.str(), name.str()});
     auto str = stringArena.save(possiblePath);
     DBGS("Checking module search path: " << path << " with name: " << str << '\n');
-    if (auto *type = maybeGetTypeWithName(str)) {
+    if (auto *type = maybeGetVariableTypeWithName(str)) {
       return type;
     }
   }
@@ -242,7 +242,7 @@ TypeExpr* Unifier::maybeGetType(const llvm::StringRef name) {
   return nullptr;
 }
 
-TypeExpr *Unifier::maybeGetTypeWithName(const llvm::StringRef name) {
+TypeExpr *Unifier::maybeGetVariableTypeWithName(const llvm::StringRef name) {
   DBGS(name << '\n');
   if (auto *type = env.lookup(name)) {
     DBGS("Found type " << *type << '\n');
@@ -339,14 +339,18 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
   if (node.getType() == "let_binding") {
     auto name = node.getNamedChild(0);
     if (name.getType() != "unit") {
-      nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : " << *getType(node.getID())));
+      nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : "
+                                          << *getVariableType(node.getID())));
     }
-  } else if (node.getType() == "value_specification" || node.getType() == "external") {
+  } else if (node.getType() == "value_specification" ||
+             node.getType() == "external") {
     auto name = node.getNamedChild(0);
-    nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : " << *getType(node.getID())));
+    nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : "
+                                        << *getVariableType(node.getID())));
   } else if (node.getType() == "type_binding") {
     auto name = node.getNamedChild(0);
-    nodesToDump.push_back(SSWRAP("type " << getTextSaved(name) << " = " << *getType(node.getID())));
+    nodesToDump.push_back(SSWRAP("type " << getTextSaved(name) << " = "
+                                         << *getVariableType(node.getID())));
   }
 }
 
@@ -906,7 +910,7 @@ TypeExpr* Unifier::inferValuePath(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "value_path" or node.getType() == "module_path");
   auto pathParts = getPathParts(node);
-  return getType(pathParts);
+  return getVariableType(pathParts);
 }
 
 std::pair<FunctionOperator *, TypeExpr *>
@@ -1090,7 +1094,7 @@ TypeExpr* Unifier::inferConstructorPath(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "constructor_path");
   auto pathParts = getPathParts(node);
-  return getType(pathParts);
+  return getVariableType(pathParts);
 }
 
 TypeExpr* Unifier::inferArrayExpression(Cursor ast) {
@@ -1149,7 +1153,7 @@ TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
   auto rhsType = infer(ast.getCurrentNode());
   ORNULL(rhsType);
   assert(!ast.gotoNextSibling());
-  auto *opType = getType(op);
+  auto *opType = getVariableType(op);
   ORNULL(opType);
   auto *funcType = getFunctionType({lhsType, rhsType, createTypeVariable()});
   ORNULL(funcType);
@@ -1327,7 +1331,7 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
     if (seenFieldNames.size() != fieldExpressions.size()) {
       continue;
     }
-    auto *maybeSeenRecordType = getType(recordName);
+    auto *maybeSeenRecordType = getVariableType(recordName);
     auto *seenRecordType = llvm::dyn_cast<RecordOperator>(maybeSeenRecordType);
     RNULL_IF_NULL(seenRecordType, "Expected record type");
     auto seenRecordTypes = seenRecordType->getArgs();
@@ -1350,7 +1354,7 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "field_get_expression");
   auto record = node.getChildByFieldName("record");
-  auto *declaredType = getType(record);
+  auto *declaredType = getVariableType(record);
   auto field = getTextSaved(node.getChildByFieldName("field"));
   if (auto *recordOp = llvm::dyn_cast<RecordOperator>(declaredType)) {
     auto fields = recordOp->getFieldNames();
@@ -1363,7 +1367,7 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
   }
   for (auto [recordName, fieldNames] : seenRecordFields) {
     if (auto it = llvm::find(fieldNames, field); it != fieldNames.end()) {
-      auto *recordTypeVar = getType(recordName);
+      auto *recordTypeVar = getVariableType(recordName);
       auto *recordType = llvm::dyn_cast<RecordOperator>(recordTypeVar);
       if (not recordType) {
         std::string str;
@@ -1420,7 +1424,7 @@ TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_constructor_path");
   auto pathParts = getPathParts(node);
-  return getType(pathParts);
+  return getVariableType(pathParts);
 }
 
 TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
@@ -1540,7 +1544,7 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
     return infer(child);
   });
   auto text = getTextSaved(name);
-  if (auto *type = maybeGetType(text)) {
+  if (auto *type = maybeGetVariableType(text)) {
     DBGS("Type already exists: " << *type << '\n');
     if (auto *typeOperator = llvm::dyn_cast<TypeOperator>(type)) {
       DBGS("Type operator found\n");
@@ -1739,32 +1743,32 @@ bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
 }
 
 TypeExpr *Unifier::getBoolType() { 
-  static TypeExpr *type = getType(TypeOperator::getBoolOperatorName());
+  static TypeExpr *type = getVariableType(TypeOperator::getBoolOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getFloatType() { 
-  static TypeExpr *type = getType(TypeOperator::getFloatOperatorName());
+  static TypeExpr *type = getVariableType(TypeOperator::getFloatOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getIntType() { 
-  static TypeExpr *type = getType(TypeOperator::getIntOperatorName());
+  static TypeExpr *type = getVariableType(TypeOperator::getIntOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getUnitType() { 
-  static TypeExpr *type = getType(TypeOperator::getUnitOperatorName());
+  static TypeExpr *type = getVariableType(TypeOperator::getUnitOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getStringType() { 
-  static TypeExpr *type = getType(TypeOperator::getStringOperatorName());
+  static TypeExpr *type = getVariableType(TypeOperator::getStringOperatorName());
   return type;
 }
 
 TypeExpr *Unifier::getWildcardType() { 
-  static TypeExpr *type = getType(TypeOperator::getWildcardOperatorName());
+  static TypeExpr *type = getVariableType(TypeOperator::getWildcardOperatorName());
   return type;
 }
 
@@ -1785,15 +1789,15 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   };
   if (node.getType() == "number") {
     auto text = getText(node);
-    return text.contains('.') ? getType("float") : getType("int");
+    return text.contains('.') ? getVariableType("float") : getVariableType("int");
   } else if (node.getType() == "float") {
-    return getType("float");
+    return getVariableType("float");
   } else if (node.getType() == "boolean") {
     return getBoolType();
   } else if (node.getType() == "unit") {
     return getUnitType();
   } else if (node.getType() == "string") {
-    return getType("string");
+    return getVariableType("string");
   } else if (node.getType() == "guard") {
     return inferGuard(std::move(ast));
   } else if (node.getType() == "do_clause") {
@@ -2001,7 +2005,7 @@ void Unifier::showErrors() {
 
 llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name) {
   name = stringArena.save(name);
-  if (auto *type = maybeGetType(name)) {
+  if (auto *type = maybeGetVariableType(name)) {
     os << name << " : " << *type;
   } else {
     os << "Type unknown for symbol: '" << name << "'\n";
