@@ -1,6 +1,7 @@
 #include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/CL.h"
 #include "ocamlc2/Support/LLVMCommon.h"
+#include "ocamlc2/Parse/TSUnifier.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include <fstream>

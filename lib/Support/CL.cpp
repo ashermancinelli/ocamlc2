@@ -16,6 +16,7 @@ bool StdlibOnly = false;
 bool DParseTree = false;
 bool DTypedTree = false;
 bool Repl = false;
+bool InRLWrap = false;
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
 
 void maybeReplaceWithGDB(int argc, char **argv) {
@@ -43,6 +44,14 @@ using namespace ocamlc2::CL;
 
 static cl::opt<bool, true> repl("repl", cl::desc("Run the REPL"),
                                cl::location(Repl), cl::cat(OcamlOptions));
+static cl::alias Repl("r", cl::desc("Run the REPL"),
+                      cl::aliasopt(repl), cl::cat(OcamlOptions));
+
+static cl::opt<bool, true>
+    inRLWrap("in-rlwrap",
+             cl::desc("Internal option meaning the executable is already "
+                      "running itself under rlwrap"),
+             cl::location(InRLWrap), cl::cat(OcamlOptions));
 
 static cl::opt<bool, true> runGdb("gdb", cl::desc("Run the program under gdb"),
                                   cl::location(RunGDB), cl::cat(OcamlOptions));

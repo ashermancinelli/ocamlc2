@@ -1874,7 +1874,8 @@ void Unifier::loadSource(llvm::StringRef source) {
   ::ts::Language language = getOCamlLanguage();
   ::ts::Parser parser{language};
   auto tree = parser.parseString(source);
-  sources.emplace_back("-", source.str(), std::move(tree));
+  sources.emplace_back("repl", source.str(), std::move(tree));
+  (void)infer(sources.back().tree.getRootNode().getCursor());
 }
 
 void Unifier::loadSourceFile(fs::path filepath) {

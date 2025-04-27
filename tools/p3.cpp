@@ -3,6 +3,7 @@
 #include "ocamlc2/Support/Utils.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Support/CL.h"
+#include "ocamlc2/Support/Repl.h"
 #include <iostream>
 #include <filesystem>
 #include <llvm/Support/FileSystem.h>
@@ -22,16 +23,20 @@ using namespace ocamlc2;
 using namespace llvm;
 static cl::list<std::string> inputFilenames(cl::Positional,
                                             cl::desc("<input ocaml file name>"),
-                                            cl::Required, cl::OneOrMore,
+                                            cl::ZeroOrMore,
                                             cl::value_desc("filename"),
                                             cl::cat(ocamlc2::CL::OcamlOptions));
 
 int main(int argc, char* argv[]) {
-  auto exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);
+  fs::path exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);
   llvm::cl::ParseCommandLineOptions(argc, argv, "p3");
   llvm::EnablePrettyStackTrace();
   TRACE();
   CL::maybeReplaceWithGDB(argc, argv);
+  TRACE();
+  if (inputFilenames.empty() && !CL::Repl) {
+    llvm::errs() << "No input file provided, and not running REPL.\n" << "Run " << exe.filename() << " --help for more information.\n";
+  }
   TRACE();
   ocamlc2::Unifier unifier;
   unifier.loadStdlibInterfaces(exe);
@@ -53,7 +58,7 @@ int main(int argc, char* argv[]) {
     DBGS("Inferred type: " << *te << '\n');
   }
   if (CL::Repl) {
-    
+    runRepl(argc, argv, exe, unifier);
   }
   if (CL::DumpTypes) {
     unifier.dumpTypes(llvm::outs());
