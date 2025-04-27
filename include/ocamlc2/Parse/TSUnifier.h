@@ -261,11 +261,11 @@ private:
     return isSubTypeOfAny(type, concreteTypes);
   }
 
-  TypeExpr *declare(Node node, TypeExpr *type);
-  TypeExpr *declareConcrete(Node node);
-  TypeExpr *declare(llvm::StringRef name, TypeExpr *type);
+  TypeExpr *declareVariable(Node node, TypeExpr *type);
+  TypeExpr *declareConcreteVariable(Node node);
+  TypeExpr *declareVariable(llvm::StringRef name, TypeExpr *type);
   TypeExpr *declareType(llvm::StringRef name, TypeExpr *type);
-  TypeExpr *declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
+  TypeExpr *declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
   TypeExpr *declarePatternVariables(const ASTNode *ast,
                                     llvm::SmallVector<TypeExpr *> &typevars);
   inline bool declared(llvm::StringRef name) { return env.count(name); }

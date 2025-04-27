@@ -151,7 +151,7 @@ std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
   return hashPath(path);
 }
 
-TypeExpr* Unifier::declare(llvm::StringRef name, TypeExpr* type) {
+TypeExpr* Unifier::declareVariable(llvm::StringRef name, TypeExpr* type) {
   ORNULL(type);
   auto str = getHashedPathSaved({name});
   DBGS("Declaring: " << str << " as " << *type << '\n');
@@ -167,10 +167,10 @@ TypeExpr* Unifier::declare(llvm::StringRef name, TypeExpr* type) {
   return type;
 }
 
-TypeExpr* Unifier::declarePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* type) {
+TypeExpr* Unifier::declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* type) {
   auto hashedPath = hashPath(path);
   DBGS("Declaring path: " << getPath(path) << '(' << hashedPath << ')' << " as " << *type << '\n');
-  return declare(hashedPath, type);
+  return declareVariable(hashedPath, type);
 }
 
 TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
@@ -264,7 +264,7 @@ LogicalResult Unifier::initializeEnvironment() {
     env.insert(str, createTypeOperator(str));
   }
   auto *varargs = create<VarargsOperator>();
-  declare(varargs->getName(), varargs);
+  declareVariable(varargs->getName(), varargs);
 
   pushModule("Stdlib");
   auto *T_bool = getBoolType();
@@ -278,30 +278,30 @@ LogicalResult Unifier::initializeEnvironment() {
 
   {
     for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
-      declare(arithmetic, getFunctionType({T_int, T_int, T_int}));
-      declare(std::string(arithmetic) + ".",
+      declareVariable(arithmetic, getFunctionType({T_int, T_int, T_int}));
+      declareVariable(std::string(arithmetic) + ".",
               getFunctionType({T_float, T_float, T_float}));
     }
     for (auto comparison : {"=", "!=", "<", "<=", ">", ">="}) {
-      declare(comparison, getFunctionType({T1, T1, T_bool}));
+      declareVariable(comparison, getFunctionType({T1, T1, T_bool}));
     }
   }
   {
     auto *concatLHS = getFunctionType({T1, T2});
     auto *concatType = getFunctionType({concatLHS, T1, T2});
-    declare("@@", concatType);
+    declareVariable("@@", concatType);
   }
   {
 
     // Builtin constructors
     auto *Optional = getOptionalType();
-    declare("None", Optional);
-    declare("Some", getFunctionType({Optional->back(), Optional}));
+    declareVariable("None", Optional);
+    declareVariable("Some", getFunctionType({Optional->back(), Optional}));
   }
-  declarePath({"String", "concat"}, getFunctionType({T_string, getListTypeOf(T_string), T_string}));
+  declareVariablePath({"String", "concat"}, getFunctionType({T_string, getListTypeOf(T_string), T_string}));
   {
     detail::ModuleScope ms{*this, "Printf"};
-    declare("printf", getFunctionType({T_string, getVarargsType(), T_unit}));
+    declareVariable("printf", getFunctionType({T_string, getVarargsType(), T_unit}));
   }
   return success();
 }
@@ -526,7 +526,7 @@ TypeExpr* Unifier::inferPattern(ts::Node node) {
   };
   if (node.getType() == "value_pattern") {
     auto *type = createTypeVariable();
-    declare(node, type);
+    declareVariable(node, type);
     return type;
   } else if (node.getType() == "constructor_path") {
     return inferConstructorPath(node.getCursor());
@@ -573,7 +573,7 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
     // If we don't get a match-case, we're implicitly creating
     // a function with the matchee not available as a symbol yet.
     auto *matcheeType = createTypeVariable();
-    declare(node, matcheeType);
+    declareVariable(node, matcheeType);
     SmallVector<TypeExpr*> functionType = {matcheeType};
     unsigned i = 1;
     while (i < namedChildren) {
@@ -603,10 +603,10 @@ TypeExpr *Unifier::inferMatchExpression(Cursor ast) {
   }
 }
 
-TypeExpr *Unifier::declareConcrete(Node node) {
+TypeExpr *Unifier::declareConcreteVariable(Node node) {
   auto *type = createTypeVariable();
   concreteTypes.insert(type);
-  return declare(node, type);
+  return declareVariable(node, type);
 }
 
 ParameterDescriptor Unifier::describeParameter(Node node) {
@@ -672,7 +672,7 @@ TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc, Node node)
     auto *type = infer(desc.type.value());
     pattern = pattern.getChildByFieldName("pattern");
     setType(pattern, type);
-    return declare(pattern, type);
+    return declareVariable(pattern, type);
   } else {
     TRACE();
     TypeExpr *type;
@@ -690,7 +690,7 @@ TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc, Node node)
       type = getOptionalTypeOf(type);
     }
     setType(pattern, type);
-    return declare(pattern, type);
+    return declareVariable(pattern, type);
   }
 }
 
@@ -703,12 +703,12 @@ TypeExpr *Unifier::declareFunctionParameter(Node node) {
     auto name = node.getNamedChild(0);
     auto *type = infer(node.getNamedChild(1));
     setType(node, type);
-    return declare(name, type);
+    return declareVariable(name, type);
   } else {
     auto *type = createTypeVariable();
     concreteTypes.insert(type);
     setType(node, type);
-    return declare(node, type);
+    return declareVariable(node, type);
   }
 }
 
@@ -728,14 +728,14 @@ TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> paramete
   types.push_back(returnType);
   auto *funcType = getFunctionType(types, parameterDescriptors);
   ORNULL(funcType);
-  declare(name, funcType);
+  declareVariable(name, funcType);
   return funcType;
 }
 
 TypeExpr *Unifier::inferLetBindingRecursiveFunction(Node name, SmallVector<Node> parameters, Node body) {
   DBGS("recursive let binding, declaring function type before body\n");
   auto *tv = createTypeVariable();
-  declare(name, tv);
+  declareVariable(name, tv);
   auto *funcType = [&]() -> TypeExpr* {
     detail::Scope scope(this);
     SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
@@ -754,7 +754,7 @@ TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
   DBGS("variable let binding, no parameters\n");
   auto *bodyType = infer(body);
   ORNULL(bodyType);
-  declare(name, bodyType);
+  declareVariable(name, bodyType);
   return bodyType;
 }
 
@@ -826,11 +826,11 @@ TypeExpr* Unifier::inferIfExpression(Cursor ast) {
   }
 }
 
-TypeExpr* Unifier::declare(Node node, TypeExpr* type) {
+TypeExpr* Unifier::declareVariable(Node node, TypeExpr* type) {
   if (node.getType() == "parenthesized_operator") {
     node = node.getNamedChild(0);
   }
-  declare(getTextSaved(node), type);
+  declareVariable(getTextSaved(node), type);
   setType(node, type);
   return type;
 }
@@ -839,7 +839,7 @@ TypeExpr* Unifier::inferForExpression(Cursor ast) {
   assert(ast.gotoFirstChild());
   assert(ast.gotoNextSibling());
   auto id = ast.getCurrentNode();
-  declare(id, getIntType());
+  declareVariable(id, getIntType());
   assert(ast.gotoNextSibling());
   assert(ast.getCurrentNode().getType() == "=");
   assert(ast.gotoNextSibling());
@@ -1200,7 +1200,7 @@ TypeExpr* Unifier::inferFunctionExpression(Cursor ast) {
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     if (child.getType() == "parameter") {
-      auto *type = declareConcrete(child.getNamedChild(0));
+      auto *type = declareConcreteVariable(child.getNamedChild(0));
       types.push_back(type);
     } else {
       assert(i == node.getNumNamedChildren() - 1 && "Expected body after parameters");
@@ -1296,7 +1296,7 @@ TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
     detail::Scope scope(this);
     return infer(specification);
   }();
-  declare(name, type);
+  declareVariable(name, type);
   return type;
 }
 
@@ -1441,7 +1441,7 @@ TypeExpr* Unifier::inferVariantConstructor(TypeExpr* variantType, Cursor ast) {
   assert(node.getType() == "constructor_declaration");
   auto name = node.getNamedChild(0);
   if (node.getNumNamedChildren() == 1) {
-    return declare(name, variantType);
+    return declareVariable(name, variantType);
   }
   auto parameters = [&] {
     SmallVector<TypeExpr*> types;
@@ -1458,7 +1458,7 @@ TypeExpr* Unifier::inferVariantConstructor(TypeExpr* variantType, Cursor ast) {
     auto *tupleType = getTupleType(parameters);
     return getFunctionType({tupleType, variantType});
   }();
-  declare(name, functionType);
+  declareVariable(name, functionType);
   return functionType;
 }
 
@@ -1488,7 +1488,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   interface << "type ";
   for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
     typeVars.push_back(createTypeVariable());
-    declare(child, typeVars.back());
+    declareVariable(child, typeVars.back());
     interface << *typeVars.back();
   }
   auto name = node.getChildByFieldName("name");
@@ -1509,7 +1509,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     if (body->getType() == "variant_declaration") {
       // Variant constructors return the type of the variant, so declare it before inferring
       // the full variant type.
-      declare(name, thisType);
+      declareVariable(name, thisType);
       ORNULL(inferVariantDeclaration(thisType, body->getCursor()));
       interface << " = " << *thisType;
       return thisType;
@@ -1519,13 +1519,13 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
       ORNULL(recordType);
       interface << " = " << *recordType;
-      return declare(name, recordType);
+      return declareVariable(name, recordType);
     } else {
       RNULL("Unknown type binding body type", *body);
     }
   } else {
     DBGS("Type alias to type constructor");
-    ORNULL(declare(name, thisType));
+    ORNULL(declareVariable(name, thisType));
   }
   return thisType;
 }
@@ -1575,7 +1575,7 @@ TypeExpr *Unifier::inferValuePattern(Cursor ast) {
   if (text == "_") {
     return getWildcardType();
   }
-  return declare(node, createTypeVariable());
+  return declareVariable(node, createTypeVariable());
 }
 
 // Try to unify two types based on their structure.
@@ -1717,7 +1717,7 @@ TypeExpr* Unifier::inferExternal(Cursor ast) {
   auto name = node.getNamedChild(0);
   auto typeNode = node.getNamedChild(1);
   auto type = infer(typeNode);
-  return declare(name, type);
+  return declareVariable(name, type);
 }
 
 bool Unifier::isWildcard(TypeExpr* type) {
