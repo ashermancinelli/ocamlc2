@@ -91,7 +91,7 @@ struct Unifier {
     return static_cast<T *>(typeArena.back().get());
   }
   TypeExpr *getVariableType(ts::Node node);
-  TypeExpr *getVariableType(ts::NodeID id);
+  TypeExpr *getType(ts::NodeID id);
   inline std::string_view getText(ts::Node node) {
     return ocamlc2::getText(node, sources.back().source);
   }
@@ -261,22 +261,32 @@ private:
     return isSubTypeOfAny(type, concreteTypes);
   }
 
-  TypeExpr *declareVariable(Node node, TypeExpr *type);
-  TypeExpr *declareConcreteVariable(Node node);
-  TypeExpr *declareVariable(llvm::StringRef name, TypeExpr *type);
-  TypeExpr *declareType(llvm::StringRef name, TypeExpr *type);
-  TypeExpr *declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
-  TypeExpr *declarePatternVariables(const ASTNode *ast,
-                                    llvm::SmallVector<TypeExpr *> &typevars);
   inline bool declared(llvm::StringRef name) { return env.count(name); }
 
   llvm::StringRef saveString(llvm::StringRef str);
+
+  // Work with the type of a type
+  TypeExpr *declareType(Node node, TypeExpr *type);
+  TypeExpr *declareType(llvm::StringRef name, TypeExpr *type);
+  TypeExpr *maybeGetDeclaredType(llvm::StringRef name);
+  TypeExpr *maybeGetDeclaredTypeWithName(llvm::StringRef name);
+
+  // Work with the type of a variable.
+  TypeExpr *declareVariable(Node node, TypeExpr *type);
+  TypeExpr *declareConcreteVariable(Node node);
+  TypeExpr *declareVariable(llvm::StringRef name, TypeExpr *type);
+  TypeExpr *declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
+  TypeExpr *declarePatternVariables(const ASTNode *ast,
+                                    llvm::SmallVector<TypeExpr *> &typevars);
   TypeExpr *getVariableType(const llvm::StringRef name);
   TypeExpr *maybeGetVariableType(const llvm::StringRef name);
   TypeExpr *maybeGetVariableTypeWithName(const llvm::StringRef name);
   TypeExpr *getVariableType(std::string_view name);
   TypeExpr *getVariableType(std::vector<std::string> path);
   TypeExpr *getVariableType(const char *name);
+
+  // Just associates a type with a node ID so it can be retrieved later
+  // for printing and debugging.
   TypeExpr *setType(Node node, TypeExpr *type);
 
   // Does not error on missing typevariable because TVs are introduced implicitly

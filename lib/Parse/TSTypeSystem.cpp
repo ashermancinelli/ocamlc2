@@ -151,6 +151,28 @@ std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
   return hashPath(path);
 }
 
+TypeExpr *Unifier::declareType(Node node, TypeExpr* type) {
+  ORNULL(type);
+  return declareType(getTextSaved(node), type);
+}
+
+TypeExpr *Unifier::declareType(llvm::StringRef name, TypeExpr* type) {
+  ORNULL(type);
+  auto str = getHashedPathSaved({name});
+  DBGS("Declaring type: " << str << " as " << *type << '\n');
+  typeEnv.insert(str, type);
+  return type;
+}
+
+TypeExpr *Unifier::maybeGetDeclaredType(llvm::StringRef name) {
+  name = getHashedPathSaved(name);
+  return typeEnv.lookup(name);
+}
+
+TypeExpr *Unifier::maybeGetDeclaredTypeWithName(llvm::StringRef name) {
+  return typeEnv.lookup(name);
+}
+
 TypeExpr* Unifier::declareVariable(llvm::StringRef name, TypeExpr* type) {
   ORNULL(type);
   auto str = getHashedPathSaved({name});
@@ -178,7 +200,7 @@ TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
   return type;
 }
 
-TypeExpr* Unifier::getVariableType(ts::NodeID id) {
+TypeExpr* Unifier::getType(ts::NodeID id) {
   return nodeToType.lookup(id);
 }
 
@@ -200,22 +222,6 @@ TypeExpr* Unifier::getVariableType(std::vector<std::string> path) {
 }
 TypeExpr* Unifier::getVariableType(const std::string_view name) {
   return getVariableType(stringArena.save(name));
-}
-
-nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
-  DBGS(message << '\n');
-  if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
-  message += SSWRAP("\n" << "at " << filename << ":" << lineno);
-  diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, node.getPointRange());
-  return nullptr;
-}
-
-nullptr_t Unifier::error(std::string message, const char* filename, unsigned long lineno) {
-  DBGS(message << '\n');
-  if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
-  message += SSWRAP("\n" << "at " << filename << ":" << lineno);
-  diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, std::nullopt);
-  return nullptr;
 }
 
 TypeExpr* Unifier::getVariableType(const llvm::StringRef name) {
@@ -249,6 +255,22 @@ TypeExpr *Unifier::maybeGetVariableTypeWithName(const llvm::StringRef name) {
     return clone(type);
   }
   DBGS("not found\n");
+  return nullptr;
+}
+
+nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
+  DBGS(message << '\n');
+  if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
+  message += SSWRAP("\n" << "at " << filename << ":" << lineno);
+  diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, node.getPointRange());
+  return nullptr;
+}
+
+nullptr_t Unifier::error(std::string message, const char* filename, unsigned long lineno) {
+  DBGS(message << '\n');
+  if (diagnostics.size() >= (size_t)maxErrors) return nullptr;
+  message += SSWRAP("\n" << "at " << filename << ":" << lineno);
+  diagnostics.emplace_back(DiagKind::Error, message, sources.back().filepath, std::nullopt);
   return nullptr;
 }
 
@@ -340,17 +362,17 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
     auto name = node.getNamedChild(0);
     if (name.getType() != "unit") {
       nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : "
-                                          << *getVariableType(node.getID())));
+                                          << *getType(node.getID())));
     }
   } else if (node.getType() == "value_specification" ||
              node.getType() == "external") {
     auto name = node.getNamedChild(0);
     nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : "
-                                        << *getVariableType(node.getID())));
+                                        << *getType(node.getID())));
   } else if (node.getType() == "type_binding") {
     auto name = node.getNamedChild(0);
     nodesToDump.push_back(SSWRAP("type " << getTextSaved(name) << " = "
-                                         << *getVariableType(node.getID())));
+                                         << *getType(node.getID())));
   }
 }
 
