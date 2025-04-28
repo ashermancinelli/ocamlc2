@@ -1384,10 +1384,14 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
     return n.getType() == "field_expression";
   });
   assert(node.getType() == "record_expression");
-  auto fieldExpressions = llvm::map_to_vector(children, [&](Node n) {
+  auto fieldExpressions = llvm::map_to_vector(children, [&](Node n) -> TypeExpr* {
     auto *type = infer(n.getChildByFieldName("body"));
+    ORNULL(type);
     return setType(n, type);
   });
+  RNULL_IF(llvm::any_of(fieldExpressions, [](TypeExpr* type) {
+    return type == nullptr;
+  }), "Expected record expression to be a record type");
   auto fieldNames = llvm::map_to_vector(children, [&](Node n) {
     auto children = getNamedChildren(n);
     auto name = llvm::find_if(children, [](Node n) {
@@ -1398,6 +1402,7 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
   });
   // Just so the record type itself will do the normalization for us
   auto *anonRecordType = getRecordType(RecordOperator::getAnonRecordName(), fieldExpressions, fieldNames);
+  ORNULL(anonRecordType);
   auto anonRecordTypes = anonRecordType->getArgs();
   auto anonRecordFieldNames = anonRecordType->getFieldNames();
   for (auto [recordName, seenFieldNames] : seenRecordFields) {
@@ -1405,6 +1410,7 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
       continue;
     }
     auto *maybeSeenRecordType = getDeclaredType(recordName);
+    ORNULL(maybeSeenRecordType);
     auto *seenRecordType = llvm::dyn_cast<RecordOperator>(maybeSeenRecordType);
     RNULL_IF_NULL(seenRecordType, "Expected record type");
     auto seenRecordTypes = seenRecordType->getArgs();
