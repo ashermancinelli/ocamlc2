@@ -43,7 +43,7 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
     }
   }
   DBGS("Inferring type for: " << cursor.getCurrentNode().getType() << '\n');
-  DBG(show(cursor.copy(), true));
+  DBG(show(cursor.copy(), false));
   auto *te = inferType(cursor.copy());
   ORNULL(te);
   RNULL_IF(anyFatalErrors(), "Failed to infer type");
@@ -211,9 +211,7 @@ TypeExpr* Unifier::inferPattern(ts::Node node) {
     "number", "string",
   };
   if (node.getType() == "value_pattern") {
-    auto *type = createTypeVariable();
-    declareVariable(node, type);
-    return type;
+    return inferValuePattern(node.getCursor());
   } else if (node.getType() == "constructor_path") {
     return inferConstructorPath(node.getCursor());
   } else if (node.getType() == "parenthesized_pattern") {
@@ -222,6 +220,8 @@ TypeExpr* Unifier::inferPattern(ts::Node node) {
     return inferConstructorPattern(node.getCursor());
   } else if (node.getType() == "tuple_pattern") {
     return inferTuplePattern(node);
+  } else if (node.getType() == "record_pattern") {
+    return inferRecordPattern(node.getCursor());
   } else if (llvm::is_contained(passthroughPatterns, node.getType())) {
     return infer(node);
   }
@@ -830,10 +830,15 @@ TypeExpr* Unifier::inferLetExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "let_expression");
-  assert(node.getNumNamedChildren() == 2);
+  auto children = getNamedChildren(node);
+  auto valueExpression = llvm::find_if(children, [](auto n) {
+    return n.getType() == "value_definition";
+  });
+  assert(valueExpression != children.end() && "Expected value expression in let expression");
+  auto body = node.getChildByFieldName("body");
   detail::Scope scope(this);
-  infer(node.getNamedChild(0));
-  return infer(node.getNamedChild(1));
+  infer(*valueExpression);
+  return infer(body);
 }
 
 TypeExpr* Unifier::inferListExpression(Cursor ast) {
@@ -958,6 +963,51 @@ TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
   }();
   declareVariable(name, type);
   return type;
+}
+
+FailureOr<std::pair<llvm::StringRef, TypeExpr*>> Unifier::inferFieldPattern(Node node) {
+  auto name = getTextSaved(node.getNamedChild(0));
+  auto pattern = toOptional(node.getChildByFieldName("pattern"));
+  if (name == "_") {
+    return {std::make_pair("", getWildcardType())};
+  }
+  if (!pattern) {
+    return {std::make_pair(name, getWildcardType())};
+  }
+  auto *type = infer(*pattern);
+  FAIL_IF(type == nullptr, "Failed to infer field pattern type");
+  return {std::make_pair(name, type)};
+}
+
+TypeExpr *Unifier::findMatchingRecordType(TypeExpr *type) {
+  ERROR("NYI");
+  return nullptr;
+}
+
+TypeExpr* Unifier::inferRecordPattern(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "record_pattern");
+  if (llvm::any_of(getChildren(node), [](Node n) {
+    return n.getType() == "_";
+  })) {
+    assert(false && "Record pattern with unnamed wildcard field pattern is unhandled in tree-sitter grammar.");
+    return nullptr;
+  }
+  auto children = getNamedChildren(node);
+  auto fieldPatterns = llvm::map_to_vector(children, [&](Node n) {
+    return inferFieldPattern(n);
+  });
+  RNULL_IF(llvm::any_of(fieldPatterns, [](auto &&p) {
+    return failed(p);
+  }), "Failed to infer field pattern type");
+  const auto fieldNames = llvm::map_to_vector(fieldPatterns, [](auto &&p) {
+    return p->first;
+  });
+  const auto fieldTypes = llvm::map_to_vector(fieldPatterns, [](auto &&p) {
+    return p->second;
+  });
+  return getRecordType(RecordOperator::getAnonRecordName(), fieldTypes, fieldNames);
 }
 
 TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
@@ -1356,6 +1406,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferParenthesizedPattern(std::move(ast));
   } else if (node.getType() == "constructor_pattern") {
     return inferConstructorPattern(std::move(ast));
+  } else if (node.getType() == "record_pattern") {
+    return inferRecordPattern(node.getCursor());
   } else if (node.getType() == "tuple_pattern") {
     return inferTuplePattern(node);
   } else if (node.getType() == "type_variable") {

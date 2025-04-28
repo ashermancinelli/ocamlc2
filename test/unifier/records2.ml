@@ -1,8 +1,10 @@
 (*
-RUN: p3 -d %S/mon.ml %s | FileCheck %s.ref
-XFAIL: *
+RUN: p3 -d -f %s | FileCheck %s.ref
 *)
-open Mon
+type ptype = TNormal | TFire | TWater
+type mon = {name : string; hp : int; ptype : ptype}
 let c = {name = "Charmander"; hp = 39; ptype = TFire};;
-print_int @@ match c with {name; hp; ptype} -> hp;;
-print_endline @@ match c with {name = my_name; _; _} -> my_name
+let x = match c with {name = my_name; hp = 50; ptype} -> my_name in
+(* let y = match c with {name; hp; _} -> hp in 
+let f (m:mon) = match m with {name; hp; _} -> hp in *)
+();;

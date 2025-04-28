@@ -171,6 +171,7 @@ private:
   LogicalResult initializeEnvironment();
 
   LogicalResult unify(TypeExpr *a, TypeExpr *b);
+  LogicalResult unifyRecordTypes(RecordOperator *a, RecordOperator *b);
 
   // Clone a type expression, replacing generic type variables with new ones
   TypeExpr *clone(TypeExpr *type);
@@ -223,6 +224,9 @@ private:
   RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, Cursor ast);
   RecordOperator *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferRecordExpression(Cursor ast);
+  FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);
+  TypeExpr *inferRecordPattern(Cursor ast);
+  TypeExpr *findMatchingRecordType(TypeExpr *type);
   TypeExpr *inferSequenceExpression(Cursor ast);
   TypeExpr *inferTupleExpression(Cursor ast);
   TypeExpr *inferTuplePattern(ts::Node node);

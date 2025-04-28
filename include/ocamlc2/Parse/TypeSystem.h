@@ -114,6 +114,7 @@ struct RecordOperator : public TypeOperator {
   static inline llvm::StringRef getAnonRecordName() { return "<anon>"; }
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Record; }
   inline llvm::ArrayRef<llvm::StringRef> getFieldNames() const { return fieldNames; }
+  inline bool isAnonymous() const { return getName() == getAnonRecordName(); }
   inline std::string decl() const {
     std::string s;
     llvm::raw_string_ostream ss(s);

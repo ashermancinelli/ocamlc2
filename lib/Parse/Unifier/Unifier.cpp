@@ -82,6 +82,12 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
         return success();
       }
 
+      if (auto *ro = llvm::dyn_cast<RecordOperator>(toa)) {
+        if (auto *ro2 = llvm::dyn_cast<RecordOperator>(tob)) {
+          return unifyRecordTypes(ro, ro2);
+        }
+      }
+
       // Usual type checking - if we don't have a special case, then we need operator types to
       // match in form.
       const bool sizesMatch = toa->getArgs().size() == tob->getArgs().size() or hasVarargs;
@@ -106,6 +112,25 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
   }
   return success();
 }
+
+LogicalResult Unifier::unifyRecordTypes(RecordOperator *a, RecordOperator *b) {
+  DBGS("Unifying record types: " << *a << " and " << *b << '\n');
+  const auto namesmatch = a->getName() == b->getName() or a->isAnonymous() or b->isAnonymous();
+  FAIL_IF(not namesmatch, SSWRAP("Could not unify record types: " << *a << " and " << *b));
+  const auto aFields = a->getArgs();
+  const auto bFields = b->getArgs();
+  FAIL_IF(aFields.size() != bFields.size(),
+          SSWRAP("Could not unify record types: " << *a << " and " << *b));
+  for (auto [aa, bb] : llvm::zip(aFields, bFields)) {
+    FAIL_IF(failed(unify(aa, bb)), "failed to unify");
+  }
+  for (auto [aa, bb] : llvm::zip(a->getFieldNames(), b->getFieldNames())) {
+    FAIL_IF((aa != bb) or aa.empty() or bb.empty(),
+            SSWRAP("Could not unify record types: " << *a << " and " << *b));
+  }
+  return success();
+}
+
 TypeExpr *Unifier::clone(TypeExpr *type) {
   llvm::DenseMap<TypeExpr *, TypeExpr *> mapping;
   return clone(type, mapping);
