@@ -8,7 +8,6 @@ add_library(SemanticAnalysis
   AST.cpp
   TypeSystem.cpp
   ASTPasses.cpp
-  TSTypeSystem.cpp
   Unifier/Unifier.cpp
   Unifier/SourceUtilities.cpp
   Unifier/TypeUtilities.cpp
