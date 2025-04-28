@@ -11,6 +11,7 @@ add_library(SemanticAnalysis
   TSTypeSystem.cpp
   Unifier/Unifier.cpp
   Unifier/SourceUtils.cpp
+  Unifier/TypeUtilities.cpp
   Unifier/Inference.cpp
 )
 target_link_libraries(SemanticAnalysis PUBLIC LLVMSupport Support)

@@ -23,6 +23,147 @@
 
 namespace ocamlc2 {
 
+// Try to unify two types based on their structure.
+// See the paper _Basic Polymorphic Typechecking_ by Luca Cardelli
+// for the original unification algorithm.
+//
+// There are a few main differences used to implement features of OCaml that
+// break the original algorithm:
+//
+// 1. Wildcard unification:
+//
+//    The original algorithm only unifies two types if they are exactly equal.
+//    This is problematic for OCaml's wildcard type '_', which is used to
+//    indicate that a type is not important.
+//
+// 2. Varargs:
+//
+//    OCaml allows functions to take a variable number of arguments using the
+//    varargs type 'varargs!'. This is a special type that is used to indicate
+//    that a function can take a variable number of arguments. When two type
+//    operators are found and their sizes don't match, we first check if
+//    one of the subtypes is varargs. If so, we can unify the types if the
+//    other type is a function type.
+LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
+  ORFAIL(a);
+  ORFAIL(b);
+  static size_t count = 0;
+  auto *wildcard = getWildcardType();
+  a = prune(a);
+  b = prune(b);
+  DBGS("Unifying:" << count++ << ": " << *a << " and " << *b << '\n');
+  if (auto *tva = llvm::dyn_cast<TypeVariable>(a)) {
+    if (auto *tvb = llvm::dyn_cast<TypeVariable>(b);
+        tvb && isConcrete(tva, concreteTypes) &&
+        isGeneric(tvb, concreteTypes)) {
+      return unify(tvb, tva);
+    }
+    if (*a != *b) {
+      DBGS("Unifying type variable with different type\n");
+      FAIL_IF(isSubType(a, b), "Recursive unification");
+      tva->instance = b;
+    } else {
+      DBGS("Unifying type variable with itself, fallthrough\n");
+      // fallthrough
+    }
+  } else if (auto *toa = llvm::dyn_cast<TypeOperator>(a)) {
+    if (llvm::isa<TypeVariable>(b)) {
+      return unify(b, a);
+    } else if (auto *tob = llvm::dyn_cast<TypeOperator>(b)) {
+      // Check if we have any varargs types in the arguments - if so, the forms are allowed
+      // to be different.
+      auto fHasVarargs = [&](TypeExpr* arg) { return llvm::isa<VarargsOperator>(arg); };
+      const bool hasVarargs = llvm::any_of(toa->getArgs(), fHasVarargs) or
+                              llvm::any_of(tob->getArgs(), fHasVarargs);
+      DBGS("has varargs: " << hasVarargs << '\n');
 
+      if (toa->getName() == wildcard->getName() or tob->getName() == wildcard->getName()) {
+        DBGS("Unifying with wildcard\n");
+        return success();
+      }
+
+      // Usual type checking - if we don't have a special case, then we need operator types to
+      // match in form.
+      const bool sizesMatch = toa->getArgs().size() == tob->getArgs().size() or hasVarargs;
+      FAIL_IF(toa->getName() != tob->getName() or not sizesMatch,
+              SSWRAP("Could not unify types: " << *toa << " and " << *tob));
+
+      for (auto [aa, bb] : llvm::zip(toa->getArgs(), tob->getArgs())) {
+        ORFAIL(aa);
+        ORFAIL(bb);
+        if (isVarargs(aa) or isVarargs(bb)) {
+          DBGS("Unifying with varargs, unifying return types and giving up\n");
+          FAIL_IF(failed(unify(toa->back(), tob->back())), "failed to unify");
+          return success();
+        }
+        if (isWildcard(aa) or isWildcard(bb)) {
+          DBGS("Unifying with wildcard, skipping unification for this element type\n");
+          continue;
+        }
+        FAIL_IF(failed(unify(aa, bb)), "failed to unify");
+      }
+    }
+  }
+  return success();
+}
+TypeExpr *Unifier::clone(TypeExpr *type) {
+  llvm::DenseMap<TypeExpr *, TypeExpr *> mapping;
+  return clone(type, mapping);
+}
+
+#define DBGSCLONE DBGS
+TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
+  DBGSCLONE("Cloning type: " << *type << '\n');
+  type = prune(type);
+  DBGSCLONE("recursing on type: " << *type << '\n');
+  if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
+    auto args =
+        llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr *arg) {
+          return clone(arg, mapping);
+        }));
+    DBGSCLONE("cloning type operator: " << op->getName() << '\n');
+    if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
+      return getFunctionType(args, func->parameterDescriptors);
+    } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
+      return getRecordType(record->getName(), args, record->getFieldNames());
+    } else {
+      return createTypeOperator(op->getKind(), op->getName(), args);
+    }
+  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
+    DBGSCLONE("cloning type variable: " << *tv << '\n');
+    if (isGeneric(tv, concreteTypes)) {
+      DBGSCLONE("type variable is generic, cloning\n");
+      if (mapping.find(tv) == mapping.end()) {
+        DBGSCLONE("Didn't find mapping for type variable: "
+            << *tv << ", creating new one\n");
+        mapping[tv] = createTypeVariable();
+      }
+      DBGSCLONE("returning cloned type variable: " << *mapping[tv] << '\n');
+      return mapping[tv];
+    }
+  }
+  DBGSCLONE("cloned type: " << *type << '\n');
+  return type;
+}
+#undef DBGSCLONE
+
+TypeExpr* Unifier::prune(TypeExpr* type) {
+  if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {
+    tv->instance = prune(tv->instance);
+    return tv->instance;
+  }
+  return type;
+}
+
+bool Unifier::isSubType(TypeExpr* a, TypeExpr* b) {
+  b = prune(b);
+  DBGS("isSubType: " << *a << " and " << *b << '\n');
+  if (auto *op = llvm::dyn_cast<TypeOperator>(b)) {
+    return isSubTypeOfAny(a, op->getArgs());
+  } else if (llvm::isa<TypeVariable>(b)) {
+    return *a == *b;
+  }
+  assert(false && "Unknown type expression");
+}
 
 } // namespace ocamlc2
