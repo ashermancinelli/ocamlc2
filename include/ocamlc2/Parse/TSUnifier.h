@@ -165,6 +165,7 @@ public:
     ::ts::Tree tree;
   };
   SmallVector<SourceFile> sources;
+  StringArena stringArena;
 
 private:
   LogicalResult initializeEnvironment();

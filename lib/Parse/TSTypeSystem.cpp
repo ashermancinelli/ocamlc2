@@ -19,42 +19,7 @@
 #define DEBUG_TYPE "typesystem"
 #include "ocamlc2/Support/Debug.h.inc"
 
-#define ERROR(...) DBGS("error\n"), error(__VA_ARGS__, __FILE__, __LINE__)
-#define RNULL(...) return ERROR(__VA_ARGS__)
-#define RNULL_IF(cond, ...)                                                    \
-  if (cond) {                                                                  \
-    RNULL(__VA_ARGS__);                                                        \
-  }
-#define ORNULL(cond)                                                           \
-  if (!cond) {                                                                 \
-    ERROR("nullptr");                                                         \
-    return nullptr;                                                            \
-  }
-#define ORFAIL(cond)                                                           \
-  if (!cond) {                                                                 \
-    ERROR("failure");                                                         \
-    return failure();                                                          \
-  }
-#define FAIL(...)                                                              \
-  {                                                                            \
-    ERROR(__VA_ARGS__);                                                        \
-    return failure();                                                          \
-  }
-#define FAIL_IF(cond, ...)                                                     \
-  if (cond) {                                                                  \
-    ERROR(__VA_ARGS__);                                                        \
-    return failure();                                                          \
-  }
-#define RNULL_IF_NULL(ptr, ...) RNULL_IF(ptr == nullptr, __VA_ARGS__)
-#define SSWRAP(...)                                                            \
-  [&] {                                                                        \
-    std::string str;                                                           \
-    llvm::raw_string_ostream ss(str);                                          \
-    ss << __VA_ARGS__;                                                         \
-    return ss.str();                                                           \
-  }()
-#define UNIFY_OR_RNULL(a, b) RNULL_IF(failed(unify(a, b)), "failed to unify")
-#define UNIFY_OR_FAIL(a, b) FAIL_IF(failed(unify(a, b)), "failed to unify")
+#include "Unifier/UnifierDebug.h"
 
 namespace ocamlc2 {
 using namespace std::string_literals;
@@ -62,7 +27,6 @@ using namespace llvm;
 using std::move;
 
 namespace { 
-static StringArena stringArena;
 
 static constexpr std::string_view pathTypes[] = {
     "value_path",
@@ -1992,159 +1956,6 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   llvm::errs() << message << '\n';
   assert(false && "Unknown node type");
   RNULL(message, node);
-}
-
-Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)), rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
-  if (failed(initializeEnvironment())) {
-    llvm::errs() << "Failed to initialize environment\n";
-    exit(1);
-  }
-}
-
-Unifier::Unifier(std::string filepath)
-    : rootScope(std::make_unique<detail::Scope>(this)),
-      rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
-  TRACE();
-  if (failed(initializeEnvironment())) {
-    llvm::errs() << "Failed to initialize environment\n";
-    exit(1);
-  }
-  loadSourceFile(filepath);
-}
-
-void Unifier::loadSource(llvm::StringRef source) {
-  DBGS("Source:\n" << source << "\n");
-  ::ts::Language language = getOCamlLanguage();
-  ::ts::Parser parser{language};
-  auto tree = parser.parseString(source);
-  static const std::string replName = "repl.ml";
-  sources.emplace_back(replName, source.str(), std::move(tree));
-
-  // Make sure the symbols defined in the repl are always visible.
-  auto moduleName = stringArena.save(filePathToModuleName(replName));
-  pushModuleSearchPath(moduleName);
-
-  (void)infer(sources.back().tree.getRootNode().getCursor());
-}
-
-void Unifier::loadSourceFile(fs::path filepath) {
-  TRACE();
-  if (CL::PreprocessWithCPPO) {
-    auto preprocessed = preprocessWithCPPO(filepath);
-    if (failed(preprocessed)) {
-      llvm::errs() << "Failed to preprocess file: " << filepath << '\n';
-      return;
-    }
-    filepath = preprocessed.value();
-  }
-  if (filepath == "-") {
-    auto source = slurpStdin();
-    if (failed(source)) {
-      llvm::errs() << "Failed to read from stdin\n";
-      return;
-    }
-    loadSource(source.value());
-  } else if (filepath.extension() == ".ml") {
-    loadImplementationFile(filepath);
-  } else if (filepath.extension() == ".mli") {
-    loadInterfaceFile(filepath);
-  } else {
-    llvm::errs() << "Unknown file extension: " << filepath << '\n';
-    assert(false && "Unknown file extension");
-  }
-  (void)infer(sources.back().tree.getRootNode().getCursor());
-}
-
-void Unifier::loadImplementationFile(fs::path filepath) {
-  DBGS("Loading implementation file: " << filepath << "\n");
-  std::string source = must(slurpFile(filepath));
-  if (source.empty()) {
-    DBGS("Source is empty\n");
-    return;
-  }
-  DBGS("Source:\n" << source << "\n");
-  ::ts::Language language = getOCamlLanguage();
-  ::ts::Parser parser{language};
-  auto tree = parser.parseString(source);
-  sources.emplace_back(filepath, source, std::move(tree));
-}
-
-void Unifier::loadInterfaceFile(fs::path filepath) {
-  DBGS("Loading interface file: " << filepath << "\n");
-  std::string source = must(slurpFile(filepath));
-  if (source.empty()) {
-    DBGS("Source is empty\n");
-    return;
-  }
-  DBGS("Source:\n" << source << "\n");
-  ::ts::Language language = getOCamlInterfaceLanguage();
-  ::ts::Parser parser{language};
-  auto tree = parser.parseString(source);
-  sources.emplace_back(filepath, source, std::move(tree));
-}
-
-llvm::StringRef Unifier::getTextSaved(Node node) {
-  auto sv = ocamlc2::getText(node, sources.back().source);
-  return stringArena.save(sv);
-}
-
-void Unifier::setMaxErrors(int maxErrors) {
-  TRACE();
-  this->maxErrors = maxErrors < 0 ? 100 : maxErrors;
-}
-
-void Unifier::loadStdlibInterfaces(fs::path exe) {
-  isLoadingStdlib = true;
-  DBGS("Loading stdlib interfaces\n");
-  for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
-    loadSourceFile(filepath);
-  }
-  DBGS("Done loading stdlib interfaces\n");
-  isLoadingStdlib = false;
-}
-
-void Unifier::dumpTypes(llvm::raw_ostream &os) {
-  if (!diagnostics.empty()) {
-    return showErrors();
-  }
-  for (auto node : nodesToDump) {
-    os << node << '\n';
-  }
-}
-
-bool Unifier::anyFatalErrors() const { return !diagnostics.empty(); }
-void Unifier::showErrors() {
-  for (auto diag : diagnostics) {
-    llvm::errs() << diag << "\n";
-  }
-}
-
-llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name) {
-  name = stringArena.save(name);
-  if (auto *type = maybeGetVariableType(name)) {
-    os << name << " : " << *type;
-  } else {
-    os << "Type unknown for symbol: '" << name << "'\n";
-  }
-  return os;
-}
-
-detail::Scope::Scope(Unifier *unifier)
-    : unifier(unifier), envScope(unifier->env),
-      concreteTypes(unifier->concreteTypes) {
-  DBGS("open scope\n");
-}
-detail::Scope::~Scope() {
-  DBGS("close scope\n");
-  unifier->concreteTypes = std::move(concreteTypes);
-}
-
-Unifier::TypeVarEnvScope::TypeVarEnvScope(Unifier::TypeVarEnv &env) : scope(env) {
-  DBGS("open type var env scope\n");
-}
-
-Unifier::TypeVarEnvScope::~TypeVarEnvScope() {
-  DBGS("close type var env scope\n");
 }
 
 } // namespace ocamlc2

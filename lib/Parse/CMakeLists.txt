@@ -1,2 +1,16 @@
-add_library(Parse TSAdaptor.cpp TSUtil.cpp MLIRGen.cpp MLIRGen2.cpp MLIRGen3.cpp Runtime.cpp AST.cpp TSTypeSystem.cpp TypeSystem.cpp ASTPasses.cpp)
-target_link_libraries(Parse PUBLIC LLVMSupport Support)
+add_library(SemanticAnalysis
+  TSAdaptor.cpp
+  TSUtil.cpp
+  MLIRGen.cpp
+  MLIRGen2.cpp
+  MLIRGen3.cpp
+  Runtime.cpp
+  AST.cpp
+  TypeSystem.cpp
+  ASTPasses.cpp
+  TSTypeSystem.cpp
+  Unifier/Unifier.cpp
+  Unifier/SourceUtils.cpp
+  Unifier/Inference.cpp
+)
+target_link_libraries(SemanticAnalysis PUBLIC LLVMSupport Support)

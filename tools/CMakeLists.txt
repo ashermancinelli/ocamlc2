@@ -9,7 +9,7 @@ function(add_ocamlc2_tool name)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE
         LLVMSupport
-        Parse
+        SemanticAnalysis
         CamlParse
         Support
         MLIRIR
