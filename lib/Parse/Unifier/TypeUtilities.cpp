@@ -249,4 +249,43 @@ TypeExpr *Unifier::maybeGetVariableTypeWithName(const llvm::StringRef name) {
   return nullptr;
 }
 
+TypeVariable* Unifier::declareTypeVariable(llvm::StringRef name) {
+  auto str = stringArena.save(name);
+  auto *type = createTypeVariable();
+  typeVarEnv.insert(str, type);
+  return type;
+}
+
+TypeVariable* Unifier::getTypeVariable(Node node) {
+  TRACE();
+  assert(node.getType() == "type_variable");
+  auto text = getTextSaved(node);
+  return getTypeVariable(text);
+}
+
+TypeVariable* Unifier::getTypeVariable(llvm::StringRef name) {
+  DBGS("Getting type variable: " << name << '\n');
+  auto str = stringArena.save(name);
+  if (auto *type = typeVarEnv.lookup(str)) {
+    DBGS("Found type variable: " << *type << '\n');
+    return type;
+  }
+  DBGS("Type variable not found, declaring\n");
+  return declareTypeVariable(name);
+}
+
+llvm::StringRef Unifier::getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path) {
+  return stringArena.save(getHashedPath(path));
+}
+
+std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
+  TRACE();
+  if (currentModule.size() > 0) {
+    auto currentModulePath = currentModule;
+    currentModulePath.insert(currentModulePath.end(), path.begin(), path.end());
+    return hashPath(currentModulePath);
+  }
+  return hashPath(path);
+}
+
 } // namespace ocamlc2

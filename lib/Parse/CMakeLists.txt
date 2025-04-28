@@ -10,8 +10,9 @@ add_library(SemanticAnalysis
   ASTPasses.cpp
   TSTypeSystem.cpp
   Unifier/Unifier.cpp
-  Unifier/SourceUtils.cpp
+  Unifier/SourceUtilities.cpp
   Unifier/TypeUtilities.cpp
   Unifier/Inference.cpp
+  Unifier/Environment.cpp
 )
 target_link_libraries(SemanticAnalysis PUBLIC LLVMSupport Support)

@@ -24,6 +24,58 @@
 
 namespace ocamlc2 {
 
+llvm::raw_ostream& Unifier::show(bool showUnnamed, bool showTypes) {
+  return show(sources.back().tree.getRootNode().getCursor(), showUnnamed, showTypes);
+}
+llvm::raw_ostream& Unifier::showParseTree() {
+  return show(true, false);
+}
+llvm::raw_ostream& Unifier::showTypedTree() {
+  return show(false, true);
+}
+
+llvm::raw_ostream& Unifier::show(ts::Cursor cursor, bool showUnnamed, bool showTypes) {
+  auto showTypesCallback = [this](llvm::raw_ostream &os, ts::Node node) {
+    if (auto *te = nodeToType.lookup(node.getID())) {
+      os << ANSIColors::magenta() << " " << *te << ANSIColors::reset();
+    }
+  };
+  auto callback = showTypes ? std::optional{showTypesCallback} : std::nullopt;
+  return dump(llvm::errs(), cursor.copy(), sources.back().source, 0, showUnnamed, callback);
+}
+
+TypeExpr* Unifier::infer(ts::Node const& ast) {
+  return infer(ast.getCursor());
+}
+
+void Unifier::saveInterfaceDecl(std::string interface) {
+  TRACE();
+  if (!CL::DumpTypes or isLoadingStdlib) {
+    return;
+  }
+  DBGS("Saving interface declaration: " << interface << '\n');
+  nodesToDump.push_back(interface);
+}
+
+void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
+  static std::set<uintptr_t> seen;
+  if (!CL::DumpTypes or isLoadingStdlib or seen.count(node.getID())) {
+    return;
+  }
+  seen.insert(node.getID());
+  if (node.getType() == "let_binding") {
+    auto name = node.getNamedChild(0);
+    if (name.getType() != "unit") {
+      saveInterfaceDecl(SSWRAP("val " << getTextSaved(name) << " : "
+                                      << *getType(node.getID())));
+    }
+  } else if (node.getType() == "value_specification" ||
+             node.getType() == "external") {
+    auto name = node.getNamedChild(0);
+    saveInterfaceDecl(SSWRAP("val " << getTextSaved(name) << " : "
+                                    << *getType(node.getID())));
+  }
+}
 
 Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)), rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
   if (failed(initializeEnvironment())) {
