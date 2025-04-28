@@ -83,6 +83,11 @@ private:
   std::string name;
 };
 
+struct WildcardOperator : public TypeOperator {
+  WildcardOperator() : TypeOperator(Kind::Wildcard, TypeOperator::getWildcardOperatorName()) {}
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Wildcard; }
+};
+
 struct VariantOperator : public TypeOperator {
   using ConstructorType = std::variant<std::pair<llvm::StringRef, FunctionOperator *>, llvm::StringRef>;
   VariantOperator(llvm::StringRef variantName, llvm::ArrayRef<TypeExpr*> args={})
@@ -115,6 +120,10 @@ struct RecordOperator : public TypeOperator {
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Record; }
   inline llvm::ArrayRef<llvm::StringRef> getFieldNames() const { return fieldNames; }
   inline bool isAnonymous() const { return getName() == getAnonRecordName(); }
+  inline bool isOpen() const {
+    return llvm::any_of(
+        getArgs(), [](auto *arg) { return llvm::isa<WildcardOperator>(arg); });
+  }
   inline std::string decl() const {
     std::string s;
     llvm::raw_string_ostream ss(s);

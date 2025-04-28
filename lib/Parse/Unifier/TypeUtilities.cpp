@@ -38,10 +38,7 @@ bool Unifier::isVarargs(TypeExpr* type) {
 }
 
 bool Unifier::isWildcard(TypeExpr* type) {
-  if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
-    return op->getName() == getWildcardType()->getName();
-  }
-  return false;
+  return llvm::isa<WildcardOperator>(type);
 }
 
 TypeExpr *Unifier::getBoolType() { 
@@ -70,7 +67,7 @@ TypeExpr *Unifier::getStringType() {
 }
 
 TypeExpr *Unifier::getWildcardType() { 
-  static TypeExpr *type = getDeclaredType(TypeOperator::getWildcardOperatorName());
+  static TypeExpr *type = create<WildcardOperator>();
   return type;
 }
 
