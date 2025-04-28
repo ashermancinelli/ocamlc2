@@ -6,6 +6,7 @@
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
@@ -26,6 +27,7 @@ struct TypeExpr;
 struct TypeOperator;
 struct RecordOperator;
 struct FunctionOperator;
+struct VariantOperator;
 struct TupleOperator;
 struct TypeVariable;
 struct UnitOperator;
@@ -34,13 +36,14 @@ struct VarargsOperator;
 struct TypeExpr {
   // clang-format off
   enum Kind {
-    Operator = 0b0000'0001,
-    Variable = 0b0000'0010,
-    Record   = 0b0000'0101,
-    Function = 0b0000'1001,
-    Tuple    = 0b0001'0001,
-    Varargs  = 0b0010'0001,
-    Wildcard = 0b0100'0001,
+    Operator = 0b0000'0000'0001,
+    Variable = 0b0000'0000'0010,
+    Record   = 0b0000'0000'0101,
+    Function = 0b0000'0000'1001,
+    Tuple    = 0b0000'0001'0001,
+    Varargs  = 0b0000'0010'0001,
+    Wildcard = 0b0000'0100'0001,
+    Variant  = 0b0000'1000'0001,
   };
   // clang-format on
   TypeExpr(Kind kind) : kind(kind) {}
@@ -80,6 +83,26 @@ private:
   std::string name;
 };
 
+struct VariantOperator : public TypeOperator {
+  using ConstructorType = std::variant<std::pair<llvm::StringRef, FunctionOperator *>, llvm::StringRef>;
+  VariantOperator(llvm::StringRef variantName, llvm::ArrayRef<TypeExpr*> args={})
+      : TypeOperator(Kind::Variant, variantName, args) {
+  }
+  static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Variant; }
+  inline llvm::ArrayRef<ConstructorType> getConstructors() const { return constructors; }
+  inline void addConstructor(llvm::StringRef constructorName,
+                             FunctionOperator *constructor) {
+    constructors.emplace_back(std::make_pair(constructorName, constructor));
+  }
+  inline void addConstructor(llvm::StringRef constructorName) {
+    constructors.emplace_back(constructorName);
+  }
+  inline std::string decl() const;
+private:
+  inline llvm::raw_ostream& showCtor(llvm::raw_ostream& os, const ConstructorType& ctor) const;
+  llvm::SmallVector<ConstructorType> constructors;
+};
+
 struct RecordOperator : public TypeOperator {
   RecordOperator(llvm::StringRef recordName, llvm::ArrayRef<TypeExpr *> args,
                  llvm::ArrayRef<llvm::StringRef> fieldNames)
@@ -88,6 +111,7 @@ struct RecordOperator : public TypeOperator {
               std::back_inserter(this->fieldNames));
     normalize();
   }
+  static inline llvm::StringRef getAnonRecordName() { return "<anon>"; }
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Record; }
   inline llvm::ArrayRef<llvm::StringRef> getFieldNames() const { return fieldNames; }
   inline std::string decl() const {
@@ -209,6 +233,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const RecordOperator
   auto fieldNames = record.getFieldNames();
   auto fieldTypes = record.getArgs();
   assert(fieldNames.size() == fieldTypes.size() && "field names and field types must be the same size");
+  if (record.getName() == RecordOperator::getAnonRecordName()) {
+    return os << record.decl();
+  }
   return os << record.getName();
 }
 
@@ -240,6 +267,14 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const FunctionOperat
   return os << ')';
 }
 
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const VariantOperator& variant) {
+  for (auto *arg : variant.getArgs()) {
+    os << *arg << " ";
+  }
+  os << variant.getName();
+  return os;
+}
+
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
   if (var.instantiated()) {
     os << *var.instance;
@@ -252,6 +287,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type) {
   if (auto *fo = llvm::dyn_cast<FunctionOperator>(&type)) {
     os << *fo;
+  } else if (auto *vo = llvm::dyn_cast<VariantOperator>(&type)) {
+    os << *vo;
   } else if (auto *to = llvm::dyn_cast<TupleOperator>(&type)) {
     os << *to;
   } else if (auto *ro = llvm::dyn_cast<RecordOperator>(&type)) {
@@ -262,6 +299,37 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type
     os << *tv;
   }
   return os;
+}
+
+inline llvm::raw_ostream& VariantOperator::showCtor(llvm::raw_ostream& os, const ConstructorType& ctor) const {
+  if (std::holds_alternative<llvm::StringRef>(ctor)) {
+    os << std::get<llvm::StringRef>(ctor);
+  } else {
+    auto [name, fo] = std::get<std::pair<llvm::StringRef, FunctionOperator *>>(ctor);
+    os << name << " of ";
+    if (fo->getArgs().size() == 2) {
+      os << *fo->getArgs().front();
+    } else {
+      os << "(" << *fo->getArgs().front();
+      for (auto *arg : fo->getArgs().drop_front().drop_back()) {
+        os << " * " << *arg;
+      }
+      os << ")";
+    }
+  }
+  return os;
+}
+
+inline std::string VariantOperator::decl() const {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  auto first = constructors.front();
+  showCtor(ss, first);
+  for (auto ctor : llvm::drop_begin(constructors)) {
+    ss << " | ";
+    showCtor(ss, ctor);
+  }
+  return s;
 }
 
 }

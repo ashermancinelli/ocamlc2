@@ -1,7 +1,6 @@
 (* Types and variable names should live in different namespaces *)
 (*
 RUN: p3 -d %s | FileCheck %s.ref
-XFAIL: *
 *)
 
 type x = float;;

@@ -77,6 +77,14 @@ struct Unifier {
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false, bool showTypes = true);
   llvm::raw_ostream &show(bool showUnnamed = false, bool showTypes = true);
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
+  using TypeVarEnv = llvm::ScopedHashTable<llvm::StringRef, TypeVariable *>;
+  struct TypeVarEnvScope {
+    using ScopeTy = TypeVarEnv::ScopeTy;
+    TypeVarEnvScope(TypeVarEnv &env);
+    ~TypeVarEnvScope();
+  private:
+    ScopeTy scope;
+  };
   using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable *>;
   TypeExpr *infer(Cursor ast);
@@ -225,7 +233,7 @@ private:
   TypeExpr *inferValuePath(Cursor ast);
   TypeExpr *inferValuePattern(Cursor ast);
   TypeExpr *inferValueSpecification(Cursor ast);
-  TypeExpr *inferVariantConstructor(TypeExpr *variantType, Cursor ast);
+  TypeExpr *inferVariantConstructor(VariantOperator *variantType, Cursor ast);
   TypeExpr *inferVariantDeclaration(TypeExpr *variantType, Cursor ast);
   TypeExpr *inferFieldGetExpression(Cursor ast);
 
@@ -279,8 +287,9 @@ private:
   // before using it.
   //
   // val access : 'a list -> 'a
-  TypeExpr *getTypeVariable(const llvm::StringRef name);
-  TypeExpr *getTypeVariable(Node node);
+  TypeVariable *declareTypeVariable(llvm::StringRef name);
+  TypeVariable *getTypeVariable(const llvm::StringRef name);
+  TypeVariable *getTypeVariable(Node node);
 
   // Work with the type of a variable.
   TypeExpr *declareVariable(Node node, TypeExpr *type);
@@ -313,6 +322,7 @@ private:
   llvm::StringRef getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path);
   std::vector<std::string> getPathParts(Node node);
   void maybeDumpTypes(Node node, TypeExpr *type);
+  void saveInterfaceDecl(std::string interface);
 
   // Type variables don't have the same scoping rules as other variables.
   // When type variables in introduced, we're not sure what type we're
@@ -325,8 +335,8 @@ private:
 
   // Environment for type variables
   Env env;
-  // Env typeEnv;
-  llvm::DenseMap<llvm::StringRef, TypeExpr *> typeEnv;
+  Env typeEnv;
+  TypeVarEnv typeVarEnv;
 
   // Set of types that have been declared as concrete, usually because they
   // are type variables for parameters of a function.
@@ -361,6 +371,9 @@ private:
   // Sometimes we need to declare stdlib types before actually loading the
   // stdlib, in which case we don't have a compilation unit to create a scope.
   std::unique_ptr<detail::Scope> rootScope;
+  std::unique_ptr<EnvScope> rootTypeScope;
+
+  llvm::SmallVector<std::unique_ptr<EnvScope>> typeScopeStack;
 
   // Whether we are loading the standard library. It's helpful to skip certain
   // debugging steps when loading the stdlib, as it becomes very noisy when

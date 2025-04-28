@@ -92,20 +92,29 @@ static std::string hashPath(std::vector<std::string> path) {
   return llvm::join(path, ".");
 }
 
-TypeExpr* Unifier::getTypeVariable(Node node) {
+TypeVariable* Unifier::declareTypeVariable(llvm::StringRef name) {
+  auto str = stringArena.save(name);
+  auto *type = createTypeVariable();
+  typeVarEnv.insert(str, type);
+  return type;
+}
+
+TypeVariable* Unifier::getTypeVariable(Node node) {
+  TRACE();
   assert(node.getType() == "type_variable");
   auto text = getTextSaved(node);
   return getTypeVariable(text);
 }
 
-TypeExpr* Unifier::getTypeVariable(llvm::StringRef name) {
+TypeVariable* Unifier::getTypeVariable(llvm::StringRef name) {
+  DBGS("Getting type variable: " << name << '\n');
   auto str = stringArena.save(name);
-  if (auto *type = typeEnv.lookup(str)) {
+  if (auto *type = typeVarEnv.lookup(str)) {
+    DBGS("Found type variable: " << *type << '\n');
     return type;
   }
-  auto *type = createTypeVariable();
-  typeEnv.insert({str, type});
-  return type;
+  DBGS("Type variable not found, declaring\n");
+  return declareTypeVariable(name);
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Unifier::Env& env) {
@@ -163,7 +172,7 @@ TypeExpr *Unifier::declareType(llvm::StringRef name, TypeExpr* type) {
   ORNULL(type);
   auto str = getHashedPathSaved({name});
   DBGS("Declaring type: " << str << " as " << *type << '\n');
-  typeEnv.insert({str, type});
+  typeEnv.insert(str, type);
   return type;
 }
 
@@ -319,7 +328,7 @@ LogicalResult Unifier::initializeEnvironment() {
   for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
     auto str = stringArena.save(name);
     DBGS("Declaring type operator: " << str << '\n');
-    typeEnv.insert({str, createTypeOperator(str)});
+    typeEnv.insert(str, createTypeOperator(str));
   }
   auto *varargs = create<VarargsOperator>();
   declareType(varargs->getName(), varargs);
@@ -387,6 +396,15 @@ TypeExpr* Unifier::infer(ts::Node const& ast) {
   return infer(ast.getCursor());
 }
 
+void Unifier::saveInterfaceDecl(std::string interface) {
+  TRACE();
+  if (!CL::DumpTypes or isLoadingStdlib) {
+    return;
+  }
+  DBGS("Saving interface declaration: " << interface << '\n');
+  nodesToDump.push_back(interface);
+}
+
 void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
   static std::set<uintptr_t> seen;
   if (!CL::DumpTypes or isLoadingStdlib or seen.count(node.getID())) {
@@ -396,18 +414,14 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
   if (node.getType() == "let_binding") {
     auto name = node.getNamedChild(0);
     if (name.getType() != "unit") {
-      nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : "
-                                          << *getType(node.getID())));
+      saveInterfaceDecl(SSWRAP("val " << getTextSaved(name) << " : "
+                                      << *getType(node.getID())));
     }
   } else if (node.getType() == "value_specification" ||
              node.getType() == "external") {
     auto name = node.getNamedChild(0);
-    nodesToDump.push_back(SSWRAP("val " << getTextSaved(name) << " : "
-                                        << *getType(node.getID())));
-  } else if (node.getType() == "type_binding") {
-    auto name = node.getNamedChild(0);
-    nodesToDump.push_back(SSWRAP("type " << getTextSaved(name) << " = "
-                                         << *getType(node.getID())));
+    saveInterfaceDecl(SSWRAP("val " << getTextSaved(name) << " : "
+                                    << *getType(node.getID())));
   }
 }
 
@@ -822,6 +836,7 @@ TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
 
 TypeExpr* Unifier::inferLetBinding(Cursor ast) {
   TRACE();
+  TypeVarEnvScope scope(typeVarEnv);
   auto node = ast.getCurrentNode();
   const bool isRecursive = isLetBindingRecursive(ast.copy());
   auto name = node.getChildByFieldName("pattern");
@@ -1313,14 +1328,14 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
       assert(false && "Unknown module binding child type");
     }
   }
-  nodesToDump.push_back(SSWRAP("module " << getTextSaved(name) << " : sig"));
+  saveInterfaceDecl(SSWRAP("module " << getTextSaved(name) << " : sig"));
   if (signature) {
     inferModuleSignature(signature->getCursor());
   }
   if (structure) {
     inferModuleStructure(structure->getCursor());
   }
-  nodesToDump.push_back(SSWRAP("end"));
+  saveInterfaceDecl("end");
   return createTypeOperator(
       hashPath(ArrayRef<StringRef>{"Module", getTextSaved(name)}), {});
 }
@@ -1349,6 +1364,7 @@ TypeExpr* Unifier::inferModuleStructure(Cursor ast) {
 
 TypeExpr* Unifier::inferValueSpecification(Cursor ast) {
   TRACE();
+  TypeVarEnvScope scope(typeVarEnv);
   auto node = ast.getCurrentNode();
   assert(node.getType() == "value_specification");
   auto name = node.getNamedChild(0);
@@ -1381,7 +1397,7 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
     return getTextSaved(*name);
   });
   // Just so the record type itself will do the normalization for us
-  auto *anonRecordType = getRecordType("<anon>", fieldExpressions, fieldNames);
+  auto *anonRecordType = getRecordType(RecordOperator::getAnonRecordName(), fieldExpressions, fieldNames);
   auto anonRecordTypes = anonRecordType->getArgs();
   auto anonRecordFieldNames = anonRecordType->getFieldNames();
   for (auto [recordName, seenFieldNames] : seenRecordFields) {
@@ -1496,12 +1512,13 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   return getUnitType();
 }
 
-TypeExpr* Unifier::inferVariantConstructor(TypeExpr* variantType, Cursor ast) {
+TypeExpr* Unifier::inferVariantConstructor(VariantOperator* variantType, Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "constructor_declaration");
   auto name = node.getNamedChild(0);
   if (node.getNumNamedChildren() == 1) {
+    variantType->addConstructor(getTextSaved(name));
     return declareVariable(name, variantType);
   }
   auto parameters = [&] {
@@ -1520,11 +1537,14 @@ TypeExpr* Unifier::inferVariantConstructor(TypeExpr* variantType, Cursor ast) {
     return getFunctionType({tupleType, variantType});
   }();
   declareVariable(name, functionType);
+  variantType->addConstructor(getTextSaved(name), functionType);
   return functionType;
 }
 
-TypeExpr* Unifier::inferVariantDeclaration(TypeExpr *variantType, Cursor ast) {
+TypeExpr* Unifier::inferVariantDeclaration(TypeExpr *type, Cursor ast) {
   TRACE();
+  auto *variantType = llvm::dyn_cast<VariantOperator>(type);
+  ORNULL(variantType);
   auto node = ast.getCurrentNode();
   assert(node.getType() == "variant_declaration");
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
@@ -1539,6 +1559,7 @@ TypeExpr* Unifier::inferVariantDeclaration(TypeExpr *variantType, Cursor ast) {
 
 TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   TRACE();
+  TypeVarEnvScope scope(typeVarEnv);
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_binding");
   auto namedChildren = getNamedChildren(node);
@@ -1546,18 +1567,20 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   SmallVector<TypeExpr*> typeVars;
   std::string interfaceStr;
   llvm::raw_string_ostream interface(interfaceStr);
-  interface << "type ";
+  interface << "type";
+  auto savedConcreteTypes = concreteTypes;
   for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
-    typeVars.push_back(createTypeVariable());
-    declareType(child, typeVars.back());
-    interface << *typeVars.back();
+    auto *typeVar = declareTypeVariable(getTextSaved(child));
+    typeVars.push_back(typeVar);
+    interface << " " << *typeVar;
   }
   auto name = node.getChildByFieldName("name");
-  interface << getTextSaved(name);
+  interface << " " << getTextSaved(name);
   auto equation = toOptional(node.getChildByFieldName("equation"));
   auto body = toOptional(node.getChildByFieldName("body"));
   auto typeName = getTextSaved(name);
   TypeExpr *thisType = createTypeOperator(typeName, typeVars);
+  std::optional<StringRef> eqName = std::nullopt;;
   if (equation) {
     // This is a type alias and we can disregard the original type operator.
     // we MUST disregard the original type operator so type aliases are fully
@@ -1565,32 +1588,45 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     DBGS("Type binding has an equation\n");
     thisType = infer(*equation);
     ORNULL(thisType);
-    DBGS(*thisType << '\n');
+    DBGS("equation: " << *thisType << '\n');
+    if (auto *to = llvm::dyn_cast<TypeOperator>(thisType)) {
+      eqName = to->getName();
+    }
+    interface << " = " << *thisType;
   } 
   if (body) {
+    DBGS("has body\n");
     if (body->getType() == "variant_declaration") {
       // Variant constructors return the type of the variant, so declare it before inferring
       // the full variant type.
-      declareType(name, thisType);
-      ORNULL(inferVariantDeclaration(thisType, body->getCursor()));
-      interface << " = " << *thisType;
-      nodesToDump.push_back(interface.str());
-      return thisType;
+      auto *variantType = create<VariantOperator>(eqName.value_or(typeName), typeVars);
+      ORNULL(declareType(name, variantType));
+      if (eqName) {
+        ORNULL(declareType(eqName.value(), variantType));
+      }
+      ORNULL(inferVariantDeclaration(variantType, body->getCursor()));
+      setType(node, variantType);
+      concreteTypes = savedConcreteTypes;
+      interface << " = " << variantType->decl();
+      saveInterfaceDecl(interface.str());
+      return variantType;
     } else if (body->getType() == "record_declaration") {
       // Record declarations need the full record type inferred before declaring
       // the record type.
       auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
       ORNULL(recordType);
       interface << " = " << recordType->decl();
-      nodesToDump.push_back(interface.str());
+      concreteTypes = savedConcreteTypes;
+      saveInterfaceDecl(interface.str());
       return declareType(name, recordType);
     } else {
       RNULL("Unknown type binding body type", *body);
     }
   } else {
-    DBGS("Type alias to type constructor\n");
+    DBGS("No body, type alias to type constructor: " << *thisType << '\n');
+    concreteTypes = savedConcreteTypes;
     ORNULL(declareType(name, thisType));
-    nodesToDump.push_back(interface.str());
+    saveInterfaceDecl(interface.str());
   }
   return thisType;
 }
@@ -1610,6 +1646,8 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
     if (auto *typeOperator = llvm::dyn_cast<TypeOperator>(type)) {
       DBGS("Type operator found\n");
       auto toArgs = typeOperator->getArgs();
+      DBG(llvm::for_each(toArgs, [&](auto arg) { DBGS("toArg: " << *arg << '\n'); }));
+      DBG(llvm::for_each(typeArgs, [&](auto arg) { DBGS("typeArg: " << *arg << '\n'); }));
       assert(toArgs.size() == typeArgs.size() &&
              "Type operator has different number of arguments than type "
              "arguments");
@@ -1733,16 +1771,17 @@ TypeExpr *Unifier::clone(TypeExpr *type) {
   return clone(type, mapping);
 }
 
+#define DBGSCLONE DBGS
 TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
-  // DBGS("Cloning type: " << *type << '\n');
+  DBGSCLONE("Cloning type: " << *type << '\n');
   type = prune(type);
-  // DBGS("recursing on type: " << *type << '\n');
+  DBGSCLONE("recursing on type: " << *type << '\n');
   if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
     auto args =
         llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr *arg) {
           return clone(arg, mapping);
         }));
-    // DBGS("cloning type operator: " << op->getName() << '\n');
+    DBGSCLONE("cloning type operator: " << op->getName() << '\n');
     if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
       return getFunctionType(args, func->parameterDescriptors);
     } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
@@ -1751,21 +1790,22 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
       return createTypeOperator(op->getKind(), op->getName(), args);
     }
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
-    // DBGS("cloning type variable: " << *tv << '\n');
+    DBGSCLONE("cloning type variable: " << *tv << '\n');
     if (isGeneric(tv, concreteTypes)) {
-      // DBGS("type variable is generic, cloning\n");
+      DBGSCLONE("type variable is generic, cloning\n");
       if (mapping.find(tv) == mapping.end()) {
-        // DBGS("Didn't find mapping for type variable: "
-            //  << *tv << ", creating new one\n");
+        DBGSCLONE("Didn't find mapping for type variable: "
+            << *tv << ", creating new one\n");
         mapping[tv] = createTypeVariable();
       }
-      // DBGS("returning cloned type variable: " << *mapping[tv] << '\n');
+      DBGSCLONE("returning cloned type variable: " << *mapping[tv] << '\n');
       return mapping[tv];
     }
   }
-  // DBGS("cloned type: " << *type << '\n');
+  DBGSCLONE("cloned type: " << *type << '\n');
   return type;
 }
+#undef DBGSCLONE
 
 TypeExpr* Unifier::prune(TypeExpr* type) {
   if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {
@@ -1780,6 +1820,7 @@ bool Unifier::isVarargs(TypeExpr* type) {
 }
 
 TypeExpr* Unifier::inferExternal(Cursor ast) {
+  TypeVarEnvScope scope(typeVarEnv);
   auto node = ast.getCurrentNode();
   auto name = node.getNamedChild(0);
   auto typeNode = node.getNamedChild(1);
@@ -1947,14 +1988,17 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   RNULL(message, node);
 }
 
-Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)) {
+Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)), rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
   if (failed(initializeEnvironment())) {
     llvm::errs() << "Failed to initialize environment\n";
     exit(1);
   }
 }
 
-Unifier::Unifier(std::string filepath) : rootScope(std::make_unique<detail::Scope>(this)) {
+Unifier::Unifier(std::string filepath)
+    : rootScope(std::make_unique<detail::Scope>(this)),
+      rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
+  TRACE();
   if (failed(initializeEnvironment())) {
     llvm::errs() << "Failed to initialize environment\n";
     exit(1);
@@ -1978,6 +2022,7 @@ void Unifier::loadSource(llvm::StringRef source) {
 }
 
 void Unifier::loadSourceFile(fs::path filepath) {
+  TRACE();
   if (CL::PreprocessWithCPPO) {
     auto preprocessed = preprocessWithCPPO(filepath);
     if (failed(preprocessed)) {
@@ -2044,9 +2089,11 @@ void Unifier::setMaxErrors(int maxErrors) {
 
 void Unifier::loadStdlibInterfaces(fs::path exe) {
   isLoadingStdlib = true;
+  DBGS("Loading stdlib interfaces\n");
   for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
     loadSourceFile(filepath);
   }
+  DBGS("Done loading stdlib interfaces\n");
   isLoadingStdlib = false;
 }
 
@@ -2084,6 +2131,14 @@ detail::Scope::Scope(Unifier *unifier)
 detail::Scope::~Scope() {
   DBGS("close scope\n");
   unifier->concreteTypes = std::move(concreteTypes);
+}
+
+Unifier::TypeVarEnvScope::TypeVarEnvScope(Unifier::TypeVarEnv &env) : scope(env) {
+  DBGS("open type var env scope\n");
+}
+
+Unifier::TypeVarEnvScope::~TypeVarEnvScope() {
+  DBGS("close type var env scope\n");
 }
 
 } // namespace ocamlc2

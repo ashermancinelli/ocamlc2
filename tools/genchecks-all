@@ -30,6 +30,7 @@ find(sub {
             my $cmd = $1;
             $cmd =~ s/%s/$file/;
             $cmd =~ s/\|.+//;
+            say $file;
             say $cmd;
             my ($tfh, $temp) = tempfile();
             `$cmd | $tools/genchecks > $temp`;
