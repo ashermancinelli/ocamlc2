@@ -111,6 +111,7 @@ add_subdirectory(lib)
 add_subdirectory(tools)
 add_subdirectory(runtime)
 add_subdirectory(test)
+add_subdirectory(stdlib)
 
 # Print configuration information
 message(STATUS "OCaml compiler found: ${OCAML_COMPILER}")

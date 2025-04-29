@@ -136,7 +136,7 @@ static fs::path distDirFromExe(fs::path exe) {
   exe = fs::absolute(exe);
   auto bindir = exe.parent_path();
   auto install_root = bindir.parent_path();
-  return install_root / "include" / "dist";
+  return install_root / "include" / "stdlib";
 }
 
 static fs::path resolvePath(fs::path exe, std::string_view interface) {
