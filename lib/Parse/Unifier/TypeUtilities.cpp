@@ -76,8 +76,8 @@ TypeExpr *Unifier::getVarargsType() {
   return type;
 }
 
-std::vector<std::string> Unifier::getPathParts(Node node) {
-  std::vector<std::string> pathParts;
+llvm::SmallVector<llvm::StringRef> Unifier::getPathParts(Node node) {
+  llvm::SmallVector<llvm::StringRef> pathParts;
   static constexpr std::string_view nameTypes[] = {
     "value_name",
     "module_name",
@@ -90,12 +90,12 @@ std::vector<std::string> Unifier::getPathParts(Node node) {
     auto childType = child.getType();
     if (llvm::is_contained(pathTypes, childType)) {
       auto parts = getPathParts(child);
-      pathParts.insert(pathParts.end(), parts.begin(), parts.end());
+      pathParts.append(parts.begin(), parts.end());
     } else if (llvm::is_contained(nameTypes, childType)) {
-      std::string part{getText(child)};
+      llvm::StringRef part = stringArena.save(getText(child));
       pathParts.push_back(part);
     } else if (childType == "parenthesized_operator") {
-      pathParts.push_back(std::string{getText(child.getNamedChild(0))});
+      pathParts.push_back(stringArena.save(getText(child.getNamedChild(0))));
     } else {
       assert(false && "Unknown path part type");
     }
@@ -203,12 +203,13 @@ TypeExpr* Unifier::getVariableType(Node node) {
   return getVariableType(getTextSaved(node));
 }
 
-TypeExpr* Unifier::getVariableType(std::vector<std::string> path) {
-  auto hashedPath = hashPath(path);
-  return getVariableType(stringArena.save(hashedPath));
-}
 TypeExpr* Unifier::getVariableType(const std::string_view name) {
   return getVariableType(stringArena.save(name));
+}
+
+TypeExpr* Unifier::getVariableType(llvm::SmallVector<llvm::StringRef> path) {
+  auto hashedPath = hashPath(path);
+  return getVariableType(stringArena.save(hashedPath));
 }
 
 TypeExpr* Unifier::getVariableType(const llvm::StringRef name) {

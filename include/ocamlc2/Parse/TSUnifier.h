@@ -303,7 +303,7 @@ private:
   TypeExpr *maybeGetVariableType(const llvm::StringRef name);
   TypeExpr *maybeGetVariableTypeWithName(const llvm::StringRef name);
   TypeExpr *getVariableType(std::string_view name);
-  TypeExpr *getVariableType(std::vector<std::string> path);
+  TypeExpr *getVariableType(llvm::SmallVector<llvm::StringRef> path);
   TypeExpr *getVariableType(const char *name);
 
   // Just associates a type with a node ID so it can be retrieved later
@@ -321,7 +321,7 @@ private:
   void popModule();
   std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
   llvm::StringRef getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path);
-  std::vector<std::string> getPathParts(Node node);
+  llvm::SmallVector<llvm::StringRef> getPathParts(Node node);
   void maybeDumpTypes(Node node, TypeExpr *type);
   void saveInterfaceDecl(std::string interface);
 

@@ -15,4 +15,12 @@ inline std::string hashPath(std::vector<std::string> path) {
   return llvm::join(path, ".");
 }
 
+inline std::string hashPath(llvm::SmallVector<std::string, 8> path) {
+  return llvm::join(path, ".");
+}
+
+inline std::string hashPath(llvm::SmallVector<llvm::StringRef> path) {
+  return llvm::join(path, ".");
+}
+
 }
