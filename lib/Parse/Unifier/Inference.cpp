@@ -206,31 +206,6 @@ TypeExpr* Unifier::inferTuplePattern(ts::Node node) {
   return getTupleType(types);
 }
 
-TypeExpr* Unifier::inferPattern(ts::Node node) {
-  static constexpr std::string_view passthroughPatterns[] = {
-    "number", "string",
-  };
-  if (node.getType() == "value_pattern") {
-    return inferValuePattern(node.getCursor());
-  } else if (node.getType() == "constructor_path") {
-    return inferConstructorPath(node.getCursor());
-  } else if (node.getType() == "parenthesized_pattern") {
-    return infer(node.getNamedChild(0));
-  } else if (node.getType() == "constructor_pattern") {
-    return inferConstructorPattern(node.getCursor());
-  } else if (node.getType() == "tuple_pattern") {
-    return inferTuplePattern(node);
-  } else if (node.getType() == "record_pattern") {
-    return inferRecordPattern(node.getCursor());
-  } else if (llvm::is_contained(passthroughPatterns, node.getType())) {
-    return infer(node);
-  }
-  show(node.getCursor(), true);
-  DBGS("Unknown pattern type: " << node.getType() << '\n');
-  assert(false && "Unknown pattern type");
-  return nullptr;
-}
-
 TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
   // Declared variables are only in scope during the body of the match case.
   detail::Scope scope(this);
@@ -763,24 +738,6 @@ TypeExpr* Unifier::inferArrayExpression(Cursor ast) {
     RNULL_IF(failed(unify(childType, elementType)), "failed to unify");
   }
   return getArrayTypeOf(elementType);
-}
-
-TypeExpr* Unifier::inferProductExpression(Cursor ast) {
-  TRACE();
-  auto node = ast.getCurrentNode();
-  assert(node.getType() == "product_expression");
-  SmallVector<TypeExpr*> types;
-  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    auto child = node.getNamedChild(i);
-    auto *childType = infer(child);
-    if (auto *tupleType = llvm::dyn_cast<TupleOperator>(childType)) {
-      std::copy(tupleType->getArgs().begin(), tupleType->getArgs().end(),
-                std::back_inserter(types));
-    } else {
-      types.push_back(childType);
-    }
-  }
-  return getTupleType(types);
 }
 
 TypeExpr* Unifier::inferArrayGetExpression(Cursor ast) {
@@ -1414,8 +1371,6 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return getTypeVariable(node);
   } else if (node.getType() == "constructed_type") {
     return inferConstructedType(std::move(ast));
-  } else if (node.getType() == "product_expression") {
-    return inferProductExpression(std::move(ast));
   } else if (node.getType() == "function_type") {
     return inferFunctionType(std::move(ast));
   } else if (node.getType() == "open_module") {

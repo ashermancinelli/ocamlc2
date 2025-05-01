@@ -25,6 +25,7 @@ endif
 
 ARGS             += -DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS)"
 ARGS             += -DCMAKE_CXX_FLAGS="$(CXXFLAGS)"
+ARGS             += -DENABLE_COVERAGE=ON
 
 RED    = "\e[41m"
 YELLOW = "\e[33m"
@@ -59,8 +60,8 @@ check:
 i:
 	$(NINJA) -C build stdlib-interfaces
 
-p3:
-	$(NINJA) -C build p3
+coverage p3:
+	$(NINJA) -C build $@
 
 repl: p3
 	./build/bin/p3

@@ -1,0 +1,28 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Development Cycle
+
+When you make changes, plan out each step and perform small steps each time.
+
+After each change, build and run tests like so
+
+```sh
+> ninja -C build p3      
+ninja: Entering directory `build'
+[1/1] Copying interfaces to distribution directory
+.venv
+/Users/ashermancinelli/workspace/ocamlc2 [ashermancinelli@Ashers-MacBook-Pro] [17:51]
+> lit -svv test   
+
+Testing Time: 1.03s
+
+Total Discovered Tests: 39
+  Passed           : 38 (97.44%)
+  Expectedly Failed:  1 (2.56%)
+```
+
+if you hit a test failure you don't understand, you can try debugging a little bit, but don't be afraid to stop and explain the change you just made and any guesses as to why it caused a failure, and I will step in and look at your changes.

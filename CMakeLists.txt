@@ -21,6 +21,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(ENABLE_SANITIZERS ON CACHE BOOL "Enable sanitizers")
 set(OCAMLRT_DEBUG ON CACHE BOOL "Enable OCamlRT debugging output")
+set(ENABLE_COVERAGE OFF CACHE BOOL "Enable code coverage")
 
 set(TREESITTER_OCAML_DIR "/usr/local" CACHE PATH "Path to Tree-sitter OCaml parser install")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -37,6 +38,11 @@ include(OCamlLinkerFlags)
 
 if (ENABLE_SANITIZERS)
     include(Sanitizers)
+endif()
+
+if (ENABLE_COVERAGE)
+    include(CodeCoverage)
+    enable_coverage()
 endif()
 
 if (NOT TREESITTER_OCAML_DIR)
