@@ -1,3 +1,8 @@
+
+(*
+RUN: p3 %s --dtypes | FileCheck %s.ref
+*)
+
 module M = struct
   type colour =
     | Red | Green of int * int | Blue of float
@@ -23,11 +28,7 @@ let () =
 
 open M;;
 
-let () = print_endline @@ match Br (1, Br (2, Lf, 4), 4) with
-  | Br (a, b, c) -> "Br"
-  | Lf -> "Lf"
+let () = print_endline @@ match M.Br (1, M.Br (2, M.Lf, 4), 4) with
+  | M.Br (a, b, c) -> "Br"
+  | M.Lf -> "Lf"
 ;;
-
-(*
-RUN: p3 %s --dtypes | FileCheck %s.ref
-*)

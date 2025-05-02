@@ -4,7 +4,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "ocamlc2/Dialect/OcamlOpBuilder.h"
 #include "ocamlc2/Support/LLVMCommon.h"
-#include <llvm/ADT/ScopedHashTable.h>
+#include <ocamlc2/Parse/ScopedHashTable.h>
 #include <llvm/Support/LogicalResult.h>
 #include <mlir/IR/Location.h>
 #include "ocamlc2/Parse/TSUnifier.h"

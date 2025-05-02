@@ -174,6 +174,7 @@ private:
   // Clone a type expression, replacing generic type variables with new ones
   TypeExpr *clone(TypeExpr *type);
   TypeExpr *clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
+  TypeExpr *cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs);
 
   // The function Prune is used whenever a type expression has to be inspected:
   // it will always return a type expression which is either an uninstantiated
@@ -270,7 +271,9 @@ private:
     return isSubTypeOfAny(type, concreteTypes);
   }
 
-  llvm::StringRef saveString(llvm::StringRef str);
+  inline llvm::StringRef saveString(llvm::StringRef str) {
+    return stringArena.save(str);
+  }
 
   // Work with the type of a type
   TypeExpr *declareType(llvm::StringRef name, TypeExpr *type);
@@ -293,7 +296,6 @@ private:
   TypeExpr *declareVariable(Node node, TypeExpr *type);
   TypeExpr *declareConcreteVariable(Node node);
   TypeExpr *declareVariable(llvm::StringRef name, TypeExpr *type);
-  TypeExpr *declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
   TypeExpr *declarePatternVariables(const ASTNode *ast,
                                     llvm::SmallVector<TypeExpr *> &typevars);
   TypeExpr *getVariableType(const llvm::StringRef name);
@@ -302,6 +304,13 @@ private:
   TypeExpr *getVariableType(std::string_view name);
   TypeExpr *getVariableType(llvm::SmallVector<llvm::StringRef> path);
   TypeExpr *getVariableType(const char *name);
+
+  inline TypeExpr *exportType(llvm::StringRef name, TypeExpr *type) {
+    return moduleStack.back()->exportType(name, type);
+  }
+  inline TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type) {
+    return moduleStack.back()->exportVariable(name, type);
+  }
 
   // Just associates a type with a node ID so it can be retrieved later
   // for printing and debugging.

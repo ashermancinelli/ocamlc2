@@ -58,13 +58,13 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   TRACE();
   auto name = ast.getCurrentNode().getNamedChild(0);
   auto path = getPathParts(name);
-  auto *m = getVariableType(path);
-  if (auto *module = llvm::dyn_cast<ModuleOperator>(m)) {
-    pushModule(module->getName());
+  auto *module = getVariableType(path);
+  if (auto *mo = llvm::dyn_cast<ModuleOperator>(module)) {
+    moduleStack.back()->openModule(mo);
+    return mo;
   } else {
-    RNULL(SSWRAP("Expected module, got " << *m));
+    RNULL(SSWRAP("Expected module, got " << *module));
   }
-  return getUnitType();
 }
 
 SmallVector<Node> Unifier::flattenType(std::string_view nodeType, Node node) {
@@ -524,7 +524,7 @@ TypeExpr* Unifier::inferForExpression(Cursor ast) {
 
 TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   TRACE();
-  const auto currentModule = filePathToModuleName(sources.back().filepath);
+  const auto currentModule = saveString(filePathToModuleName(sources.back().filepath));
   detail::ModuleScope scope(*this, currentModule);
   if (ast.gotoFirstChild()) {
     do {
@@ -1195,6 +1195,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   if (body) {
     DBGS("has body\n");
     if (body->getType() == "variant_declaration") {
+      TRACE();
       // Variant constructors return the type of the variant, so declare it before inferring
       // the full variant type.
       auto *variantType = create<VariantOperator>(eqName.value_or(typeName), typeVars);
@@ -1209,6 +1210,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       saveInterfaceDecl(interface.str());
       return variantType;
     } else if (body->getType() == "record_declaration") {
+      TRACE();
       // Record declarations need the full record type inferred before declaring
       // the record type.
       auto *recordType = inferRecordDeclaration(typeName, body->getCursor());

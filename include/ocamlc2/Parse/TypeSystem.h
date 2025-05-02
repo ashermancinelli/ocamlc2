@@ -196,24 +196,50 @@ struct ModuleOperator : public TypeOperator {
       : TypeOperator(Kind::Module, moduleName, args),
         typeScope(typeEnv),
         variableScope(variableEnv) {}
-        
-  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Module; }
-  
-  inline Env& getTypeEnv() { return typeEnv; }
-  inline Env& getVariableEnv() { return variableEnv; }
-  inline TypeExpr *lookupType(llvm::StringRef name) {
-    return typeEnv.lookup(name);
+  ModuleOperator(const ModuleOperator &other)
+      : TypeOperator(other.getKind(), other.getName(), other.getArgs()),
+        typeScope(typeEnv), variableScope(variableEnv),
+        openModules(other.openModules), exports(other.exports) {
+    for (const auto &name : other.exports) {
+      if (auto *type = other.lookupType(name)) {
+        typeEnv.insert(name, type);
+      }
+      if (auto *variable = other.lookupVariable(name)) {
+        variableEnv.insert(name, variable);
+      }
+    }
   }
-  TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path);
-  TypeExpr *lookupVariable(llvm::StringRef name);
-  TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path);
-  
+
+  static inline bool classof(const TypeExpr *expr) {
+    return expr->getKind() == Kind::Module;
+  }
+
+  inline Env &getTypeEnv() { return typeEnv; }
+  inline Env &getVariableEnv() { return variableEnv; }
+  TypeExpr *lookupType(llvm::StringRef name) const;
+  TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path) const;
+  TypeExpr *lookupVariable(llvm::StringRef name) const;
+  TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path) const;
+  inline void openModule(ModuleOperator *module) { openModules.push_back(module); }
+  inline void addExport(llvm::StringRef name) { exports.push_back(name); }
+  inline llvm::ArrayRef<llvm::StringRef> getExports() const { return exports; }
+  inline TypeExpr *exportType(llvm::StringRef name, TypeExpr *type) {
+    typeEnv.insert(name, type);
+    exports.push_back(name);
+    return type;
+  }
+  inline TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type) {
+    variableEnv.insert(name, type);
+    exports.push_back(name);
+    return type;
+  }
 private:
   Env typeEnv;
   EnvScope typeScope;
   Env variableEnv;
   EnvScope variableScope;
-
+  llvm::SmallVector<ModuleOperator *> openModules;
+  llvm::SmallVector<llvm::StringRef> exports;
   // Root scope will be managed separately once we start using this
 };
 
@@ -230,23 +256,28 @@ struct UnitOperator : public TypeOperator {
 
 struct TypeVariable : public TypeExpr {
   TypeVariable();
-  inline llvm::StringRef getName() const override { 
+  inline llvm::StringRef getName() const override {
     if (not name) {
       name = std::string("'t" + std::to_string(id));
     }
     return *name;
   }
-  static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Variable; }
+  static inline bool classof(const TypeExpr *expr) {
+    return expr->getKind() == Kind::Variable;
+  }
   inline bool instantiated() const { return instance != nullptr; }
-  bool operator==(const TypeVariable& other) const;
-  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var);
-  TypeExpr* instance = nullptr;
+  bool operator==(const TypeVariable &other) const;
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const TypeVariable &var);
+  TypeExpr *instance = nullptr;
+
 private:
   int id;
   mutable std::optional<std::string> name = std::nullopt;
 };
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const TypeOperator &op) {
   auto args = op.getArgs();
   auto name = op.getName().str();
   if (args.empty()) {
@@ -262,7 +293,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& 
   return os << ") " << name;
 }
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TupleOperator& tuple) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const TupleOperator &tuple) {
   auto args = tuple.getArgs();
   os << *args.front();
   for (auto *arg : args.drop_front()) {
@@ -271,27 +303,32 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TupleOperator&
   return os;
 }
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const RecordOperator& record) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const RecordOperator &record) {
   auto fieldNames = record.getFieldNames();
   auto fieldTypes = record.getArgs();
-  assert(fieldNames.size() == fieldTypes.size() && "field names and field types must be the same size");
+  assert(fieldNames.size() == fieldTypes.size() &&
+         "field names and field types must be the same size");
   if (record.getName() == RecordOperator::getAnonRecordName()) {
     return os << record.decl();
   }
   return os << record.getName();
 }
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const FunctionOperator& func) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const FunctionOperator &func) {
   const auto argList = func.getArgs();
   const auto *returnType = argList.back();
-  if (!returnType) return os << "<error>";
+  if (!returnType)
+    return os << "<error>";
   const auto args = argList.drop_back();
   assert(!args.empty() && "function type must have at least one argument");
   const auto &descs = func.parameterDescriptors;
-  assert(args.size() == descs.size() && "argument list and parameter descriptors must be the same size");
+  assert(args.size() == descs.size() &&
+         "argument list and parameter descriptors must be the same size");
   auto argIter = llvm::zip(descs, args);
   os << '(';
-  auto showArg = [&](auto desc, auto *arg) -> llvm::raw_ostream& {
+  auto showArg = [&](auto desc, auto *arg) -> llvm::raw_ostream & {
     if (desc.isOptional()) {
       os << "?";
     }
@@ -301,15 +338,18 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const FunctionOperat
     return os << *arg;
   };
   for (auto [desc, arg] : argIter) {
-    if (!arg) return os << "<error>";
+    if (!arg)
+      return os << "<error>";
     showArg(desc, arg) << " -> ";
   }
-  if (!returnType) return os << "<error>";
+  if (!returnType)
+    return os << "<error>";
   os << *returnType;
   return os << ')';
 }
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const VariantOperator& variant) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const VariantOperator &variant) {
   for (auto *arg : variant.getArgs()) {
     os << *arg << " ";
   }
@@ -317,7 +357,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const VariantOperato
   return os;
 }
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& var) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const TypeVariable &var) {
   if (var.instantiated()) {
     os << *var.instance;
   } else {
@@ -326,12 +367,14 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& 
   return os;
 }
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const ModuleOperator& module) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const ModuleOperator &module) {
   os << "module " << module.getName();
   return os;
 }
 
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                     const TypeExpr &type) {
   if (auto *fo = llvm::dyn_cast<FunctionOperator>(&type)) {
     os << *fo;
   } else if (auto *vo = llvm::dyn_cast<VariantOperator>(&type)) {
@@ -350,11 +393,14 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type
   return os;
 }
 
-inline llvm::raw_ostream& VariantOperator::showCtor(llvm::raw_ostream& os, const ConstructorType& ctor) const {
+inline llvm::raw_ostream &
+VariantOperator::showCtor(llvm::raw_ostream &os,
+                          const ConstructorType &ctor) const {
   if (std::holds_alternative<llvm::StringRef>(ctor)) {
     os << std::get<llvm::StringRef>(ctor);
   } else {
-    auto [name, fo] = std::get<std::pair<llvm::StringRef, FunctionOperator *>>(ctor);
+    auto [name, fo] =
+        std::get<std::pair<llvm::StringRef, FunctionOperator *>>(ctor);
     os << name << " of ";
     if (fo->getArgs().size() == 2) {
       os << *fo->getArgs().front();
@@ -381,4 +427,4 @@ inline std::string VariantOperator::decl() const {
   return s;
 }
 
-}
+} // namespace ocamlc2

@@ -93,10 +93,9 @@ llvm::SmallVector<llvm::StringRef> Unifier::getPathParts(Node node) {
       auto parts = getPathParts(child);
       pathParts.append(parts.begin(), parts.end());
     } else if (llvm::is_contained(nameTypes, childType)) {
-      llvm::StringRef part = stringArena.save(getText(child));
-      pathParts.push_back(part);
+      pathParts.push_back(getTextSaved(child));
     } else if (childType == "parenthesized_operator") {
-      pathParts.push_back(stringArena.save(getText(child.getNamedChild(0))));
+      pathParts.push_back(getTextSaved(child.getNamedChild(0)));
     } else {
       assert(false && "Unknown path part type");
     }
@@ -130,7 +129,7 @@ TypeExpr *Unifier::maybeGetDeclaredType(ArrayRef<llvm::StringRef> path) {
       return clone(type);
     } else if (auto *module = llvm::dyn_cast<ModuleOperator>(type)) {
       DBGS("looking up type in current module: " << *module << '\n');
-      return module->lookupType(path.drop_front());
+      return clone(module->lookupType(path.drop_front()));
     }
     assert(false && "hmm");
   }
@@ -143,8 +142,13 @@ TypeExpr *Unifier::maybeGetDeclaredType(ArrayRef<llvm::StringRef> path) {
       if (sz == 1) {
         DBGS("returning type from module: " << *type << '\n');
         return clone(type);
+      } else if (auto *module = llvm::dyn_cast<ModuleOperator>(type)) {
+        DBGS("looking up type in module: " << *module << '\n');
+        return clone(module->lookupType(path.drop_front()));
+      } else {
+        DBGS("returning type from module: " << *type << '\n');
+        return clone(type);
       }
-      return maybeGetDeclaredType(path.drop_front());
     }
   }
 
@@ -201,20 +205,13 @@ TypeExpr *Unifier::getDeclaredType(Node node) {
 TypeExpr* Unifier::declareVariable(llvm::StringRef name, TypeExpr* type) {
   TRACE();
   ORNULL(type);
-  auto str = getHashedPathSaved({name});
-  DBGS("Declaring: " << str << " as " << *type << '\n');
-  if (env().count(str)) {
-    DBGS("WARNING: Type of " << name << " redeclared\n");
+  auto savedName = stringArena.save(name);
+  DBGS("Declaring: " << savedName << " as " << *type << '\n');
+  if (env().count(savedName)) {
+    DBGS("WARNING: Type of " << name << " redeclared (hashed: " << savedName << ")\n");
   }
-  env().insert(str, type);
+  env().insert(savedName, type);
   return type;
-}
-
-TypeExpr* Unifier::declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr* type) {
-  TRACE();
-  auto hashedPath = hashPath(path);
-  DBGS("Declaring path: " << getPath(path) << '(' << hashedPath << ')' << " as " << *type << '\n');
-  return declareVariable(hashedPath, type);
 }
 
 TypeExpr* Unifier::setType(Node node, TypeExpr *type) {
@@ -243,6 +240,7 @@ TypeExpr* Unifier::getVariableType(const std::string_view name) {
 }
 
 TypeExpr* Unifier::getVariableType(llvm::SmallVector<llvm::StringRef> path) {
+  path = llvm::map_to_vector(path, [&](llvm::StringRef str) { return stringArena.save(str); });
   DBGS("Getting type: " << joinDot(path) << " size: " << path.size() << '\n');
   if (auto *type = maybeGetVariableType(path)) {
     return type;
@@ -289,6 +287,9 @@ TypeExpr* Unifier::maybeGetVariableType(llvm::ArrayRef<llvm::StringRef> path) {
   if (auto *module = moduleMap.lookup(path.front())) {
     DBGS("Checking module: " << module->getName() << '\n');
     auto remainingPath = SmallVector<StringRef>{path.drop_front()};
+    if (remainingPath.empty()) {
+      return clone(module);
+    }
     if (auto *type = module->lookupVariable(remainingPath)) {
       DBGS("Found type: " << *type << '\n');
       return clone(type);

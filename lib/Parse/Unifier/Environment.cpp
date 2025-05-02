@@ -111,10 +111,6 @@ LogicalResult Unifier::initializeEnvironment() {
     declareVariable("None", Optional);
     declareVariable("Some", getFunctionType({Optional->back(), Optional}));
   }
-  { 
-    detail::ModuleScope ms{*this, "String"};
-    declareVariablePath({"concat"}, getFunctionType({T_string, getListTypeOf(T_string), T_string}));
-  }
   {
     detail::ModuleScope ms{*this, "Printf"};
     declareVariable("printf", getFunctionType({T_string, getVarargsType(), T_unit}));

@@ -161,10 +161,11 @@ public:
  
   using ValTy = ScopedHashTableVal<K, V>;
  
-  DenseMap<K, ValTy*, KInfo> TopLevelMap;
-  ScopeTy *CurScope = nullptr;
  
 public:
+  DenseMap<K, ValTy*, KInfo> TopLevelMap;
+  ScopeTy *CurScope = nullptr;
+
   ScopedHashTable() = default;
   ScopedHashTable(AllocatorTy A) : AllocTy(A) {}
   ScopedHashTable(const ScopedHashTable &) = delete;

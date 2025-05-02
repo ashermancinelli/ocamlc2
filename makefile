@@ -8,7 +8,7 @@ CXX               = $(CBIN)/clang++
 CC                = $(CBIN)/clang
 BUILD_TYPE       ?= Debug
 STDLIB           ?= -L$(LLVM)/lib -lc++ -lc++abi -lunwind -stdlib=libc++
-CXXFLAGS         += -fdiagnostics-color=always
+CXXFLAGS         += -fdiagnostics-color=always -fno-omit-frame-pointer
 CFLAGS           += -fdiagnostics-color=always
 LDFLAGS          += $(STDLIB) -rpath $(LLVM)/lib
 PREFIX           ?= $(shell pwd)/install

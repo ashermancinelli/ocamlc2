@@ -2,6 +2,8 @@
 #include <unistd.h>
 #include "ocamlc2/OCamlC2Config.h"
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/WithColor.h>
+#include <llvm/Support/raw_ostream.h>
 #include <filesystem>
 
 using namespace llvm;
@@ -13,7 +15,7 @@ static std::string debugger = "lldb";
 namespace fs = std::filesystem;
 bool Debug = false;
 bool RunGDB = false;
-bool Color = true;
+bool Color = llvm::WithColor::defaultAutoDetectFunction()(llvm::outs());
 bool DumpTypes = false;
 bool Freestanding = false;
 bool StdlibOnly = false;
@@ -87,11 +89,6 @@ static cl::opt<bool, true> dumpTypes("dtypes", cl::desc("Dump types"),
 
 static cl::alias DdumpTypes("d", cl::desc("Dump types"),
                             cl::aliasopt(dumpTypes), cl::cat(OcamlOptions));
-
-static cl::opt<bool>
-    noColor("no-color", cl::desc("Disable color output"),
-            cl::cb<void, bool>([](bool value) { Color = !value; }),
-            cl::cat(OcamlOptions));
 
 static cl::opt<bool>
     freestanding("freestanding", cl::desc("Enable freestanding mode"),

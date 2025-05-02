@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <llvm/Support/Program.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/WithColor.h>
 #include "ocamlc2/Parse/TSUtil.h"
 #include <cpp-tree-sitter.h>
 #include <unistd.h>
@@ -100,19 +101,22 @@ std::string filePathToModuleName(fs::path path) {
 
 namespace ANSIColors {
 using namespace ocamlc2::CL;
-const char* red() { return Color ? "\033[31m" : ""; }
-const char* green() { return Color ? "\033[32m" : ""; }
-const char* yellow() { return Color ? "\033[33m" : ""; }
-const char* blue() { return Color ? "\033[34m" : ""; }
-const char* magenta() { return Color ? "\033[35m" : ""; }
-const char* cyan() { return Color ? "\033[36m" : ""; }
-const char* reset() { return Color ? "\033[0m" : ""; }
-const char* bold() { return Color ? "\033[1m" : ""; }
-const char* faint() { return Color ? "\033[2m" : ""; }
-const char* italic() { return Color ? "\033[3m" : ""; }
-const char* underline() { return Color ? "\033[4m" : ""; }
-const char* reverse() { return Color ? "\033[7m" : ""; }
-const char* strikethrough() { return Color ? "\033[9m" : ""; }
+namespace {
+  static bool color = llvm::WithColor::defaultAutoDetectFunction()(llvm::outs());
+}
+const char* red() { return color ? "\033[31m" : ""; }
+const char* green() { return color ? "\033[32m" : ""; }
+const char* yellow() { return color ? "\033[33m" : ""; }
+const char* blue() { return color ? "\033[34m" : ""; }
+const char* magenta() { return color ? "\033[35m" : ""; }
+const char* cyan() { return color ? "\033[36m" : ""; }
+const char* reset() { return color ? "\033[0m" : ""; }
+const char* bold() { return color ? "\033[1m" : ""; }
+const char* faint() { return color ? "\033[2m" : ""; }
+const char* italic() { return color ? "\033[3m" : ""; }
+const char* underline() { return color ? "\033[4m" : ""; }
+const char* reverse() { return color ? "\033[7m" : ""; }
+const char* strikethrough() { return color ? "\033[9m" : ""; }
 } // namespace ANSIColors
 
 static constexpr std::string_view OCamlStdlibInterfaces[] = {

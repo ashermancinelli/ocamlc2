@@ -136,6 +136,22 @@ TypeExpr *Unifier::clone(TypeExpr *type) {
   return clone(type, mapping);
 }
 
+TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs) {
+  if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
+    DBGS("Cloning function operator: " << *func << '\n');
+    return getFunctionType(mappedArgs, func->parameterDescriptors);
+  } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
+    DBGS("Cloning record operator: " << *record << '\n');
+    return getRecordType(record->getName(), mappedArgs, record->getFieldNames());
+  } else if (auto *module = llvm::dyn_cast<ModuleOperator>(op)) {
+    DBGS("Cloning module operator: " << *module << '\n');
+    return create<ModuleOperator>(*module);
+  } else {
+    DBGS("Cloning type operator: " << *op << '\n');
+    return createTypeOperator(op->getKind(), op->getName(), mappedArgs);
+  }
+}
+
 #define DBGSCLONE DBGS
 TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
   DBGSCLONE("Cloning type: " << *type << '\n');
@@ -147,13 +163,7 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
           return clone(arg, mapping);
         }));
     DBGSCLONE("cloning type operator: " << op->getName() << '\n');
-    if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
-      return getFunctionType(args, func->parameterDescriptors);
-    } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
-      return getRecordType(record->getName(), args, record->getFieldNames());
-    } else {
-      return createTypeOperator(op->getKind(), op->getName(), args);
-    }
+    return cloneOperator(op, args);
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
     DBGSCLONE("cloning type variable: " << *tv << '\n');
     if (isGeneric(tv, concreteTypes)) {
