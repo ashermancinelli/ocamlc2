@@ -77,16 +77,14 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
   }
 }
 
-Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)), rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
+Unifier::Unifier() {
   if (failed(initializeEnvironment())) {
     llvm::errs() << "Failed to initialize environment\n";
     exit(1);
   }
 }
 
-Unifier::Unifier(std::string filepath)
-    : rootScope(std::make_unique<detail::Scope>(this)),
-      rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
+Unifier::Unifier(std::string filepath) {
   TRACE();
   if (failed(initializeEnvironment())) {
     llvm::errs() << "Failed to initialize environment\n";
@@ -213,7 +211,7 @@ llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name
 }
 
 detail::Scope::Scope(Unifier *unifier)
-    : unifier(unifier), envScope(unifier->env),
+    : unifier(unifier), envScope(unifier->env()),
       concreteTypes(unifier->concreteTypes) {
   DBGS("open scope\n");
 }

@@ -76,7 +76,6 @@ struct Unifier {
   llvm::raw_ostream &showTypedTree();
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false, bool showTypes = true);
   llvm::raw_ostream &show(bool showUnnamed = false, bool showTypes = true);
-  using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using TypeVarEnv = llvm::ScopedHashTable<llvm::StringRef, TypeVariable *>;
   struct TypeVarEnvScope {
     using ScopeTy = TypeVarEnv::ScopeTy;
@@ -85,7 +84,6 @@ struct Unifier {
   private:
     ScopeTy scope;
   };
-  using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable *>;
   TypeExpr *infer(Cursor ast);
   TypeExpr *infer(ts::Node const &ast);
@@ -110,12 +108,12 @@ private:
 
   inline auto *createTypeOperator(llvm::StringRef name,
                                   llvm::ArrayRef<TypeExpr *> args = {}) {
-    return create<TypeOperator>(name, args);
+    return create<TypeOperator>(stringArena.save(name), args);
   }
   inline auto *createTypeOperator(TypeOperator::Kind kind,
                                   llvm::StringRef name,
                                   llvm::ArrayRef<TypeExpr *> args = {}) {
-    return create<TypeOperator>(kind, name, args);
+    return create<TypeOperator>(kind, stringArena.save(name), args);
   }
 
 public:
@@ -275,11 +273,10 @@ private:
   llvm::StringRef saveString(llvm::StringRef str);
 
   // Work with the type of a type
-  TypeExpr *declareType(Node node, TypeExpr *type);
   TypeExpr *declareType(llvm::StringRef name, TypeExpr *type);
-  TypeExpr *maybeGetDeclaredType(llvm::StringRef name);
-  TypeExpr *maybeGetDeclaredTypeWithName(llvm::StringRef name);
-  TypeExpr *getDeclaredType(llvm::StringRef name);
+  TypeExpr *declareType(Node node, TypeExpr *type);
+  TypeExpr *maybeGetDeclaredType(ArrayRef<llvm::StringRef> path);
+  TypeExpr *getDeclaredType(ArrayRef<llvm::StringRef> path);
   TypeExpr *getDeclaredType(Node node);
 
   // Does not error on missing typevariable because TVs are introduced implicitly
@@ -335,9 +332,13 @@ private:
   void popTypeVariableScope() {}
 
   // Environment for type variables
-  Env env;
-  Env typeEnv;
+  // Env env;
+  // Env typeEnv;
+  inline Env &env() { return moduleStack.back()->getVariableEnv(); }
+  inline Env &typeEnv() { return moduleStack.back()->getTypeEnv(); }
   TypeVarEnv typeVarEnv;
+  llvm::SmallVector<ModuleOperator *> moduleStack;
+  llvm::DenseMap<llvm::StringRef, ModuleOperator *> moduleMap;
 
   // Set of types that have been declared as concrete, usually because they
   // are type variables for parameters of a function.
@@ -347,10 +348,7 @@ private:
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
 
   // Paths to search for type variables
-  llvm::SmallVector<llvm::StringRef> moduleSearchPath;
-
-  // Current module path for code being inferred
-  llvm::SmallVector<llvm::StringRef> currentModule;
+  llvm::SmallVector<llvm::SmallVector<llvm::StringRef>> moduleSearchPath = {{"Stdlib"}};
 
   // It is useful to keep and dump certain nodes and types for debugging
   // and testing. Record them here to be dumped after inference is complete.
@@ -371,10 +369,10 @@ private:
   // Root scope for the unifier, created when the unifier is constructed.
   // Sometimes we need to declare stdlib types before actually loading the
   // stdlib, in which case we don't have a compilation unit to create a scope.
-  std::unique_ptr<detail::Scope> rootScope;
-  std::unique_ptr<EnvScope> rootTypeScope;
+  // std::unique_ptr<detail::Scope> rootScope;
+  // std::unique_ptr<EnvScope> rootTypeScope;
 
-  llvm::SmallVector<std::unique_ptr<EnvScope>> typeScopeStack;
+  // llvm::SmallVector<std::unique_ptr<EnvScope>> typeScopeStack;
 
   // Whether we are loading the standard library. It's helpful to skip certain
   // debugging steps when loading the stdlib, as it becomes very noisy when
@@ -412,11 +410,9 @@ private:
 struct ModuleScope {
   ModuleScope(Unifier &unifier, llvm::StringRef module) : unifier(unifier) {
     unifier.pushModule(module);
-    unifier.pushModuleSearchPath({module});
   }
   ~ModuleScope() {
     unifier.popModule();
-    unifier.popModuleSearchPath();
   }
 
 private:
@@ -429,8 +425,7 @@ struct Scope {
 
 private:
   Unifier *unifier;
-  Unifier::EnvScope envScope;
-  // Unifier::EnvScope typeEnvScope;
+  EnvScope envScope;
   Unifier::ConcreteTypes concreteTypes;
 };
 

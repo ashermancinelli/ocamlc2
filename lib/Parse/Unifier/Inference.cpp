@@ -58,10 +58,11 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   TRACE();
   auto name = ast.getCurrentNode().getNamedChild(0);
   auto path = getPathParts(name);
-  pushModuleSearchPath(hashPath(path));
-  auto currentModulePath = currentModule;
-  std::copy(path.begin(), path.end(), std::back_inserter(currentModulePath));
-  pushModuleSearchPath(hashPath(currentModulePath));
+  llvm::SmallVector<llvm::StringRef> currentModulePath = llvm::map_to_vector(moduleStack, [](auto mod) {
+    return mod->getName();
+  });
+  currentModulePath.push_back(hashPath(path));
+  pushModuleSearchPath(currentModulePath);
   return getUnitType();
 }
 
@@ -1078,6 +1079,7 @@ RecordOperator* Unifier::inferRecordDeclaration(Cursor ast) {
     assert(child.getType() == "field_declaration");
     auto name = child.getNamedChild(0);
     auto type = infer(child.getNamedChild(1));
+    ORNULL(type);
     auto text = getTextSaved(name);
     if (llvm::find(fieldNames, text) != fieldNames.end()) {
       RNULL("Duplicate field name", name);
@@ -1299,15 +1301,15 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   };
   if (node.getType() == "number") {
     auto text = getText(node);
-    return text.contains('.') ? getDeclaredType("float") : getDeclaredType("int");
+    return text.contains('.') ? getFloatType() : getIntType();
   } else if (node.getType() == "float") {
-    return getDeclaredType("float");
+    return getFloatType();
   } else if (node.getType() == "boolean") {
     return getBoolType();
   } else if (node.getType() == "unit") {
     return getUnitType();
   } else if (node.getType() == "string") {
-    return getDeclaredType("string");
+    return getStringType();
   } else if (node.getType() == "guard") {
     return inferGuard(std::move(ast));
   } else if (node.getType() == "do_clause") {

@@ -29,6 +29,7 @@ using ts::NodeID;
 using ts::Cursor;
 
 using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
+using EnvScope = Env::ScopeTy;
 using TypeVarEnv = llvm::ScopedHashTable<llvm::StringRef, TypeVariable *>;
 
 struct TypeVarEnvScope {

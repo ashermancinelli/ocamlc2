@@ -3,6 +3,10 @@
 
 namespace ocamlc2 {
 
+inline std::string joinDot(llvm::ArrayRef<llvm::StringRef> path) {
+  return llvm::join(path, ".");
+}
+
 inline std::string getPath(llvm::ArrayRef<llvm::StringRef> path) {
   return llvm::join(path, ".");
 }

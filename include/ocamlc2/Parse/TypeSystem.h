@@ -2,6 +2,7 @@
 
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/ASTPasses.h"
+#include "ocamlc2/Parse/Environment.h"
 #include "ocamlc2/Parse/TSUtil.h"
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
@@ -32,6 +33,7 @@ struct TupleOperator;
 struct TypeVariable;
 struct UnitOperator;
 struct VarargsOperator;
+struct ModuleOperator;
 
 struct TypeExpr {
   // clang-format off
@@ -44,6 +46,7 @@ struct TypeExpr {
     Varargs  = 0b0000'0010'0001,
     Wildcard = 0b0000'0100'0001,
     Variant  = 0b0000'1000'0001,
+    Module   = 0b0001'0000'0001,
   };
   // clang-format on
   TypeExpr(Kind kind) : kind(kind) {}
@@ -80,7 +83,7 @@ struct TypeOperator : public TypeExpr {
 protected:
   llvm::SmallVector<TypeExpr*> args;
 private:
-  std::string name;
+  llvm::StringRef name;
 };
 
 struct WildcardOperator : public TypeOperator {
@@ -183,6 +186,34 @@ struct FunctionOperator : public TypeOperator {
 struct TupleOperator : public TypeOperator {
   TupleOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(Kind::Tuple, "*", args) {}
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Tuple; }
+};
+
+struct ModuleOperator : public TypeOperator {
+  using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
+  using TypeVarEnv = llvm::ScopedHashTable<llvm::StringRef, TypeVariable *>;
+  
+  ModuleOperator(llvm::StringRef moduleName, llvm::ArrayRef<TypeExpr*> args={})
+      : TypeOperator(Kind::Module, moduleName, args),
+        typeScope(typeEnv),
+        variableScope(variableEnv) {}
+        
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Module; }
+  
+  inline Env& getTypeEnv() { return typeEnv; }
+  inline Env& getVariableEnv() { return variableEnv; }
+  inline TypeExpr *lookupType(llvm::StringRef name) {
+    return typeEnv.lookup(name);
+  }
+  TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path);
+  TypeExpr *lookupVariable(llvm::StringRef name);
+  TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path);
+  
+private:
+  Env typeEnv;
+  EnvScope typeScope;
+  Env variableEnv;
+  EnvScope variableScope;
+  // Root scope will be managed separately once we start using this
 };
 
 struct UnitOperator : public TypeOperator {
@@ -294,6 +325,11 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeVariable& 
   return os;
 }
 
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const ModuleOperator& module) {
+  os << "module " << module.getName();
+  return os;
+}
+
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type) {
   if (auto *fo = llvm::dyn_cast<FunctionOperator>(&type)) {
     os << *fo;
@@ -303,6 +339,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type
     os << *to;
   } else if (auto *ro = llvm::dyn_cast<RecordOperator>(&type)) {
     os << *ro;
+  } else if (auto *mo = llvm::dyn_cast<ModuleOperator>(&type)) {
+    os << *mo;
   } else if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
     os << *to;
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
