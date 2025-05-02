@@ -32,10 +32,13 @@ void Unifier::pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> path) {
 void Unifier::pushModule(llvm::StringRef module) {
   module = stringArena.save(module);
   DBGS("pushing module: " << module << '\n');
-  auto *mod = create<ModuleOperator>(module);
-  moduleMap[module] = mod;
-  moduleStack.push_back(mod);
-  declareVariable(module, mod);
+  auto *moduleOperator = create<ModuleOperator>(module);
+  auto *enclosingModule = moduleStack.empty() ? nullptr : moduleStack.back();
+  moduleMap[module] = moduleOperator;
+  moduleStack.push_back(moduleOperator);
+  if (enclosingModule) {
+    enclosingModule->exportVariable(module, moduleOperator);
+  }
 }
 
 void Unifier::popModuleSearchPath() {

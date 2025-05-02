@@ -219,7 +219,7 @@ private:
   TypeExpr *inferModuleTypeDefinition(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *inferParenthesizedPattern(Cursor ast);
-  RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, Cursor ast);
+  RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
   RecordOperator *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferRecordExpression(Cursor ast);
   FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);

@@ -417,7 +417,11 @@ TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
   DBGS("variable let binding, no parameters\n");
   auto *bodyType = infer(body);
   ORNULL(bodyType);
-  declareVariable(name, bodyType);
+  if (name.getType() == "unit") {
+    UNIFY_OR_RNULL(bodyType, getUnitType());
+  } else {
+    declareVariable(name, bodyType);
+  }
   return bodyType;
 }
 
@@ -1062,7 +1066,7 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
   RNULL(ss.str(), node);
 }
 
-RecordOperator* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Cursor ast) {
+RecordOperator* Unifier::inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast) {
   auto *type = inferRecordDeclaration(std::move(ast));
   ORNULL(type);
   auto *recordType = llvm::dyn_cast<RecordOperator>(type);
@@ -1220,7 +1224,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       TRACE();
       // Record declarations need the full record type inferred before declaring
       // the record type.
-      auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
+      auto *recordType = inferRecordDeclaration(typeName, typeVars, body->getCursor());
       ORNULL(recordType);
       interface << " = " << recordType->decl();
       concreteTypes = savedConcreteTypes;

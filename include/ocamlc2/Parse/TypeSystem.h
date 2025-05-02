@@ -38,15 +38,16 @@ struct ModuleOperator;
 struct TypeExpr {
   // clang-format off
   enum Kind {
-    Operator = 0b0000'0000'0001,
-    Variable = 0b0000'0000'0010,
-    Record   = 0b0000'0000'0101,
-    Function = 0b0000'0000'1001,
-    Tuple    = 0b0000'0001'0001,
-    Varargs  = 0b0000'0010'0001,
-    Wildcard = 0b0000'0100'0001,
-    Variant  = 0b0000'1000'0001,
-    Module   = 0b0001'0000'0001,
+    Operator  = 0b0000'0000'0001,
+    Variable  = 0b0000'0000'0010,
+    Record    = 0b0000'0000'0101,
+    Function  = 0b0000'0000'1001,
+    Tuple     = 0b0000'0001'0001,
+    Varargs   = 0b0000'0010'0001,
+    Wildcard  = 0b0000'0100'0001,
+    Variant   = 0b0000'1000'0001,
+    Signature = 0b0001'0000'0001,
+    Module    = 0b0010'0000'0001,
   };
   // clang-format on
   TypeExpr(Kind kind) : kind(kind) {}
@@ -55,7 +56,7 @@ struct TypeExpr {
   Kind getKind() const { return kind; }
   bool operator==(const TypeExpr& other) const;
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type);
-private:
+protected:
   Kind kind;
 };
 
@@ -105,23 +106,30 @@ struct VariantOperator : public TypeOperator {
   inline void addConstructor(llvm::StringRef constructorName) {
     constructors.emplace_back(constructorName);
   }
-  inline std::string decl() const;
+  std::string decl() const;
 private:
   inline llvm::raw_ostream& showCtor(llvm::raw_ostream& os, const ConstructorType& ctor) const;
   llvm::SmallVector<ConstructorType> constructors;
 };
 
 struct RecordOperator : public TypeOperator {
-  RecordOperator(llvm::StringRef recordName, llvm::ArrayRef<TypeExpr *> args,
+  RecordOperator(llvm::StringRef recordName, llvm::ArrayRef<TypeExpr *> fieldTypes,
                  llvm::ArrayRef<llvm::StringRef> fieldNames)
-      : TypeOperator(Kind::Record, recordName, args) {
+      : TypeOperator(Kind::Record, recordName, fieldTypes) {
     std::copy(fieldNames.begin(), fieldNames.end(),
               std::back_inserter(this->fieldNames));
+    std::copy(fieldTypes.begin(), fieldTypes.end(),
+              std::back_inserter(this->args));
+    typeArgs = llvm::ArrayRef<TypeExpr*>(args.begin() + fieldTypes.size(), args.end());
     normalize();
   }
   static inline llvm::StringRef getAnonRecordName() { return "<anon>"; }
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Record; }
   inline llvm::ArrayRef<llvm::StringRef> getFieldNames() const { return fieldNames; }
+  inline llvm::ArrayRef<TypeExpr *> getFieldTypes() const {
+    return llvm::ArrayRef<TypeExpr *>(args.begin(),
+                                      args.begin() + fieldNames.size());
+  }
   inline bool isAnonymous() const { return getName() == getAnonRecordName(); }
   inline bool isOpen() const {
     return llvm::any_of(
@@ -142,15 +150,17 @@ struct RecordOperator : public TypeOperator {
   }
 private:
   llvm::SmallVector<llvm::StringRef> fieldNames;
+  llvm::ArrayRef<TypeExpr*> typeArgs;
   void normalize() {
     auto zipped = llvm::to_vector(llvm::zip(args, fieldNames));
     llvm::sort(zipped, [](auto a, auto b) {
       return std::get<1>(a) < std::get<1>(b);
     });
-    args = llvm::map_to_vector(
+    auto fieldArgs = llvm::map_to_vector(
         zipped, [](auto a) -> TypeExpr * { return std::get<0>(a); });
     fieldNames = llvm::map_to_vector(
         zipped, [](auto a) -> llvm::StringRef { return std::get<1>(a); });
+    args.insert(args.begin(), fieldArgs.begin(), fieldArgs.end());
   }
 };
 
@@ -188,49 +198,55 @@ struct TupleOperator : public TypeOperator {
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Tuple; }
 };
 
-struct ModuleOperator : public TypeOperator {
+struct SignatureOperator : public TypeOperator {
   using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using TypeVarEnv = llvm::ScopedHashTable<llvm::StringRef, TypeVariable *>;
+  struct Export {
+    enum Kind {
+      Type, Variable, Exception
+    };
+    Kind kind;
+    llvm::StringRef name;
+    TypeExpr *type;
+    Export(Kind kind, llvm::StringRef name, TypeExpr *type) : kind(kind), name(name), type(type) {}
+  };
   
-  ModuleOperator(llvm::StringRef moduleName, llvm::ArrayRef<TypeExpr*> args={})
-      : TypeOperator(Kind::Module, moduleName, args),
+  SignatureOperator(llvm::StringRef signatureName, llvm::ArrayRef<TypeExpr*> args={})
+      : TypeOperator(Kind::Signature, signatureName, args),
         typeScope(typeEnv),
         variableScope(variableEnv) {}
-  ModuleOperator(const ModuleOperator &other)
+  SignatureOperator(const SignatureOperator &other)
       : TypeOperator(other.getKind(), other.getName(), other.getArgs()),
         typeScope(typeEnv), variableScope(variableEnv),
-        openModules(other.openModules), exports(other.exports) {
-    for (const auto &name : other.exports) {
-      if (auto *type = other.lookupType(name)) {
-        typeEnv.insert(name, type);
-      }
-      if (auto *variable = other.lookupVariable(name)) {
-        variableEnv.insert(name, variable);
+        exports(other.exports) {
+    for (const auto &e : other.getExports()) {
+      if (e.kind == Export::Kind::Type) {
+        typeEnv.insert(e.name, e.type);
+      } else if (e.kind == Export::Kind::Variable) {
+        variableEnv.insert(e.name, e.type);
       }
     }
   }
 
   static inline bool classof(const TypeExpr *expr) {
-    return expr->getKind() == Kind::Module;
+    return expr->getKind() == Kind::Module || expr->getKind() == Kind::Signature;
   }
 
   inline Env &getTypeEnv() { return typeEnv; }
   inline Env &getVariableEnv() { return variableEnv; }
-  TypeExpr *lookupType(llvm::StringRef name) const;
-  TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path) const;
-  TypeExpr *lookupVariable(llvm::StringRef name) const;
-  TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path) const;
-  inline void openModule(ModuleOperator *module) { openModules.push_back(module); }
-  inline void addExport(llvm::StringRef name) { exports.push_back(name); }
-  inline llvm::ArrayRef<llvm::StringRef> getExports() const { return exports; }
+  virtual TypeExpr *lookupType(llvm::StringRef name) const;
+  virtual TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path) const;
+  virtual TypeExpr *lookupVariable(llvm::StringRef name) const;
+  virtual TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path) const;
+  inline llvm::ArrayRef<Export> getExports() const { return exports; }
   inline TypeExpr *exportType(llvm::StringRef name, TypeExpr *type) {
     typeEnv.insert(name, type);
-    exports.push_back(name);
+    exports.push_back(Export(Export::Kind::Type, name, type));
     return type;
   }
   inline TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type) {
     variableEnv.insert(name, type);
-    exports.push_back(name);
+    exports.push_back(Export(Export::Kind::Variable, name, type));
     return type;
   }
 private:
@@ -238,9 +254,27 @@ private:
   EnvScope typeScope;
   Env variableEnv;
   EnvScope variableScope;
+  llvm::SmallVector<Export> exports;
+};
+
+struct ModuleOperator : public SignatureOperator {
+  ModuleOperator(llvm::StringRef moduleName,
+                 llvm::ArrayRef<TypeExpr *> args = {})
+      : SignatureOperator(moduleName, args) {
+    this->kind = Kind::Module;
+  }
+  ModuleOperator(const ModuleOperator &other)
+      : SignatureOperator(other), openModules(other.openModules) {
+    this->kind = Kind::Module;
+  }
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Module; }
+  inline void openModule(ModuleOperator *module) { openModules.push_back(module); }
+  TypeExpr *lookupType(llvm::StringRef name) const override;
+  TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path) const override;
+  TypeExpr *lookupVariable(llvm::StringRef name) const override;
+  TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path) const override;
+private:
   llvm::SmallVector<ModuleOperator *> openModules;
-  llvm::SmallVector<llvm::StringRef> exports;
-  // Root scope will be managed separately once we start using this
 };
 
 struct UnitOperator : public TypeOperator {
@@ -306,7 +340,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const RecordOperator &record) {
   auto fieldNames = record.getFieldNames();
-  auto fieldTypes = record.getArgs();
+  auto fieldTypes = record.getFieldTypes();
   assert(fieldNames.size() == fieldTypes.size() &&
          "field names and field types must be the same size");
   if (record.getName() == RecordOperator::getAnonRecordName()) {
@@ -367,7 +401,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   return os;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const ModuleOperator &module);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const SignatureOperator &signature);
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const TypeExpr &type) {
@@ -409,18 +443,6 @@ VariantOperator::showCtor(llvm::raw_ostream &os,
     }
   }
   return os;
-}
-
-inline std::string VariantOperator::decl() const {
-  std::string s;
-  llvm::raw_string_ostream ss(s);
-  auto first = constructors.front();
-  showCtor(ss, first);
-  for (auto ctor : llvm::drop_begin(constructors)) {
-    ss << " | ";
-    showCtor(ss, ctor);
-  }
-  return s;
 }
 
 } // namespace ocamlc2
