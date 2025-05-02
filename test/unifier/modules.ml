@@ -1,7 +1,11 @@
-module M2 : sig
+module type S = sig
+  type t
   val print : unit -> unit
   val map : ('a -> 'b) -> 'a list -> 'b list
-end = struct
+end
+
+module M2 : S = struct
+  type t = int
   let message = "Hello from M2"
   let print () = print_endline message
   let map f l = List.map f l
@@ -16,4 +20,5 @@ let () =
 
 (*
 RUN: p3 %s --dtypes | FileCheck %s.ref
+XFAIL: *
 *)

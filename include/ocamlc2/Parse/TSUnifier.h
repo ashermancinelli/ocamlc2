@@ -216,6 +216,7 @@ private:
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);
+  TypeExpr *inferModuleTypeDefinition(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *inferParenthesizedPattern(Cursor ast);
   RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, Cursor ast);

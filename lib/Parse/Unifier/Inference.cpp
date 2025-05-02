@@ -841,6 +841,13 @@ TypeExpr* Unifier::inferSequenceExpression(Cursor ast) {
   return last;
 }
 
+TypeExpr* Unifier::inferModuleTypeDefinition(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "module_type_definition");
+  return inferModuleBinding(node.getNamedChild(0).getCursor());
+}
+
 TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();

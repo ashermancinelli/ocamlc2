@@ -107,7 +107,7 @@ llvm::SmallVector<llvm::StringRef> Unifier::getPathParts(Node node) {
 TypeExpr *Unifier::declareType(llvm::StringRef name, TypeExpr* type) {
   ORNULL(type);
   DBGS("Declaring type: " << name << " as " << *type << '\n');
-  typeEnv().insert(name, type);
+  exportType(name, type);
   return type;
 }
 
@@ -210,7 +210,7 @@ TypeExpr* Unifier::declareVariable(llvm::StringRef name, TypeExpr* type) {
   if (env().count(savedName)) {
     DBGS("WARNING: Type of " << name << " redeclared (hashed: " << savedName << ")\n");
   }
-  env().insert(savedName, type);
+  exportVariable(savedName, type);
   return type;
 }
 

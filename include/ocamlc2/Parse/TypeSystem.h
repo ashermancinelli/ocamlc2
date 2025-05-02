@@ -367,11 +367,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   return os;
 }
 
-inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                     const ModuleOperator &module) {
-  os << "module " << module.getName();
-  return os;
-}
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const ModuleOperator &module);
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const TypeExpr &type) {

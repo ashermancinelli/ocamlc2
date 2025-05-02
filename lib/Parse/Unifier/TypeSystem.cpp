@@ -66,4 +66,20 @@ TypeExpr *ModuleOperator::lookupVariable(llvm::ArrayRef<llvm::StringRef> path) c
   return nullptr;
 }
 
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              const ModuleOperator &module) {
+  os << "module " << module.getName() << " : sig\n";
+  for (auto e : module.getExports()) {
+    if (auto *type = module.lookupType(e)) {
+      os << "type " << e << " = " << *type << '\n';
+    } else if (auto *variable = module.lookupVariable(e)) {
+      os << "val " << e << " : " << *variable << '\n';
+    } else {
+      assert(false && "unknown export");
+    }
+  }
+  os << "end\n";
+  return os;
+}
+
 } // namespace ocamlc2

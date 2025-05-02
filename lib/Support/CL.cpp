@@ -15,7 +15,7 @@ static std::string debugger = "lldb";
 namespace fs = std::filesystem;
 bool Debug = false;
 bool RunGDB = false;
-bool Color = llvm::WithColor::defaultAutoDetectFunction()(llvm::outs());
+bool Color = true; // llvm::WithColor::defaultAutoDetectFunction()(llvm::outs());
 bool DumpTypes = false;
 bool Freestanding = false;
 bool StdlibOnly = false;
@@ -110,4 +110,9 @@ static cl::opt<bool, true> clDParseTree("dparsetree",
 static cl::opt<bool, true> clDTypedTree("dtypedtree",
                                   cl::desc("Enable typed tree dump"),
                                   cl::location(DTypedTree),
+                                  cl::cat(OcamlOptions));
+
+static cl::opt<bool, true> clNoColor("no-color",
+                                  cl::desc("Disable color output"),
+                                  cl::location(Color),
                                   cl::cat(OcamlOptions));
