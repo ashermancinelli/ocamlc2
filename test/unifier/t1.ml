@@ -1,4 +1,3 @@
-
 (*
 RUN: p3 %s --dtypes | FileCheck %s.ref
 *)
@@ -54,22 +53,36 @@ let area s = match s with
 
 (* Print results to verify *)
 let () =
-  Printf.printf "Value of x: %d\n" x;
-  Printf.printf "Greeting: %s\n" greeting;
-  Printf.printf "5 + 10 = %d\n" (add 5 10);
-  Printf.printf "Factorial of 5: %d\n" (factorial 5);
-  Printf.printf "Describe 0: %s\n" (describe_number 0);
-  Printf.printf "Describe 5: %s\n" (describe_number 5);
+  print_string "Value of x: "; print_int x; print_newline ();
+  print_string "Greeting: "; print_endline greeting;
+  print_string "5 + 10 = "; print_int (add 5 10); print_newline ();
+  print_string "Factorial of 5: "; print_int (factorial 5); print_newline ();
+  print_string "Describe 0: "; print_endline (describe_number 0);
+  print_string "Describe 5: "; print_endline (describe_number 5);
   
   let test_array = [|10; 20; 30; 40; 50|] in
   (match find_index 30 test_array with
-  | Some i -> Printf.printf "Found 30 at index: %d\n" i
-  | None -> Printf.printf "30 not found\n");
+  | Some i -> print_string "Found 30 at index: "; print_int i; print_newline ()
+  | None -> print_endline "30 not found");
   
-  Printf.printf "Original list: [%s]\n" (String.concat "; " (List.map string_of_int my_list));
-  Printf.printf "Doubled list: [%s]\n" (String.concat "; " (List.map string_of_int doubled));
-  Printf.printf "Sum of list: %d\n" sum;
+  print_string "Original list: [";
+  print_string (String.concat "; " (List.map string_of_int my_list));
+  print_endline "]";
   
-  Printf.printf "Area of circle (r=5): %f\n" (area (Circle 5.0));
-  Printf.printf "Area of rectangle (3x4): %f\n" (area (Rectangle (3.0, 4.0)));
-  Printf.printf "Area of triangle (3,4,5): %f\n" (area (Triangle (3.0, 4.0, 5.0)));
+  print_string "Doubled list: [";
+  print_string (String.concat "; " (List.map string_of_int doubled));
+  print_endline "]";
+  
+  print_string "Sum of list: "; print_int sum; print_newline ();
+  
+  print_string "Area of circle (r=5): ";
+  print_float (area (Circle 5.0));
+  print_newline ();
+  
+  print_string "Area of rectangle (3x4): ";
+  print_float (area (Rectangle (3.0, 4.0)));
+  print_newline ();
+  
+  print_string "Area of triangle (3,4,5): ";
+  print_float (area (Triangle (3.0, 4.0, 5.0)));
+  print_newline ();
