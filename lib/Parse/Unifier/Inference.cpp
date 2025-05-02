@@ -58,11 +58,12 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   TRACE();
   auto name = ast.getCurrentNode().getNamedChild(0);
   auto path = getPathParts(name);
-  llvm::SmallVector<llvm::StringRef> currentModulePath = llvm::map_to_vector(moduleStack, [](auto mod) {
-    return mod->getName();
-  });
-  currentModulePath.push_back(hashPath(path));
-  pushModuleSearchPath(currentModulePath);
+  auto *m = getVariableType(path);
+  if (auto *module = llvm::dyn_cast<ModuleOperator>(m)) {
+    pushModule(module->getName());
+  } else {
+    RNULL(SSWRAP("Expected module, got " << *m));
+  }
   return getUnitType();
 }
 
@@ -524,17 +525,15 @@ TypeExpr* Unifier::inferForExpression(Cursor ast) {
 TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   TRACE();
   const auto currentModule = filePathToModuleName(sources.back().filepath);
-  pushModule(stringArena.save(currentModule));
-  auto *t = getUnitType();
+  detail::ModuleScope scope(*this, currentModule);
   if (ast.gotoFirstChild()) {
     do {
       if (!shouldSkip(ast.getCurrentNode())) {
-        t = infer(ast.copy());
+        ORNULL(infer(ast.copy()));
       }
     } while (ast.gotoNextSibling());
   }
-  popModule();
-  return t;
+  return moduleStack.back();
 }
 
 TypeExpr* Unifier::inferValuePath(Cursor ast) {
@@ -882,8 +881,7 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
     inferModuleStructure(structure->getCursor());
   }
   saveInterfaceDecl("end");
-  return createTypeOperator(
-      hashPath(ArrayRef<StringRef>{"Module", getTextSaved(name)}), {});
+  return moduleStack.back();
 }
 
 TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
@@ -1101,13 +1099,15 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_definition");
+  TypeExpr *type = nullptr;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
-    auto *type = inferTypeBinding(child.getCursor());
+    type = inferTypeBinding(child.getCursor());
     ORNULL(type);
     setType(child, type);
   }
-  return getUnitType();
+  setType(node, type);
+  return type;
 }
 
 TypeExpr* Unifier::inferVariantConstructor(VariantOperator* variantType, Cursor ast) {

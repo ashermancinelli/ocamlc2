@@ -213,6 +213,7 @@ private:
   EnvScope typeScope;
   Env variableEnv;
   EnvScope variableScope;
+
   // Root scope will be managed separately once we start using this
 };
 

@@ -297,7 +297,7 @@ private:
   TypeExpr *declarePatternVariables(const ASTNode *ast,
                                     llvm::SmallVector<TypeExpr *> &typevars);
   TypeExpr *getVariableType(const llvm::StringRef name);
-  TypeExpr *maybeGetVariableType(const llvm::StringRef name);
+  TypeExpr *maybeGetVariableType(llvm::ArrayRef<llvm::StringRef> path);
   TypeExpr *maybeGetVariableTypeWithName(const llvm::StringRef name);
   TypeExpr *getVariableType(std::string_view name);
   TypeExpr *getVariableType(llvm::SmallVector<llvm::StringRef> path);
@@ -338,6 +338,7 @@ private:
   inline Env &typeEnv() { return moduleStack.back()->getTypeEnv(); }
   TypeVarEnv typeVarEnv;
   llvm::SmallVector<ModuleOperator *> moduleStack;
+  llvm::SmallVector<ModuleOperator *> openModules;
   llvm::DenseMap<llvm::StringRef, ModuleOperator *> moduleMap;
 
   // Set of types that have been declared as concrete, usually because they

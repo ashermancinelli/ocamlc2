@@ -1,4 +1,10 @@
+
+(*
+RUN: p3 %s -d -f | FileCheck %s.ref
+*)
+
 (* Simple expressions *)
+
 let x = 42;;
 let y = x + 5;;
 
@@ -36,7 +42,3 @@ let describe_shape s =
 
 (* Last expression to test *)
 let result = compose (fun x -> x * 2) (fun y -> y + 1) 5;; 
-
-(*
-RUN: p3 %s --dtypes | FileCheck %s.ref
-*)

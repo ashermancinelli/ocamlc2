@@ -35,6 +35,7 @@ void Unifier::pushModule(llvm::StringRef module) {
   auto *mod = create<ModuleOperator>(module);
   moduleMap[module] = mod;
   moduleStack.push_back(mod);
+  declareVariable(module, mod);
 }
 
 void Unifier::popModuleSearchPath() {
@@ -66,6 +67,7 @@ nullptr_t Unifier::error(std::string message, const char* filename, unsigned lon
 
 LogicalResult Unifier::initializeEnvironment() {
   DBGS("Initializing environment\n");
+  return success();
   pushModule("Stdlib");
 
   // We need to insert these directly because other type initializations require
