@@ -117,13 +117,21 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                                         : "module type")
      << ' ' << signature.getName() << " = sig\n";
   
+  // eg type constructors will show up as functions but we don't really want to print those
+  llvm::SmallVector<llvm::StringRef> namesToSkip;
   for (auto e : signature.getExports()) {
+    if (std::find(namesToSkip.begin(), namesToSkip.end(), e.name) != namesToSkip.end()) {
+      continue;
+    }
     switch (e.kind) {
     case SignatureOperator::Export::Type: {
       if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(e.type)) {
         os << variantOperator->decl() << '\n';
+        for (auto ctor : variantOperator->getConstructorNames()) {
+          namesToSkip.push_back(ctor);
+        }
       } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(e.type)) {
-        os << recordOperator->decl() << '\n';
+        os << recordOperator->decl(true) << '\n';
       } else {
         os << "type " << e.name << " = " << *e.type << '\n';
       }
@@ -131,7 +139,24 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
     }
     case SignatureOperator::Export::Variable: {
       if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
-        os << *module;
+        os << *module << '\n';
+      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
+        os << "val " << e.name << " : " << *fo << '\n';
+      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+        os << "val " << e.name << " : ";
+        if (!to->getArgs().empty()) {
+          auto *arg = to->getArgs().front();
+          if (to->getArgs().size() > 1) {
+            os << "(" << *arg;
+            for (auto *arg : llvm::drop_begin(to->getArgs())) {
+              os << ", " << *arg;
+            }
+            os << ") ";
+          } else {
+            os << *arg << " ";
+          }
+        }
+        os << to->getName() << '\n';
       } else {
         os << "val " << e.name << " : " << *e.type << '\n';
       }
@@ -160,6 +185,27 @@ std::string VariantOperator::decl() const {
     showCtor(ss, ctor);
   }
   return s;
+}
+
+std::string RecordOperator::decl(const bool named) const {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  auto zipped = llvm::zip(fieldNames, fieldTypes);
+  auto first = zipped.begin();
+  auto [name, type] = *first;
+  if (named) {
+    ss << "type ";
+    for (auto *arg : getArgs()) {
+      ss << *arg << " ";
+    }
+    ss << getName() << " = ";
+  }
+  ss << "{" << name << ":" << *type;
+  for (auto [name, type] : llvm::drop_begin(zipped)) {
+    ss << "; " << name << ":" << *type;
+  }
+  ss << '}';
+  return ss.str();
 }
 
 } // namespace ocamlc2

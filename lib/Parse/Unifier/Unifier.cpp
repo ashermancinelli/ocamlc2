@@ -9,6 +9,7 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringExtras.h>
+#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/ADT/iterator_range.h>
 #include <llvm/Support/raw_ostream.h>
 #include <algorithm>
@@ -117,8 +118,15 @@ LogicalResult Unifier::unifyRecordTypes(RecordOperator *a, RecordOperator *b) {
   DBGS("Unifying record types: " << *a << " and " << *b << '\n');
   const auto namesmatch = a->getName() == b->getName() or a->isAnonymous() or b->isAnonymous();
   FAIL_IF(not namesmatch, SSWRAP("Could not unify record types: " << *a << " and " << *b));
-  const auto aFields = a->getArgs();
-  const auto bFields = b->getArgs();
+  const auto aTypeArgs = a->getArgs();
+  const auto bTypeArgs = b->getArgs();
+  FAIL_IF(aTypeArgs.size() != bTypeArgs.size(),
+          SSWRAP("Could not unify record types: " << *a << " and " << *b));
+  for (auto [aa, bb] : llvm::zip(aTypeArgs, bTypeArgs)) {
+    FAIL_IF(failed(unify(aa, bb)), "failed to unify");
+  }
+  const auto aFields = a->getFieldTypes();
+  const auto bFields = b->getFieldTypes();
   FAIL_IF(aFields.size() != bFields.size(),
           SSWRAP("Could not unify record types: " << *a << " and " << *b));
   for (auto [aa, bb] : llvm::zip(aFields, bFields)) {
@@ -136,13 +144,37 @@ TypeExpr *Unifier::clone(TypeExpr *type) {
   return clone(type, mapping);
 }
 
-TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs) {
+TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
   if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
     DBGS("Cloning function operator: " << *func << '\n');
     return getFunctionType(mappedArgs, func->parameterDescriptors);
   } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
     DBGS("Cloning record operator: " << *record << '\n');
-    return getRecordType(record->getName(), mappedArgs, record->getFieldNames());
+    auto fieldNames = record->getFieldNames();
+    auto fieldTypes = record->getFieldTypes();
+    auto newFieldTypes = llvm::to_vector(llvm::map_range(fieldTypes, [&](TypeExpr *arg) {
+      return clone(arg, mapping);
+    }));
+    auto *r = create<RecordOperator>(record->getName(), mappedArgs, newFieldTypes, fieldNames);
+    DBGS("Cloned record operator: " << r->decl(true) << '\n');
+    return r;
+  } else if (auto *variant = llvm::dyn_cast<VariantOperator>(op)) {
+    DBGS("Cloning variant operator: " << *variant << '\n');
+    auto *newVariant = create<VariantOperator>(variant->getName(), mappedArgs);
+    for (auto ctor : variant->getConstructors()) {
+      if (std::holds_alternative<
+              std::pair<llvm::StringRef, FunctionOperator *>>(ctor)) {
+        auto [name, func] =
+            std::get<std::pair<llvm::StringRef, FunctionOperator *>>(ctor);
+        auto *newArg = clone(func->getArgs().front(), mapping);
+        auto *newFunc =
+            getFunctionType({newArg, newVariant}, func->parameterDescriptors);
+        newVariant->addConstructor(name, newFunc);
+      } else {
+        newVariant->addConstructor(std::get<llvm::StringRef>(ctor));
+      }
+    }
+    return newVariant;
   } else if (auto *module = llvm::dyn_cast<ModuleOperator>(op)) {
     DBGS("Cloning module operator: " << *module << '\n');
     return create<ModuleOperator>(*module);
@@ -166,7 +198,7 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
           return clone(arg, mapping);
         }));
     DBGSCLONE("cloning type operator: " << op->getName() << '\n');
-    return cloneOperator(op, args);
+    return cloneOperator(op, args, mapping);
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(type)) {
     DBGSCLONE("cloning type variable: " << *tv << '\n');
     if (isGeneric(tv, concreteTypes)) {

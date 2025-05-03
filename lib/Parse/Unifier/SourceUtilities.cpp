@@ -188,8 +188,11 @@ void Unifier::dumpTypes(llvm::raw_ostream &os) {
   if (!diagnostics.empty()) {
     return showErrors();
   }
-  for (auto node : nodesToDump) {
-    os << node << '\n';
+  // for (auto node : nodesToDump) {
+  //   os << node << '\n';
+  // }
+  for (auto module : modulesToDump) {
+    os << *module << '\n';
   }
 }
 

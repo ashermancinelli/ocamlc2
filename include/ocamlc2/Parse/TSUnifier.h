@@ -90,6 +90,10 @@ struct Unifier {
   inline auto *getInferredType(ts::Node const &ast) {
     return nodeToType.lookup(ast.getID());
   }
+  template <typename T> T *claim(T *ptr) {
+    typeArena.push_back(std::unique_ptr<T>(ptr));
+    return ptr;
+  }
   template <typename T, typename... Args> T *create(Args &&...args) {
     static_assert(std::is_base_of_v<TypeExpr, T>,
                   "Unifier should only be used to create TypeExpr subclasses");
@@ -151,8 +155,8 @@ public:
   inline auto *getOptionalType() {
     return getOptionalTypeOf(createTypeVariable());
   }
-  inline auto *getRecordType(llvm::StringRef recordName, ArrayRef<TypeExpr *> fields, ArrayRef<llvm::StringRef> fieldNames) {
-    return create<RecordOperator>(recordName, fields, fieldNames);
+  inline auto *getRecordType(llvm::StringRef recordName, ArrayRef<TypeExpr*> typeArgs, ArrayRef<TypeExpr *> fields, ArrayRef<llvm::StringRef> fieldNames) {
+    return create<RecordOperator>(recordName, typeArgs, fields, fieldNames);
   }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
@@ -174,7 +178,7 @@ private:
   // Clone a type expression, replacing generic type variables with new ones
   TypeExpr *clone(TypeExpr *type);
   TypeExpr *clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
-  TypeExpr *cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs);
+  TypeExpr *cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
 
   // The function Prune is used whenever a type expression has to be inspected:
   // it will always return a type expression which is either an uninstantiated
@@ -364,6 +368,7 @@ private:
   // It is useful to keep and dump certain nodes and types for debugging
   // and testing. Record them here to be dumped after inference is complete.
   llvm::SmallVector<std::string> nodesToDump;
+  llvm::SmallVector<ModuleOperator*> modulesToDump;
 
   // Sidecar for caching inferred types
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;

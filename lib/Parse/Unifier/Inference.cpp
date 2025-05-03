@@ -537,6 +537,9 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
       }
     } while (ast.gotoNextSibling());
   }
+  if (!isLoadingStdlib) {
+    modulesToDump.push_back(moduleStack.back());
+  }
   return moduleStack.back();
 }
 
@@ -974,7 +977,7 @@ TypeExpr* Unifier::inferRecordPattern(Cursor ast) {
   const auto fieldTypes = llvm::map_to_vector(fieldPatterns, [](auto &&p) {
     return p->second;
   });
-  return getRecordType(RecordOperator::getAnonRecordName(), fieldTypes, fieldNames);
+  return getRecordType(RecordOperator::getAnonRecordName(), {}, fieldTypes, fieldNames);
 }
 
 TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
@@ -1001,24 +1004,26 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
     return getTextSaved(*name);
   });
   // Just so the record type itself will do the normalization for us
-  auto *anonRecordType = getRecordType(RecordOperator::getAnonRecordName(), fieldExpressions, fieldNames);
+  auto *anonRecordType = getRecordType(RecordOperator::getAnonRecordName(), {}, fieldExpressions, fieldNames);
   ORNULL(anonRecordType);
-  auto anonRecordTypes = anonRecordType->getArgs();
+  auto anonRecordTypes = anonRecordType->getFieldTypes();
   auto anonRecordFieldNames = anonRecordType->getFieldNames();
   for (auto [recordName, seenFieldNames] : seenRecordFields) {
     if (seenFieldNames.size() != fieldExpressions.size()) {
+      DBGS("Seen field names size mismatch: " << seenFieldNames.size() << " != " << fieldExpressions.size() << '\n');
       continue;
     }
     auto *maybeSeenRecordType = getDeclaredType(recordName);
     ORNULL(maybeSeenRecordType);
     auto *seenRecordType = llvm::dyn_cast<RecordOperator>(maybeSeenRecordType);
     RNULL_IF_NULL(seenRecordType, "Expected record type");
-    auto seenRecordTypes = seenRecordType->getArgs();
+    auto seenRecordTypes = seenRecordType->getFieldTypes();
 
     // If we're able to unify the seen record type with what we know about the record type
     // for the current expression, then we have found a match.
     if (llvm::equal(seenFieldNames, anonRecordFieldNames)) {
       if (llvm::all_of_zip(anonRecordTypes, seenRecordTypes, [this](auto *a, auto *b) {
+        DBGS("Unifying record field types: " << *a << " and " << *b << '\n');
         return succeeded(unify(a, b));
       })) {
         return seenRecordType;
@@ -1074,7 +1079,7 @@ RecordOperator* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Smal
   auto fieldNames = recordType->getFieldNames();
   DBGS("Recording field names for record type: " << recordName << '\n');
   seenRecordFields.emplace_back(recordName, fieldNames);
-  return getRecordType(recordName, recordType->getArgs(), fieldNames);
+  return getRecordType(recordName, typeVars, recordType->getFieldTypes(), fieldNames);
 }
 
 RecordOperator* Unifier::inferRecordDeclaration(Cursor ast) {
@@ -1096,7 +1101,7 @@ RecordOperator* Unifier::inferRecordDeclaration(Cursor ast) {
     fieldNames.push_back(text);
     fieldTypes.push_back(type);
   }
-  return getRecordType("<anon>", fieldTypes, fieldNames);
+  return getRecordType(RecordOperator::getAnonRecordName(), {}, fieldTypes, fieldNames);
 }
 
 TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
@@ -1248,8 +1253,15 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
   assert(node.getType() == "constructed_type");
   auto children = getNamedChildren(node);
   auto name = children.pop_back_val();
-  auto typeArgs = llvm::map_to_vector(children, [&](Node child) {
-    return infer(child);
+  auto typeArgs = llvm::map_to_vector(children, [&](Node child) -> TypeExpr* {
+    DBGS("Inferring type argument for constructed type: " << child.getType() << '\n');
+    auto *tv = infer(child);
+    ORNULL(tv);
+    if (auto *typeVar = llvm::dyn_cast<TypeVariable>(tv)) {
+      DBGS("Inserting type variable into concrete types: " << *typeVar << '\n');
+      concreteTypes.insert(typeVar);
+    }
+    return tv;
   });
   auto text = getTextSaved(name);
   if (auto *type = maybeGetDeclaredType(text)) {

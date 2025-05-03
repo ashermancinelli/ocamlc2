@@ -94,11 +94,24 @@ struct WildcardOperator : public TypeOperator {
 
 struct VariantOperator : public TypeOperator {
   using ConstructorType = std::variant<std::pair<llvm::StringRef, FunctionOperator *>, llvm::StringRef>;
-  VariantOperator(llvm::StringRef variantName, llvm::ArrayRef<TypeExpr*> args={})
-      : TypeOperator(Kind::Variant, variantName, args) {
+  VariantOperator(llvm::StringRef variantName, llvm::ArrayRef<TypeExpr*> args={}, llvm::ArrayRef<ConstructorType> constructors={})
+      : TypeOperator(Kind::Variant, variantName, args),
+        constructors(constructors) {
+  }
+  VariantOperator(const VariantOperator &other)
+      : TypeOperator(other),
+        constructors(other.constructors) {
   }
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Variant; }
   inline llvm::ArrayRef<ConstructorType> getConstructors() const { return constructors; }
+  inline llvm::SmallVector<llvm::StringRef> getConstructorNames() const {
+    return llvm::map_to_vector(constructors, [](const auto &ctor) {
+      if (std::holds_alternative<std::pair<llvm::StringRef, FunctionOperator *>>(ctor)) {
+        return std::get<std::pair<llvm::StringRef, FunctionOperator *>>(ctor).first;
+      }
+      return std::get<llvm::StringRef>(ctor);
+    });
+  }
   inline void addConstructor(llvm::StringRef constructorName,
                              FunctionOperator *constructor) {
     constructors.emplace_back(std::make_pair(constructorName, constructor));
@@ -113,54 +126,44 @@ private:
 };
 
 struct RecordOperator : public TypeOperator {
-  RecordOperator(llvm::StringRef recordName, llvm::ArrayRef<TypeExpr *> fieldTypes,
+  RecordOperator(llvm::StringRef recordName, llvm::ArrayRef<TypeExpr *> args, llvm::ArrayRef<TypeExpr *> fieldTypes,
                  llvm::ArrayRef<llvm::StringRef> fieldNames)
-      : TypeOperator(Kind::Record, recordName, fieldTypes) {
-    std::copy(fieldNames.begin(), fieldNames.end(),
-              std::back_inserter(this->fieldNames));
-    std::copy(fieldTypes.begin(), fieldTypes.end(),
-              std::back_inserter(this->args));
-    typeArgs = llvm::ArrayRef<TypeExpr*>(args.begin() + fieldTypes.size(), args.end());
+      : TypeOperator(Kind::Record, recordName, args),
+        fieldNames(fieldNames),
+        fieldTypes(fieldTypes) {
+    normalize();
+  }
+  RecordOperator(const RecordOperator &other)
+      : TypeOperator(other),
+        fieldNames(other.fieldNames),
+        fieldTypes(other.fieldTypes) {
     normalize();
   }
   static inline llvm::StringRef getAnonRecordName() { return "<anon>"; }
   static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Record; }
+  inline llvm::SmallVector<llvm::StringRef> &getFieldNames() { return fieldNames; }
+  inline llvm::SmallVector<TypeExpr *> &getFieldTypes() { return fieldTypes; }
   inline llvm::ArrayRef<llvm::StringRef> getFieldNames() const { return fieldNames; }
-  inline llvm::ArrayRef<TypeExpr *> getFieldTypes() const {
-    return llvm::ArrayRef<TypeExpr *>(args.begin(),
-                                      args.begin() + fieldNames.size());
-  }
+  inline llvm::ArrayRef<TypeExpr *> getFieldTypes() const { return fieldTypes; }
   inline bool isAnonymous() const { return getName() == getAnonRecordName(); }
   inline bool isOpen() const {
     return llvm::any_of(
         getArgs(), [](auto *arg) { return llvm::isa<WildcardOperator>(arg); });
   }
-  inline std::string decl() const {
-    std::string s;
-    llvm::raw_string_ostream ss(s);
-    auto zipped = llvm::zip(fieldNames, args);
-    auto first = zipped.begin();
-    auto [name, type] = *first;
-    ss << "{" << name << ":" << *type;
-    for (auto [name, type] : llvm::drop_begin(zipped)) {
-      ss << "; " << name << ":" << *type;
-    }
-    ss << '}';
-    return ss.str();
-  }
+  std::string decl(const bool named=false) const;
 private:
   llvm::SmallVector<llvm::StringRef> fieldNames;
+  llvm::SmallVector<TypeExpr*> fieldTypes;
   llvm::ArrayRef<TypeExpr*> typeArgs;
   void normalize() {
-    auto zipped = llvm::to_vector(llvm::zip(args, fieldNames));
+    auto zipped = llvm::to_vector(llvm::zip(fieldTypes, fieldNames));
     llvm::sort(zipped, [](auto a, auto b) {
       return std::get<1>(a) < std::get<1>(b);
     });
-    auto fieldArgs = llvm::map_to_vector(
+    fieldTypes = llvm::map_to_vector(
         zipped, [](auto a) -> TypeExpr * { return std::get<0>(a); });
     fieldNames = llvm::map_to_vector(
         zipped, [](auto a) -> llvm::StringRef { return std::get<1>(a); });
-    args.insert(args.begin(), fieldArgs.begin(), fieldArgs.end());
   }
 };
 
@@ -339,14 +342,14 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const RecordOperator &record) {
-  auto fieldNames = record.getFieldNames();
-  auto fieldTypes = record.getFieldTypes();
+  const auto fieldNames = record.getFieldNames();
+  const auto fieldTypes = record.getFieldTypes();
   assert(fieldNames.size() == fieldTypes.size() &&
          "field names and field types must be the same size");
   if (record.getName() == RecordOperator::getAnonRecordName()) {
     return os << record.decl();
   }
-  return os << record.getName();
+  return os << (TypeOperator&)record;
 }
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,

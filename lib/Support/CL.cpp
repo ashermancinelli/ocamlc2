@@ -112,7 +112,7 @@ static cl::opt<bool, true> clDTypedTree("dtypedtree",
                                   cl::location(DTypedTree),
                                   cl::cat(OcamlOptions));
 
-static cl::opt<bool, true> clNoColor("no-color",
+static cl::opt<bool> clNoColor("no-color",
                                   cl::desc("Disable color output"),
-                                  cl::location(Color),
+                                  cl::cb<void, bool>([](bool value) { Color = !value; }),
                                   cl::cat(OcamlOptions));
