@@ -155,6 +155,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
         }
         os << '\n';
       } else {
+        os << "unknown type operator: " << e.name << *e.type << '\n';
         assert(false && "unknown type operator");
       }
       break;

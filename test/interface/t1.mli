@@ -1,7 +1,7 @@
 (*
 RUN: p3 --dtypes %s | FileCheck %s.ref
 *)
-type 'a array
+type t = int array
 val t1 : unit -> unit
 val t2 : string -> unit
 val t3 : 'a -> unit

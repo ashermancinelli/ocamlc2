@@ -110,6 +110,7 @@ llvm::SmallVector<llvm::StringRef> Unifier::getPathParts(Node node) {
 TypeExpr *Unifier::declareType(llvm::StringRef name, TypeExpr* type) {
   ORNULL(type);
   DBGS("Declaring type: " << name << " as " << *type << '\n');
+  name = saveString(name);
   exportType(name, type);
   return type;
 }

@@ -1,3 +1,4 @@
+(*
 type int
 type float
 type string
@@ -5,6 +6,7 @@ type unit
 type bool
 type 'a list
 type 'a array
+*)
 type 'a option = None | Some of 'a
 
 val sqrt : float -> float

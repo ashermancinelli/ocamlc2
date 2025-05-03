@@ -70,16 +70,26 @@ nullptr_t Unifier::error(std::string message, const char* filename, unsigned lon
 
 LogicalResult Unifier::initializeEnvironment() {
   DBGS("Initializing environment\n");
-  return success();
-  pushModule("Stdlib");
-
+  static bool initialized = false;
+  if (initialized) {
+    DBGS("Environment already initialized\n");
+    return success();
+  }
+  initialized = true;
+  pushModule("CamlBasics");
   // We need to insert these directly because other type initializations require
   // varargs, wildcard, etc to define themselves.
   for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
     auto str = stringArena.save(name);
-    DBGS("Declaring type operator: " << str << '\n');
-    typeEnv().insert(str, createTypeOperator(str));
+    DBGS("Declaring type operator in CamlBasics: " << str << '\n');
+    declareType(str, createTypeOperator(str));
   }
+  declareType("list", createTypeOperator("list", createTypeVariable()));
+  declareType("array", createTypeOperator("array", createTypeVariable()));
+  openModules.push_back(moduleStack.back());
+  popModule();
+  return success();
+
   // auto *varargs = create<VarargsOperator>();
   // declareType({varargs->getName()}, varargs);
 

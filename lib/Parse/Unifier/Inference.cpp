@@ -1257,6 +1257,9 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       RNULL("Unknown type binding body type", *body);
     }
   } else {
+    if (!equation) {
+      thisType = createTypeVariable();
+    }
     DBGS("No body, type alias to type constructor: " << *thisType << '\n');
     concreteTypes = savedConcreteTypes;
     ORNULL(declareType(name, thisType));
