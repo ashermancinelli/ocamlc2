@@ -29,14 +29,14 @@ void Unifier::pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> path) {
   moduleSearchPath.push_back(llvm::SmallVector<llvm::StringRef>(path));
 }
 
-void Unifier::pushModule(llvm::StringRef module) {
+void Unifier::pushModule(llvm::StringRef module, const bool shouldDeclare) {
   module = stringArena.save(module);
   DBGS("pushing module: " << module << '\n');
   auto *moduleOperator = create<ModuleOperator>(module);
   auto *enclosingModule = moduleStack.empty() ? nullptr : moduleStack.back();
   moduleMap[module] = moduleOperator;
   moduleStack.push_back(moduleOperator);
-  if (enclosingModule) {
+  if (enclosingModule && shouldDeclare) {
     enclosingModule->exportVariable(module, moduleOperator);
   }
 }
@@ -47,9 +47,9 @@ void Unifier::popModuleSearchPath() {
   // todo????
 }
 
-void Unifier::popModule() {
+ModuleOperator *Unifier::popModule() {
   DBGS("popping module: " << moduleStack.back()->getName() << '\n');
-  moduleStack.pop_back();
+  return moduleStack.pop_back_val();
 }
 
 nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
@@ -76,12 +76,12 @@ LogicalResult Unifier::initializeEnvironment() {
     return success();
   }
   initialized = true;
-  pushModule("CamlBasics");
+  pushModule("Caml_basics");
   // We need to insert these directly because other type initializations require
   // varargs, wildcard, etc to define themselves.
   for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
     auto str = stringArena.save(name);
-    DBGS("Declaring type operator in CamlBasics: " << str << '\n');
+    DBGS("Declaring type operator in Caml_basics: " << str << '\n');
     declareType(str, createTypeOperator(str));
   }
   declareType("list", createTypeOperator("list", createTypeVariable()));

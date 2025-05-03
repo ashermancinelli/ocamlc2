@@ -1,4 +1,5 @@
 #include "ocamlc2/Parse/TypeSystem.h"
+#include <llvm/ADT/STLExtras.h>
 
 #define DEBUG_TYPE "typesystem"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -59,6 +60,92 @@ TypeExpr *SignatureOperator::lookupVariable(llvm::ArrayRef<llvm::StringRef> path
   return nullptr;
 }
 
+llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const {
+  // eg type constructors will show up as functions but we don't really want to print those
+  llvm::SmallVector<llvm::StringRef> namesToSkip;
+  for (auto e : getExports()) {
+    if (std::find(namesToSkip.begin(), namesToSkip.end(), e.name) != namesToSkip.end()) {
+      continue;
+    }
+    // only dump once - for type aliases they may show up again
+    // namesToSkip.push_back(e.name);
+    switch (e.kind) {
+    case SignatureOperator::Export::Type: {
+      if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(e.type)) {
+        os << variantOperator->decl() << SignatureOperator::newline;
+        for (auto ctor : variantOperator->getConstructorNames()) {
+          namesToSkip.push_back(ctor);
+        }
+      } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(e.type)) {
+        os << recordOperator->decl(true) << SignatureOperator::newline;
+      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+        os << "type ";
+        if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+          for (auto *arg : to->getArgs()) {
+            if (TypeVariable *tv = llvm::dyn_cast<TypeVariable>(arg)) {
+              if (!tv->instantiated()) {
+                os << *tv << " ";
+              }
+            } else {
+              os << *arg << " ";
+            }
+          }
+        }
+        os << e.name;
+        if (to->getArgs().empty() and e.name == to->getName()) {
+          // just a decl, maybe don't show anything else? eg `type t`
+        } else {
+          os << " = " << *e.type;
+        }
+        os << SignatureOperator::newline;
+      } else if (llvm::isa<TypeVariable>(e.type)) {
+        os << "type " << e.name << SignatureOperator::newline;
+      } else {
+        os << "unknown type operator: " << e.name << *e.type << SignatureOperator::newline;
+        assert(false && "unknown type operator");
+      }
+      break;
+    }
+    case SignatureOperator::Export::Variable: {
+      if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
+        os << *module << SignatureOperator::newline;
+      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
+        os << "val " << e.name << " : " << *fo << SignatureOperator::newline;
+      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+        os << "val " << e.name << " : ";
+        if (!to->getArgs().empty()) {
+          auto *arg = to->getArgs().front();
+          if (to->getArgs().size() > 1) {
+            os << "(" << *arg;
+            for (auto *arg : llvm::drop_begin(to->getArgs())) {
+              os << ", " << *arg;
+            }
+            os << ") ";
+          } else {
+            os << *arg << " ";
+          }
+        }
+        os << to->getName() << SignatureOperator::newline;
+      } else {
+        os << "val " << e.name << " : " << *e.type << SignatureOperator::newline;
+      }
+      break;
+    }
+    default:
+      assert(false && "unknown export kind");
+    }
+  }
+  return os;
+}
+
+llvm::raw_ostream &SignatureOperator::showDeclaration(llvm::raw_ostream &os) const {
+  os << (getKind() == TypeOperator::Kind::Module ? "module" : "module type")
+     << ' ' << getName() << " : sig" << SignatureOperator::newline;
+  showSignature(os);
+  os << "end";
+  return os;
+}
+
 TypeExpr *ModuleOperator::lookupType(llvm::StringRef name) const {
   TRACE();
   if (auto *type = SignatureOperator::lookupType(name)) {
@@ -111,88 +198,10 @@ TypeExpr *ModuleOperator::lookupVariable(llvm::ArrayRef<llvm::StringRef> path) c
   return nullptr;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const SignatureOperator &signature) {
-  os << (signature.getKind() == TypeOperator::Kind::Module ? "module"
-                                                        : "module type")
-     << ' ' << signature.getName() << " : sig\n";
-  
-  // eg type constructors will show up as functions but we don't really want to print those
-  llvm::SmallVector<llvm::StringRef> namesToSkip;
-  for (auto e : signature.getExports()) {
-    if (std::find(namesToSkip.begin(), namesToSkip.end(), e.name) != namesToSkip.end()) {
-      continue;
-    }
-    // only dump once - for type aliases they may show up again
-    // namesToSkip.push_back(e.name);
-    switch (e.kind) {
-    case SignatureOperator::Export::Type: {
-      if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(e.type)) {
-        os << variantOperator->decl() << '\n';
-        for (auto ctor : variantOperator->getConstructorNames()) {
-          namesToSkip.push_back(ctor);
-        }
-      } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(e.type)) {
-        os << recordOperator->decl(true) << '\n';
-      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
-        os << "type ";
-        if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
-          for (auto *arg : to->getArgs()) {
-            if (TypeVariable *tv = llvm::dyn_cast<TypeVariable>(arg)) {
-              if (!tv->instantiated()) {
-                os << *tv << " ";
-              }
-            } else {
-              os << *arg << " ";
-            }
-          }
-        }
-        os << e.name;
-        if (to->getArgs().empty() and e.name == to->getName()) {
-          // just a decl, maybe don't show anything else? eg `type t`
-        } else {
-          os << " = " << *e.type;
-        }
-        os << '\n';
-      } else if (llvm::isa<TypeVariable>(e.type)) {
-        os << "type " << e.name << '\n';
-      } else {
-        os << "unknown type operator: " << e.name << *e.type << '\n';
-        assert(false && "unknown type operator");
-      }
-      break;
-    }
-    case SignatureOperator::Export::Variable: {
-      if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
-        os << *module << '\n';
-      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
-        os << "val " << e.name << " : " << *fo << '\n';
-      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
-        os << "val " << e.name << " : ";
-        if (!to->getArgs().empty()) {
-          auto *arg = to->getArgs().front();
-          if (to->getArgs().size() > 1) {
-            os << "(" << *arg;
-            for (auto *arg : llvm::drop_begin(to->getArgs())) {
-              os << ", " << *arg;
-            }
-            os << ") ";
-          } else {
-            os << *arg << " ";
-          }
-        }
-        os << to->getName() << '\n';
-      } else {
-        os << "val " << e.name << " : " << *e.type << '\n';
-      }
-      break;
-    }
-    default:
-      assert(false && "unknown export kind");
-    }
-  }
-  os << "end";
-  return os;
+char SignatureOperator::newline = ' ';
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const SignatureOperator &signature) {
+  return signature.showDeclaration(os);
 }
 
 std::string VariantOperator::decl() const {
@@ -229,6 +238,92 @@ std::string RecordOperator::decl(const bool named) const {
   }
   ss << '}';
   return ss.str();
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &functor) {
+  os << "module " << functor.getName();
+  for (auto [name, type] : functor.getModuleParameters()) {
+    os << " (" << name << " : " << type->getName() << ")";
+  }
+  os << " : sig" << SignatureOperator::newlineCharacter();
+  auto *sig = llvm::dyn_cast<SignatureOperator>(functor.back());
+  assert(sig && "expected signature");
+  sig->showSignature(os) << SignatureOperator::newlineCharacter();
+  os << "end";
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeExpr &type) {
+  if (auto *fo = llvm::dyn_cast<FunctionOperator>(&type)) {
+    os << *fo;
+  } else if (auto *vo = llvm::dyn_cast<VariantOperator>(&type)) {
+    os << *vo;
+  } else if (auto *to = llvm::dyn_cast<TupleOperator>(&type)) {
+    os << *to;
+  } else if (auto *ro = llvm::dyn_cast<RecordOperator>(&type)) {
+    os << *ro;
+  } else if (auto *mo = llvm::dyn_cast<ModuleOperator>(&type)) {
+    os << *mo;
+  } else if (auto *fo = llvm::dyn_cast<FunctorOperator>(&type)) {
+    os << *fo;
+  } else if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
+    os << *to;
+  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
+    os << *tv;
+  }
+  return os;
+}
+
+llvm::raw_ostream &VariantOperator::showCtor(llvm::raw_ostream &os, const ConstructorType &ctor) const {
+  if (std::holds_alternative<llvm::StringRef>(ctor)) {
+    os << std::get<llvm::StringRef>(ctor);
+  } else {
+    auto [name, fo] =
+        std::get<std::pair<llvm::StringRef, FunctionOperator *>>(ctor);
+    os << name << " of ";
+    if (fo->getArgs().size() == 2) {
+      os << *fo->getArgs().front();
+    } else {
+      os << "(" << *fo->getArgs().front();
+      for (auto *arg : fo->getArgs().drop_front().drop_back()) {
+        os << " * " << *arg;
+      }
+      os << ")";
+    }
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctionOperator &func) {
+  const auto argList = func.getArgs();
+  const auto *returnType = argList.back();
+  if (!returnType)
+    return os << "<error>";
+  const auto args = argList.drop_back();
+  assert(!args.empty() && "function type must have at least one argument");
+  const auto &descs = func.parameterDescriptors;
+  assert(args.size() == descs.size() &&
+         "argument list and parameter descriptors must be the same size");
+  auto argIter = llvm::zip(descs, args);
+  os << '(';
+  auto showArg = [&](auto desc, auto *arg) -> llvm::raw_ostream & {
+    if (desc.isOptional()) {
+      os << "?";
+    }
+    if (desc.isNamed()) {
+      os << desc.label.value() << ":";
+    }
+    return os << *arg;
+  };
+  for (auto [desc, arg] : argIter) {
+    if (!arg)
+      return os << "<error>";
+    showArg(desc, arg) << " -> ";
+  }
+  if (!returnType)
+    return os << "<error>";
+  os << *returnType;
+  return os << ')';
 }
 
 } // namespace ocamlc2

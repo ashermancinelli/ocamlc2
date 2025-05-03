@@ -165,6 +165,7 @@ void Unifier::dumpTypes(llvm::raw_ostream &os) {
   // for (auto node : nodesToDump) {
   //   os << node << '\n';
   // }
+  SignatureOperator::useNewline('\n');
   for (auto module : modulesToDump) {
     os << *module << '\n';
   }

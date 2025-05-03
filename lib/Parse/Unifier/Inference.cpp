@@ -906,6 +906,36 @@ TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
   return moduleBinding;
 }
 
+FailureOr<std::pair<llvm::StringRef, SignatureOperator *>> Unifier::inferModuleParameter(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "module_parameter");
+  auto nameNode = node.getNamedChild(0);
+  assert(!nameNode.isNull() && "Expected module parameter name");
+  assert(nameNode.getType() == "module_name" && "Expected module parameter name");
+  auto name = getTextSaved(nameNode);
+  DBGS("Got module parameter name: " << name << '\n');
+  auto typeNode = node.getChildByFieldName("module_type");
+  assert(!typeNode.isNull() && "Expected module type");
+  assert(typeNode.getType() == "module_type_path" && "Expected module type path");
+  auto *type = infer(typeNode);
+  FAIL_IF(type == nullptr, "Failed to infer module type");
+  auto *sigType = llvm::dyn_cast<SignatureOperator>(type);
+  FAIL_IF(sigType == nullptr, "Expected module type to be a signature");
+  DBGS("Got module parameter type: " << *sigType << '\n');
+  return success(std::make_pair(name, sigType));
+}
+
+TypeExpr* Unifier::inferModuleApplication(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "module_application");
+  auto *module = infer(node.getNamedChild(0));
+  ORNULL(module);
+  assert(false && "NYI");
+  return nullptr;
+}
+
 TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -913,22 +943,29 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   auto name = node.getNamedChild(0);
   assert(!name.isNull() && "Expected module name");
   assert(name.getType() == "module_name" && "Expected module name");
-  detail::ModuleScope ms{*this, getText(name)};
+  auto nameText = getTextSaved(name);
+  pushModule(nameText, false);
   const auto numChildren = node.getNumNamedChildren();
   std::optional<Node> signature;
   std::optional<Node> structure;
-  SignatureOperator *sig = nullptr;
+  std::optional<Node> moduleApplication;
+  SmallVector<Node> moduleParameters;
+  SignatureOperator *returnSignature = nullptr;
   for (unsigned i = 1; i < numChildren; ++i) {
     auto child = node.getNamedChild(i);
     if (child.getType() == "signature") {
       signature = child;
     } else if (child.getType() == "structure") {
       structure = child;
+    } else if (child.getType() == "module_application") {
+      moduleApplication = child;
+    } else if (child.getType() == "module_parameter") {
+      moduleParameters.push_back(child);
     } else if (child.getType() == "module_type_path") {
       auto *type = infer(child);
       ORNULL(type);
-      sig = llvm::dyn_cast<SignatureOperator>(type);
-      RNULL_IF_NULL(sig, "Expected module type path to be a signature");
+      returnSignature = llvm::dyn_cast<SignatureOperator>(type);
+      RNULL_IF_NULL(returnSignature, "Expected module type path to be a signature");
     } else {
       show(child.getCursor(), true);
       assert(false && "Unknown module binding child type");
@@ -937,14 +974,42 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   if (signature) {
     inferModuleSignature(signature->getCursor());
   }
-  if (structure) {
+  if (not moduleParameters.empty()) {
+    SmallVector<TypeExpr*> functorTypeArgs;
+    SmallVector<std::pair<llvm::StringRef, SignatureOperator*>> functorTypeParams;
+    for (auto param : moduleParameters) {
+      auto result = inferModuleParameter(param.getCursor());
+      RNULL_IF(failed(result), "Failed to infer module parameter");
+      auto [paramName, paramType] = result.value();
+      auto *redeclaredSignature = create<SignatureOperator>(paramName, *paramType);
+      localVariable(paramName, redeclaredSignature);
+      functorTypeArgs.push_back(redeclaredSignature);
+      functorTypeParams.emplace_back(paramName, paramType);
+    }
+    assert(structure && "Expected structure on functor");
     inferModuleStructure(structure->getCursor());
+    auto *functorReturnSignature = popModule();
+    if (returnSignature) {
+      UNIFY_OR_RNULL(returnSignature, functorReturnSignature);
+    }
+    functorTypeArgs.push_back(functorReturnSignature);
+    auto *functorType = create<FunctorOperator>(nameText, functorTypeArgs, functorTypeParams);
+    declareVariable(nameText, functorType);
+    return functorType;
+  } else {
+    if (structure) {
+      inferModuleStructure(structure->getCursor());
+    }
+    if (moduleApplication) {
+      inferModuleApplication(moduleApplication->getCursor());
+    }
+    auto *module = popModule();
+    if (returnSignature) {
+      UNIFY_OR_RNULL(returnSignature, module);
+    }
+    declareVariable(nameText, module);
+    return module;
   }
-  auto *module = moduleStack.back();
-  if (sig) {
-    UNIFY_OR_RNULL(sig, module);
-  }
-  return moduleStack.back();
 }
 
 TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
@@ -1366,6 +1431,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     "value_definition",
     "expression_item",
     "parenthesized_type",
+    "parenthesized_module_expression",
   };
   if (node.getType() == "number") {
     auto text = getText(node);
@@ -1396,7 +1462,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferFunctionExpression(std::move(ast));
   } else if (node.getType() == "match_expression") {
     return inferMatchExpression(std::move(ast));
-  } else if (node.getType() == "value_path") {
+  } else if (node.getType() == "value_path" or node.getType() == "module_path") {
     return inferValuePath(std::move(ast));
   } else if (node.getType() == "for_expression") {
     return inferForExpression(std::move(ast));
@@ -1453,6 +1519,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferOpenModule(std::move(ast));
   } else if (node.getType() == "include_module") {
     return inferIncludeModule(std::move(ast));
+  } else if (node.getType() == "module_name") {
+    return getVariableType(getTextSaved(node));
   } else if (node.getType() == "external") {
     return inferExternal(std::move(ast));
   } else if (node.getType() == "tuple_type") {

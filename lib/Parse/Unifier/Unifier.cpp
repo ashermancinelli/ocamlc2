@@ -238,6 +238,9 @@ TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *>
   } else if (auto *module = llvm::dyn_cast<ModuleOperator>(op)) {
     DBGS("Cloning module operator: " << *module << '\n');
     return create<ModuleOperator>(*module);
+  } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(op)) {
+    DBGS("Cloning functor operator: " << *functor << '\n');
+    return create<FunctorOperator>(*functor);
   } else if (auto *signature = llvm::dyn_cast<SignatureOperator>(op)) {
     DBGS("Cloning signature operator: " << *signature << '\n');
     return create<SignatureOperator>(*signature);

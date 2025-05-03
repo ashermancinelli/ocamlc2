@@ -222,6 +222,7 @@ private:
   TypeExpr *inferMatchExpression(Cursor ast);
   TypeExpr *inferModuleBinding(Cursor ast);
   TypeExpr *inferModuleDefinition(Cursor ast);
+  TypeExpr *inferModuleApplication(Cursor ast);
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);
   TypeExpr *inferModuleTypeDefinition(Cursor ast);
@@ -246,6 +247,7 @@ private:
 
   TypeExpr *findMatchingRecordType(TypeExpr *type);
   FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);
+  FailureOr<std::pair<llvm::StringRef, SignatureOperator *>> inferModuleParameter(Cursor ast);
   RecordOperator *inferRecordDeclaration(Cursor ast);
   RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
 
@@ -321,6 +323,12 @@ private:
   inline TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type) {
     return moduleStack.back()->exportVariable(name, type);
   }
+  inline TypeExpr *localType(llvm::StringRef name, TypeExpr *type) {
+    return moduleStack.back()->localType(name, type);
+  }
+  inline TypeExpr *localVariable(llvm::StringRef name, TypeExpr *type) {
+    return moduleStack.back()->localVariable(name, type);
+  }
 
   // Just associates a type with a node ID so it can be retrieved later
   // for printing and debugging.
@@ -332,9 +340,9 @@ private:
   inline void pushModuleSearchPath(llvm::StringRef module) {
     pushModuleSearchPath(llvm::ArrayRef{module});
   }
-  void pushModule(llvm::StringRef module);
+  void pushModule(llvm::StringRef module, const bool shouldDeclare = true);
   void popModuleSearchPath();
-  void popModule();
+  ModuleOperator *popModule();
   std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
   llvm::StringRef getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path);
   llvm::SmallVector<llvm::StringRef> getPathParts(Node node);
