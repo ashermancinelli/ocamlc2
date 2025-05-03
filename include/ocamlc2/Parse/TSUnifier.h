@@ -333,8 +333,6 @@ private:
   std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
   llvm::StringRef getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path);
   llvm::SmallVector<llvm::StringRef> getPathParts(Node node);
-  void maybeDumpTypes(Node node, TypeExpr *type);
-  void saveInterfaceDecl(std::string interface);
 
   // Type variables don't have the same scoping rules as other variables.
   // When type variables in introduced, we're not sure what type we're

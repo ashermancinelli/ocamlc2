@@ -60,3 +60,4 @@ doc/
 # Dependency directories
 _deps/
 test/Output
+**/*.profraw

@@ -49,7 +49,6 @@ TypeExpr* Unifier::infer(ts::Cursor cursor) {
   RNULL_IF(anyFatalErrors(), "Failed to infer type");
   DBGS("Inferred type:\n");
   setType(cursor.getCurrentNode(), te);
-  maybeDumpTypes(cursor.getCurrentNode(), te);
   DBG(show(cursor.copy(), true));
   return te;
 }
@@ -887,14 +886,12 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
       assert(false && "Unknown module binding child type");
     }
   }
-  saveInterfaceDecl(SSWRAP("module " << getTextSaved(name) << " : sig"));
   if (signature) {
     inferModuleSignature(signature->getCursor());
   }
   if (structure) {
     inferModuleStructure(structure->getCursor());
   }
-  saveInterfaceDecl("end");
   return moduleStack.back();
 }
 
@@ -1179,17 +1176,12 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto namedChildren = getNamedChildren(node);
   auto *namedIterator = namedChildren.begin();
   SmallVector<TypeExpr*> typeVars;
-  std::string interfaceStr;
-  llvm::raw_string_ostream interface(interfaceStr);
-  interface << "type";
   auto savedConcreteTypes = concreteTypes;
   for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
     auto *typeVar = declareTypeVariable(getTextSaved(child));
     typeVars.push_back(typeVar);
-    interface << " " << *typeVar;
   }
   auto name = node.getChildByFieldName("name");
-  interface << " " << getTextSaved(name);
   auto equation = toOptional(node.getChildByFieldName("equation"));
   auto body = toOptional(node.getChildByFieldName("body"));
   auto typeName = getTextSaved(name);
@@ -1206,7 +1198,6 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     if (auto *to = llvm::dyn_cast<TypeOperator>(thisType)) {
       eqName = to->getName();
     }
-    interface << " = " << *thisType;
   } 
   if (body) {
     DBGS("has body\n");
@@ -1222,8 +1213,6 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       ORNULL(inferVariantDeclaration(variantType, body->getCursor()));
       setType(node, variantType);
       concreteTypes = savedConcreteTypes;
-      interface << " = " << variantType->decl();
-      saveInterfaceDecl(interface.str());
       return variantType;
     } else if (body->getType() == "record_declaration") {
       TRACE();
@@ -1231,9 +1220,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       // the record type.
       auto *recordType = inferRecordDeclaration(typeName, typeVars, body->getCursor());
       ORNULL(recordType);
-      interface << " = " << recordType->decl();
       concreteTypes = savedConcreteTypes;
-      saveInterfaceDecl(interface.str());
       return declareType(name, recordType);
     } else {
       RNULL("Unknown type binding body type", *body);
@@ -1242,7 +1229,6 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     DBGS("No body, type alias to type constructor: " << *thisType << '\n');
     concreteTypes = savedConcreteTypes;
     ORNULL(declareType(name, thisType));
-    saveInterfaceDecl(interface.str());
   }
   return thisType;
 }

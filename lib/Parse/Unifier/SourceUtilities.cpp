@@ -48,35 +48,6 @@ TypeExpr* Unifier::infer(ts::Node const& ast) {
   return infer(ast.getCursor());
 }
 
-void Unifier::saveInterfaceDecl(std::string interface) {
-  TRACE();
-  if (!CL::DumpTypes or isLoadingStdlib) {
-    return;
-  }
-  DBGS("Saving interface declaration: " << interface << '\n');
-  nodesToDump.push_back(interface);
-}
-
-void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
-  static std::set<uintptr_t> seen;
-  if (!CL::DumpTypes or isLoadingStdlib or seen.count(node.getID())) {
-    return;
-  }
-  seen.insert(node.getID());
-  if (node.getType() == "let_binding") {
-    auto name = node.getNamedChild(0);
-    if (name.getType() != "unit") {
-      saveInterfaceDecl(SSWRAP("val " << getTextSaved(name) << " : "
-                                      << *getType(node.getID())));
-    }
-  } else if (node.getType() == "value_specification" ||
-             node.getType() == "external") {
-    auto name = node.getNamedChild(0);
-    saveInterfaceDecl(SSWRAP("val " << getTextSaved(name) << " : "
-                                    << *getType(node.getID())));
-  }
-}
-
 Unifier::Unifier() {
   if (failed(initializeEnvironment())) {
     llvm::errs() << "Failed to initialize environment\n";
