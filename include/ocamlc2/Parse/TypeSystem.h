@@ -87,7 +87,6 @@ struct TypeOperator : public TypeExpr {
 
 protected:
   llvm::SmallVector<TypeExpr*> args;
-private:
   llvm::StringRef name;
 };
 
@@ -180,7 +179,7 @@ struct FunctorOperator : public TypeOperator {
   FunctorOperator(
       llvm::StringRef name, llvm::ArrayRef<TypeExpr *> args,
       llvm::ArrayRef<std::pair<llvm::StringRef, SignatureOperator *>>
-          moduleParameters)
+          moduleParameters={})
       : TypeOperator(Kind::Functor, name, args),
         moduleParameters(moduleParameters) {}
   FunctorOperator(const FunctorOperator &other)
@@ -330,6 +329,11 @@ struct ModuleOperator : public SignatureOperator {
       : SignatureOperator(other), openModules(other.openModules) {
     this->kind = Kind::Module;
   }
+  ModuleOperator(llvm::StringRef moduleName, const ModuleOperator &other)
+      : SignatureOperator(other), openModules(other.openModules) {
+    this->kind = Kind::Module;
+    this->name = moduleName;
+  }
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Module; }
   inline void openModule(ModuleOperator *module) { openModules.push_back(module); }
   TypeExpr *lookupType(llvm::StringRef name) const override;
@@ -363,6 +367,7 @@ struct TypeVariable : public TypeExpr {
     return expr->getKind() == Kind::Variable;
   }
   inline bool instantiated() const { return instance != nullptr; }
+  inline TypeExpr *getInstance() const { return instance; }
   bool operator==(const TypeVariable &other) const;
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                        const TypeVariable &var);

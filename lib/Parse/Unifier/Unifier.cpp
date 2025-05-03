@@ -90,17 +90,26 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
         }
       }
 
-      if (auto *so = llvm::dyn_cast<SignatureOperator>(toa)) {
-        auto *so2 = llvm::dyn_cast<SignatureOperator>(tob);
-        FAIL_IF(!so2, SSWRAP("Can not unify signature with non-signature"));
-        return unifySignatureTypes(so, so2);
+      auto *soa = llvm::dyn_cast<SignatureOperator>(toa);
+      auto *sob = llvm::dyn_cast<SignatureOperator>(tob);
+      if (soa or sob) {
+        FAIL_IF(not soa or not sob, SSWRAP("Can not unify signature with non-signature"));
+        return unifySignatureTypes(soa, sob);
+      }
+
+      auto *foa = llvm::dyn_cast<FunctorOperator>(toa);
+      auto *fob = llvm::dyn_cast<FunctorOperator>(tob);
+      if (foa or fob) {
+        FAIL_IF(not foa or not fob, SSWRAP("Can not unify functor with non-functor"));
+        return unifyFunctorTypes(foa, fob);
       }
 
       // Usual type checking - if we don't have a special case, then we need operator types to
       // match in form.
       const bool sizesMatch = toa->getArgs().size() == tob->getArgs().size() or hasVarargs;
-      FAIL_IF(toa->getName() != tob->getName() or not sizesMatch,
-              SSWRAP("Could not unify types: " << *toa << " and " << *tob));
+      const bool namesMatch = toa->getName() == tob->getName();
+      const bool match = namesMatch and sizesMatch;
+      FAIL_IF(not match, SSWRAP("Could not unify types: " << *toa << " and " << *tob));
 
       for (auto [aa, bb] : llvm::zip(toa->getArgs(), tob->getArgs())) {
         ORFAIL(aa);
@@ -154,6 +163,25 @@ LogicalResult Unifier::unifyModuleWithSignature(ModuleOperator *module, Signatur
     }
   }
 
+  return success();
+}
+
+static bool namesMatch(FunctorOperator *a, FunctorOperator *b) {
+  const auto nameA = a->getName(), nameB = b->getName();
+  const bool anyAnon = nameA.empty() or nameB.empty();
+  const bool namesMatch = anyAnon or nameA == nameB;
+  DBGS("namesMatch: " << namesMatch << " (" << nameA << " =~ " << nameB << ")\n");
+  return namesMatch;
+}
+
+LogicalResult Unifier::unifyFunctorTypes(FunctorOperator *a, FunctorOperator *b) {
+  DBGS("Unifying functor types:\n" << *a << "\nand\n" << *b << '\n');
+  FAIL_IF(a->getArgs().size() != b->getArgs().size(),
+          SSWRAP("Could not unify functors: " << *a << " and " << *b));
+  FAIL_IF(not namesMatch(a, b), SSWRAP("Could not unify functors with different names: " << *a << " and " << *b));
+  for (auto [aa, bb] : llvm::zip(a->getArgs(), b->getArgs())) {
+    FAIL_IF(failed(unify(aa, bb)), "failed to unify");
+  }
   return success();
 }
 

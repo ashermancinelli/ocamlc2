@@ -1,6 +1,5 @@
 (*
 RUN: p3 -d -f %s | FileCheck %s.ref
-XFAIL: *
 *)
 
 (* Define a signature for the functor argument *)

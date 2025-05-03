@@ -91,7 +91,9 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
             }
           }
         }
-        os << e.name;
+        if (not e.name.empty()) {
+          os << e.name;
+        }
         if (to->getArgs().empty() and e.name == to->getName()) {
           // just a decl, maybe don't show anything else? eg `type t`
         } else {
@@ -109,6 +111,8 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
     case SignatureOperator::Export::Variable: {
       if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
         os << *module << SignatureOperator::newline;
+      } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(e.type)) {
+        os << *functor << SignatureOperator::newline;
       } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
         os << "val " << e.name << " : " << *fo << SignatureOperator::newline;
       } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
@@ -241,15 +245,31 @@ std::string RecordOperator::decl(const bool named) const {
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &functor) {
-  os << "module " << functor.getName();
-  for (auto [name, type] : functor.getModuleParameters()) {
-    os << " (" << name << " : " << type->getName() << ")";
-  }
-  os << " : sig" << SignatureOperator::newlineCharacter();
+  auto *functorResult = functor.back();
   auto *sig = llvm::dyn_cast<SignatureOperator>(functor.back());
-  assert(sig && "expected signature");
-  sig->showSignature(os) << SignatureOperator::newlineCharacter();
-  os << "end";
+  auto showSig = [&] {
+    if (sig) {
+      sig->showSignature(os);
+    } else {
+      os << *functorResult << SignatureOperator::newlineCharacter();
+    }
+  };
+  if (functor.getModuleParameters().empty()) {
+    os << "functor";
+    for (auto *arg : llvm::drop_end(functor.getArgs())) {
+      os << " (" << *arg << ")";
+    }
+    os << " -> ";
+    showSig();
+  } else {
+    os << "module " << functor.getName();
+    for (auto [name, type] : functor.getModuleParameters()) {
+      os << " (" << name << " : " << type->getName() << ")";
+    }
+    os << " : sig" << SignatureOperator::newlineCharacter();
+    showSig();
+    os << "end";
+  }
   return os;
 }
 

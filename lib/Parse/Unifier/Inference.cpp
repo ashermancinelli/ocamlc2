@@ -932,8 +932,27 @@ TypeExpr* Unifier::inferModuleApplication(Cursor ast) {
   assert(node.getType() == "module_application");
   auto *module = infer(node.getNamedChild(0));
   ORNULL(module);
-  assert(false && "NYI");
-  return nullptr;
+  auto *functorExpr = infer(node.getChildByFieldName("functor"));
+  ORNULL(functorExpr);
+  auto *functor = llvm::dyn_cast<FunctorOperator>(functorExpr);
+  RNULL_IF(functor == nullptr, "Expected functor");
+  DBGS("Got functor: " << *functor << '\n');
+
+  SmallVector<TypeExpr*> functorApplicationArgs;
+  for (unsigned i = 1; i < node.getNumNamedChildren(); ++i) {
+    auto *arg = infer(node.getNamedChild(i));
+    ORNULL(arg);
+    functorApplicationArgs.push_back(arg);
+  }
+  functorApplicationArgs.push_back(createTypeVariable());
+  auto *appliedFunctor = create<FunctorOperator>("", functorApplicationArgs);
+
+  assert(functorApplicationArgs.size() == functor->getArgs().size() &&
+         "NYI: partial application of functors");
+  UNIFY_OR_RNULL(appliedFunctor, functor);
+  auto *resultingType = appliedFunctor->back();
+  DBGS("Got resulting type: " << *resultingType << '\n');
+  return resultingType;
 }
 
 TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
@@ -981,14 +1000,14 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
       auto result = inferModuleParameter(param.getCursor());
       RNULL_IF(failed(result), "Failed to infer module parameter");
       auto [paramName, paramType] = result.value();
-      auto *redeclaredSignature = create<SignatureOperator>(paramName, *paramType);
+      auto *redeclaredSignature = create<SignatureOperator>("", *paramType);
       localVariable(paramName, redeclaredSignature);
       functorTypeArgs.push_back(redeclaredSignature);
       functorTypeParams.emplace_back(paramName, paramType);
     }
     assert(structure && "Expected structure on functor");
     inferModuleStructure(structure->getCursor());
-    auto *functorReturnSignature = popModule();
+    auto *functorReturnSignature = create<ModuleOperator>("", *popModule());
     if (returnSignature) {
       UNIFY_OR_RNULL(returnSignature, functorReturnSignature);
     }
@@ -996,12 +1015,28 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
     auto *functorType = create<FunctorOperator>(nameText, functorTypeArgs, functorTypeParams);
     declareVariable(nameText, functorType);
     return functorType;
+  } else if (moduleApplication) {
+    popModule();
+    auto *resultingType = inferModuleApplication(moduleApplication->getCursor());
+    if (returnSignature) {
+      UNIFY_OR_RNULL(returnSignature, resultingType);
+    }
+    if (auto *sigType = llvm::dyn_cast<SignatureOperator>(resultingType)) {
+      resultingType = create<SignatureOperator>(nameText, *sigType);
+    } else if (auto *typeVar = llvm::dyn_cast<TypeVariable>(resultingType)) {
+      if (typeVar->instantiated()) {
+        auto *instance = typeVar->getInstance();
+        auto *clonedInstance = llvm::cast<SignatureOperator>(clone(instance));
+        resultingType = create<SignatureOperator>(nameText, *clonedInstance);
+      } else {
+        RNULL("Expected module application to return a signature-compatible type");
+      }
+    }
+    declareVariable(nameText, resultingType);
+    return resultingType;
   } else {
     if (structure) {
       inferModuleStructure(structure->getCursor());
-    }
-    if (moduleApplication) {
-      inferModuleApplication(moduleApplication->getCursor());
     }
     auto *module = popModule();
     if (returnSignature) {
