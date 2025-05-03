@@ -173,6 +173,8 @@ private:
   LogicalResult initializeEnvironment();
 
   LogicalResult unify(TypeExpr *a, TypeExpr *b);
+  LogicalResult unifyModuleWithSignature(ModuleOperator *module, SignatureOperator *signature);
+  LogicalResult unifySignatureTypes(SignatureOperator *a, SignatureOperator *b);
   LogicalResult unifyRecordTypes(RecordOperator *a, RecordOperator *b);
 
   // Clone a type expression, replacing generic type variables with new ones

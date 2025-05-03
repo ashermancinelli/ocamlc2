@@ -11,6 +11,7 @@
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/ADT/iterator_range.h>
+#include <llvm/Support/LogicalResult.h>
 #include <llvm/Support/raw_ostream.h>
 #include <algorithm>
 #include <numeric>
@@ -89,6 +90,12 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
         }
       }
 
+      if (auto *so = llvm::dyn_cast<SignatureOperator>(toa)) {
+        auto *so2 = llvm::dyn_cast<SignatureOperator>(tob);
+        FAIL_IF(!so2, SSWRAP("Can not unify signature with non-signature"));
+        return unifySignatureTypes(so, so2);
+      }
+
       // Usual type checking - if we don't have a special case, then we need operator types to
       // match in form.
       const bool sizesMatch = toa->getArgs().size() == tob->getArgs().size() or hasVarargs;
@@ -112,6 +119,23 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
     }
   }
   return success();
+}
+
+LogicalResult Unifier::unifyModuleWithSignature(ModuleOperator *module, SignatureOperator *signature) {
+  DBGS("Unifying module with signature:\n" << *module << "\nand\n" << *signature << '\n');
+  return failure();
+}
+
+LogicalResult Unifier::unifySignatureTypes(SignatureOperator *a, SignatureOperator *b) {
+  DBGS("Unifying signature types:\n" << *a << "\nand\n" << *b << '\n');
+  auto *moa = llvm::dyn_cast<ModuleOperator>(a);
+  auto *mob = llvm::dyn_cast<ModuleOperator>(b);
+  FAIL_IF(not moa and not mob, SSWRAP("Does it make sense to unify two non-module signatures?"))
+  if (moa) {
+    return unifyModuleWithSignature(moa, b);
+  } else {
+    return unifyModuleWithSignature(mob, a);
+  }
 }
 
 LogicalResult Unifier::unifyRecordTypes(RecordOperator *a, RecordOperator *b) {

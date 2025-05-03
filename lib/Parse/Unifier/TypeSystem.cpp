@@ -188,7 +188,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
       assert(false && "unknown export kind");
     }
   }
-  os << "end\n";
+  os << "end";
   return os;
 }
 
