@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <llvm/Support/Program.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/WithColor.h>
 #include "ocamlc2/Parse/TSUtil.h"
 #include <cpp-tree-sitter.h>
 #include <unistd.h>
@@ -100,6 +101,9 @@ std::string filePathToModuleName(fs::path path) {
 
 namespace ANSIColors {
 using namespace ocamlc2::CL;
+// namespace {
+//   static bool color = llvm::WithColor::defaultAutoDetectFunction()(llvm::outs());
+// }
 const char* red() { return Color ? "\033[31m" : ""; }
 const char* green() { return Color ? "\033[32m" : ""; }
 const char* yellow() { return Color ? "\033[33m" : ""; }
@@ -136,7 +140,7 @@ static fs::path distDirFromExe(fs::path exe) {
   exe = fs::absolute(exe);
   auto bindir = exe.parent_path();
   auto install_root = bindir.parent_path();
-  return install_root / "include" / "dist";
+  return install_root / "include" / "stdlib";
 }
 
 static fs::path resolvePath(fs::path exe, std::string_view interface) {
@@ -146,11 +150,12 @@ static fs::path resolvePath(fs::path exe, std::string_view interface) {
 
 SmallVector<fs::path> getStdlibOCamlInterfaceFiles(fs::path exe) {
   DBGS("exe: " << exe << "\n");
-  if (ocamlc2::CL::Freestanding) {
-    DBGS("freestanding\n");
-    return {};
-  } else if (ocamlc2::CL::StdlibOnly) {
-    DBGS("stdlib only\n");
+  // if (ocamlc2::CL::Freestanding) {
+  //   DBGS("freestanding\n");
+  //   return {};
+  // } else 
+  if (ocamlc2::CL::Freestanding or ocamlc2::CL::StdlibOnly) {
+    DBGS("stdlib only (or freestanding)\n");
     return {resolvePath(exe, "stdlib")};
   } else {
     DBGS("full stdlib\n");

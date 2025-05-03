@@ -58,11 +58,13 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   TRACE();
   auto name = ast.getCurrentNode().getNamedChild(0);
   auto path = getPathParts(name);
-  pushModuleSearchPath(hashPath(path));
-  auto currentModulePath = currentModule;
-  std::copy(path.begin(), path.end(), std::back_inserter(currentModulePath));
-  pushModuleSearchPath(hashPath(currentModulePath));
-  return getUnitType();
+  auto *module = getVariableType(path);
+  if (auto *mo = llvm::dyn_cast<ModuleOperator>(module)) {
+    moduleStack.back()->openModule(mo);
+    return mo;
+  } else {
+    RNULL(SSWRAP("Expected module, got " << *module));
+  }
 }
 
 SmallVector<Node> Unifier::flattenType(std::string_view nodeType, Node node) {
@@ -204,31 +206,6 @@ TypeExpr* Unifier::inferTuplePattern(ts::Node node) {
     }
   }
   return getTupleType(types);
-}
-
-TypeExpr* Unifier::inferPattern(ts::Node node) {
-  static constexpr std::string_view passthroughPatterns[] = {
-    "number", "string",
-  };
-  if (node.getType() == "value_pattern") {
-    return inferValuePattern(node.getCursor());
-  } else if (node.getType() == "constructor_path") {
-    return inferConstructorPath(node.getCursor());
-  } else if (node.getType() == "parenthesized_pattern") {
-    return infer(node.getNamedChild(0));
-  } else if (node.getType() == "constructor_pattern") {
-    return inferConstructorPattern(node.getCursor());
-  } else if (node.getType() == "tuple_pattern") {
-    return inferTuplePattern(node);
-  } else if (node.getType() == "record_pattern") {
-    return inferRecordPattern(node.getCursor());
-  } else if (llvm::is_contained(passthroughPatterns, node.getType())) {
-    return infer(node);
-  }
-  show(node.getCursor(), true);
-  DBGS("Unknown pattern type: " << node.getType() << '\n');
-  assert(false && "Unknown pattern type");
-  return nullptr;
 }
 
 TypeExpr* Unifier::inferMatchCase(TypeExpr* matcheeType, ts::Node node) {
@@ -440,7 +417,11 @@ TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
   DBGS("variable let binding, no parameters\n");
   auto *bodyType = infer(body);
   ORNULL(bodyType);
-  declareVariable(name, bodyType);
+  if (name.getType() == "unit") {
+    UNIFY_OR_RNULL(bodyType, getUnitType());
+  } else {
+    declareVariable(name, bodyType);
+  }
   return bodyType;
 }
 
@@ -547,18 +528,19 @@ TypeExpr* Unifier::inferForExpression(Cursor ast) {
 
 TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   TRACE();
-  const auto currentModule = filePathToModuleName(sources.back().filepath);
-  pushModule(stringArena.save(currentModule));
-  auto *t = getUnitType();
+  const auto currentModule = saveString(filePathToModuleName(sources.back().filepath));
+  detail::ModuleScope scope(*this, currentModule);
   if (ast.gotoFirstChild()) {
     do {
       if (!shouldSkip(ast.getCurrentNode())) {
-        t = infer(ast.copy());
+        ORNULL(infer(ast.copy()));
       }
     } while (ast.gotoNextSibling());
   }
-  popModule();
-  return t;
+  if (!isLoadingStdlib) {
+    modulesToDump.push_back(moduleStack.back());
+  }
+  return moduleStack.back();
 }
 
 TypeExpr* Unifier::inferValuePath(Cursor ast) {
@@ -765,24 +747,6 @@ TypeExpr* Unifier::inferArrayExpression(Cursor ast) {
   return getArrayTypeOf(elementType);
 }
 
-TypeExpr* Unifier::inferProductExpression(Cursor ast) {
-  TRACE();
-  auto node = ast.getCurrentNode();
-  assert(node.getType() == "product_expression");
-  SmallVector<TypeExpr*> types;
-  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    auto child = node.getNamedChild(i);
-    auto *childType = infer(child);
-    if (auto *tupleType = llvm::dyn_cast<TupleOperator>(childType)) {
-      std::copy(tupleType->getArgs().begin(), tupleType->getArgs().end(),
-                std::back_inserter(types));
-    } else {
-      types.push_back(childType);
-    }
-  }
-  return getTupleType(types);
-}
-
 TypeExpr* Unifier::inferArrayGetExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -884,6 +848,13 @@ TypeExpr* Unifier::inferSequenceExpression(Cursor ast) {
   return last;
 }
 
+TypeExpr* Unifier::inferModuleTypeDefinition(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "module_type_definition");
+  return inferModuleBinding(node.getNamedChild(0).getCursor());
+}
+
 TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -924,8 +895,7 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
     inferModuleStructure(structure->getCursor());
   }
   saveInterfaceDecl("end");
-  return createTypeOperator(
-      hashPath(ArrayRef<StringRef>{"Module", getTextSaved(name)}), {});
+  return moduleStack.back();
 }
 
 TypeExpr* Unifier::inferModuleSignature(Cursor ast) {
@@ -1007,7 +977,7 @@ TypeExpr* Unifier::inferRecordPattern(Cursor ast) {
   const auto fieldTypes = llvm::map_to_vector(fieldPatterns, [](auto &&p) {
     return p->second;
   });
-  return getRecordType(RecordOperator::getAnonRecordName(), fieldTypes, fieldNames);
+  return getRecordType(RecordOperator::getAnonRecordName(), {}, fieldTypes, fieldNames);
 }
 
 TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
@@ -1034,24 +1004,26 @@ TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
     return getTextSaved(*name);
   });
   // Just so the record type itself will do the normalization for us
-  auto *anonRecordType = getRecordType(RecordOperator::getAnonRecordName(), fieldExpressions, fieldNames);
+  auto *anonRecordType = getRecordType(RecordOperator::getAnonRecordName(), {}, fieldExpressions, fieldNames);
   ORNULL(anonRecordType);
-  auto anonRecordTypes = anonRecordType->getArgs();
+  auto anonRecordTypes = anonRecordType->getFieldTypes();
   auto anonRecordFieldNames = anonRecordType->getFieldNames();
   for (auto [recordName, seenFieldNames] : seenRecordFields) {
     if (seenFieldNames.size() != fieldExpressions.size()) {
+      DBGS("Seen field names size mismatch: " << seenFieldNames.size() << " != " << fieldExpressions.size() << '\n');
       continue;
     }
     auto *maybeSeenRecordType = getDeclaredType(recordName);
     ORNULL(maybeSeenRecordType);
     auto *seenRecordType = llvm::dyn_cast<RecordOperator>(maybeSeenRecordType);
     RNULL_IF_NULL(seenRecordType, "Expected record type");
-    auto seenRecordTypes = seenRecordType->getArgs();
+    auto seenRecordTypes = seenRecordType->getFieldTypes();
 
     // If we're able to unify the seen record type with what we know about the record type
     // for the current expression, then we have found a match.
     if (llvm::equal(seenFieldNames, anonRecordFieldNames)) {
       if (llvm::all_of_zip(anonRecordTypes, seenRecordTypes, [this](auto *a, auto *b) {
+        DBGS("Unifying record field types: " << *a << " and " << *b << '\n');
         return succeeded(unify(a, b));
       })) {
         return seenRecordType;
@@ -1099,7 +1071,7 @@ TypeExpr* Unifier::inferFieldGetExpression(Cursor ast) {
   RNULL(ss.str(), node);
 }
 
-RecordOperator* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Cursor ast) {
+RecordOperator* Unifier::inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast) {
   auto *type = inferRecordDeclaration(std::move(ast));
   ORNULL(type);
   auto *recordType = llvm::dyn_cast<RecordOperator>(type);
@@ -1107,7 +1079,7 @@ RecordOperator* Unifier::inferRecordDeclaration(llvm::StringRef recordName, Curs
   auto fieldNames = recordType->getFieldNames();
   DBGS("Recording field names for record type: " << recordName << '\n');
   seenRecordFields.emplace_back(recordName, fieldNames);
-  return getRecordType(recordName, recordType->getArgs(), fieldNames);
+  return getRecordType(recordName, typeVars, recordType->getFieldTypes(), fieldNames);
 }
 
 RecordOperator* Unifier::inferRecordDeclaration(Cursor ast) {
@@ -1121,6 +1093,7 @@ RecordOperator* Unifier::inferRecordDeclaration(Cursor ast) {
     assert(child.getType() == "field_declaration");
     auto name = child.getNamedChild(0);
     auto type = infer(child.getNamedChild(1));
+    ORNULL(type);
     auto text = getTextSaved(name);
     if (llvm::find(fieldNames, text) != fieldNames.end()) {
       RNULL("Duplicate field name", name);
@@ -1128,7 +1101,7 @@ RecordOperator* Unifier::inferRecordDeclaration(Cursor ast) {
     fieldNames.push_back(text);
     fieldTypes.push_back(type);
   }
-  return getRecordType("<anon>", fieldTypes, fieldNames);
+  return getRecordType(RecordOperator::getAnonRecordName(), {}, fieldTypes, fieldNames);
 }
 
 TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
@@ -1142,13 +1115,15 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_definition");
+  TypeExpr *type = nullptr;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
-    auto *type = inferTypeBinding(child.getCursor());
+    type = inferTypeBinding(child.getCursor());
     ORNULL(type);
     setType(child, type);
   }
-  return getUnitType();
+  setType(node, type);
+  return type;
 }
 
 TypeExpr* Unifier::inferVariantConstructor(VariantOperator* variantType, Cursor ast) {
@@ -1236,6 +1211,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   if (body) {
     DBGS("has body\n");
     if (body->getType() == "variant_declaration") {
+      TRACE();
       // Variant constructors return the type of the variant, so declare it before inferring
       // the full variant type.
       auto *variantType = create<VariantOperator>(eqName.value_or(typeName), typeVars);
@@ -1250,9 +1226,10 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       saveInterfaceDecl(interface.str());
       return variantType;
     } else if (body->getType() == "record_declaration") {
+      TRACE();
       // Record declarations need the full record type inferred before declaring
       // the record type.
-      auto *recordType = inferRecordDeclaration(typeName, body->getCursor());
+      auto *recordType = inferRecordDeclaration(typeName, typeVars, body->getCursor());
       ORNULL(recordType);
       interface << " = " << recordType->decl();
       concreteTypes = savedConcreteTypes;
@@ -1276,8 +1253,17 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
   assert(node.getType() == "constructed_type");
   auto children = getNamedChildren(node);
   auto name = children.pop_back_val();
-  auto typeArgs = llvm::map_to_vector(children, [&](Node child) {
-    return infer(child);
+  auto typeArgs = llvm::map_to_vector(children, [&](Node child) -> TypeExpr* {
+    DBGS("Inferring type argument for constructed type: " << child.getType() << '\n');
+    auto *tv = infer(child);
+    ORNULL(tv);
+    if (auto *typeVar = llvm::dyn_cast<TypeVariable>(tv)) {
+      (void)typeVar;
+      // TODO: is this right?
+      // DBGS("Inserting type variable into concrete types: " << *typeVar << '\n');
+      // concreteTypes.insert(typeVar);
+    }
+    return tv;
   });
   auto text = getTextSaved(name);
   if (auto *type = maybeGetDeclaredType(text)) {
@@ -1342,15 +1328,15 @@ TypeExpr* Unifier::inferType(Cursor ast) {
   };
   if (node.getType() == "number") {
     auto text = getText(node);
-    return text.contains('.') ? getDeclaredType("float") : getDeclaredType("int");
+    return text.contains('.') ? getFloatType() : getIntType();
   } else if (node.getType() == "float") {
-    return getDeclaredType("float");
+    return getFloatType();
   } else if (node.getType() == "boolean") {
     return getBoolType();
   } else if (node.getType() == "unit") {
     return getUnitType();
   } else if (node.getType() == "string") {
-    return getDeclaredType("string");
+    return getStringType();
   } else if (node.getType() == "guard") {
     return inferGuard(std::move(ast));
   } else if (node.getType() == "do_clause") {
@@ -1414,8 +1400,6 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return getTypeVariable(node);
   } else if (node.getType() == "constructed_type") {
     return inferConstructedType(std::move(ast));
-  } else if (node.getType() == "product_expression") {
-    return inferProductExpression(std::move(ast));
   } else if (node.getType() == "function_type") {
     return inferFunctionType(std::move(ast));
   } else if (node.getType() == "open_module") {

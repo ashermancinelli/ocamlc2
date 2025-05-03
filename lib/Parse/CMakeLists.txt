@@ -11,6 +11,7 @@ add_library(SemanticAnalysis
   Unifier/Unifier.cpp
   Unifier/SourceUtilities.cpp
   Unifier/TypeUtilities.cpp
+  Unifier/TypeSystem.cpp
   Unifier/Inference.cpp
   Unifier/Environment.cpp
 )

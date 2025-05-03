@@ -77,16 +77,14 @@ void Unifier::maybeDumpTypes(Node node, TypeExpr *type) {
   }
 }
 
-Unifier::Unifier() : rootScope(std::make_unique<detail::Scope>(this)), rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
+Unifier::Unifier() {
   if (failed(initializeEnvironment())) {
     llvm::errs() << "Failed to initialize environment\n";
     exit(1);
   }
 }
 
-Unifier::Unifier(std::string filepath)
-    : rootScope(std::make_unique<detail::Scope>(this)),
-      rootTypeScope(std::make_unique<EnvScope>(typeEnv)) {
+Unifier::Unifier(std::string filepath) {
   TRACE();
   if (failed(initializeEnvironment())) {
     llvm::errs() << "Failed to initialize environment\n";
@@ -178,20 +176,26 @@ void Unifier::setMaxErrors(int maxErrors) {
 
 void Unifier::loadStdlibInterfaces(fs::path exe) {
   isLoadingStdlib = true;
+  static bool savedDebug = CL::Debug;
+  CL::Debug = false;
   DBGS("Loading stdlib interfaces\n");
   for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
     loadSourceFile(filepath);
   }
   DBGS("Done loading stdlib interfaces\n");
   isLoadingStdlib = false;
+  CL::Debug = savedDebug;
 }
 
 void Unifier::dumpTypes(llvm::raw_ostream &os) {
   if (!diagnostics.empty()) {
     return showErrors();
   }
-  for (auto node : nodesToDump) {
-    os << node << '\n';
+  // for (auto node : nodesToDump) {
+  //   os << node << '\n';
+  // }
+  for (auto module : modulesToDump) {
+    os << *module << '\n';
   }
 }
 
@@ -213,13 +217,20 @@ llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name
 }
 
 detail::Scope::Scope(Unifier *unifier)
-    : unifier(unifier), envScope(unifier->env),
+    : unifier(unifier), envScope(unifier->env()),
       concreteTypes(unifier->concreteTypes) {
-  DBGS("open scope\n");
+  DBGS("open scope with concrete:\n");
+  for (auto *type : unifier->concreteTypes) {
+    DBGS("  " << *type << '\n');
+  }
 }
+
 detail::Scope::~Scope() {
-  DBGS("close scope\n");
+  DBGS("close scope with concrete:\n");
   unifier->concreteTypes = std::move(concreteTypes);
+  for (auto *type : unifier->concreteTypes) {
+    DBGS("  " << *type << '\n');
+  }
 }
 
 Unifier::TypeVarEnvScope::TypeVarEnvScope(Unifier::TypeVarEnv &env) : scope(env) {

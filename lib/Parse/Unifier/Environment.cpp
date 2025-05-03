@@ -24,27 +24,32 @@
 
 namespace ocamlc2 {
 
-void Unifier::pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> modules) {
-  auto path = hashPath(modules);
-  DBGS("pushing module search path: " << path << '\n');
-  moduleSearchPath.push_back(stringArena.save(path));
+void Unifier::pushModuleSearchPath(llvm::ArrayRef<llvm::StringRef> path) {
+  DBGS("pushing module search path: " << joinDot(path) << '\n');
+  moduleSearchPath.push_back(llvm::SmallVector<llvm::StringRef>(path));
 }
 
 void Unifier::pushModule(llvm::StringRef module) {
+  module = stringArena.save(module);
   DBGS("pushing module: " << module << '\n');
-  currentModule.push_back(stringArena.save(module.str()));
-  pushModuleSearchPath(currentModule);
+  auto *moduleOperator = create<ModuleOperator>(module);
+  auto *enclosingModule = moduleStack.empty() ? nullptr : moduleStack.back();
+  moduleMap[module] = moduleOperator;
+  moduleStack.push_back(moduleOperator);
+  if (enclosingModule) {
+    enclosingModule->exportVariable(module, moduleOperator);
+  }
 }
 
 void Unifier::popModuleSearchPath() {
-  DBGS("popping module search path: " << moduleSearchPath.back() << '\n');
-  moduleSearchPath.pop_back();
+  DBGS("popping module search path: " << joinDot(moduleStack.back()->getName()) << '\n');
+  // moduleStack.pop_back();
+  // todo????
 }
 
 void Unifier::popModule() {
-  DBGS("popping module: " << currentModule.back() << '\n');
-  currentModule.pop_back();
-  popModuleSearchPath();
+  DBGS("popping module: " << moduleStack.back()->getName() << '\n');
+  moduleStack.pop_back();
 }
 
 nullptr_t Unifier::error(std::string message, ts::Node node, const char* filename, unsigned long lineno) {
@@ -65,27 +70,25 @@ nullptr_t Unifier::error(std::string message, const char* filename, unsigned lon
 
 LogicalResult Unifier::initializeEnvironment() {
   DBGS("Initializing environment\n");
-  pushModuleSearchPath("Stdlib");
+  return success();
+  pushModule("Stdlib");
 
   // We need to insert these directly because other type initializations require
   // varargs, wildcard, etc to define themselves.
   for (std::string_view name : {"int", "float", "bool", "string", "unit", "_", "•"}) {
     auto str = stringArena.save(name);
     DBGS("Declaring type operator: " << str << '\n');
-    typeEnv.insert(str, createTypeOperator(str));
+    typeEnv().insert(str, createTypeOperator(str));
   }
-  auto *varargs = create<VarargsOperator>();
-  declareType(varargs->getName(), varargs);
+  // auto *varargs = create<VarargsOperator>();
+  // declareType({varargs->getName()}, varargs);
 
-  pushModule("Stdlib");
   auto *T_bool = getBoolType();
   auto *T_float = getFloatType();
   auto *T_int = getIntType();
   auto *T_unit = getUnitType();
   auto *T_string = getStringType();
   auto *T1 = createTypeVariable(), *T2 = createTypeVariable();
-
-  popModule();
 
   {
     for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
@@ -102,17 +105,20 @@ LogicalResult Unifier::initializeEnvironment() {
     auto *concatType = getFunctionType({concatLHS, T1, T2});
     declareVariable("@@", concatType);
   }
+  popModule();
+
   {
     // Builtin constructors
+    detail::ModuleScope ms{*this, "Option"};
     auto *Optional = getOptionalType();
     declareVariable("None", Optional);
     declareVariable("Some", getFunctionType({Optional->back(), Optional}));
   }
-  declareVariablePath({"String", "concat"}, getFunctionType({T_string, getListTypeOf(T_string), T_string}));
   {
     detail::ModuleScope ms{*this, "Printf"};
     declareVariable("printf", getFunctionType({T_string, getVarargsType(), T_unit}));
   }
+
   return success();
 }
 

@@ -14,5 +14,5 @@ let () =
   print_endline (match result with Some i -> string_of_int i | None -> "Not found");
 
 (*
-RUN: p3 %s --dtypes | FileCheck %s.ref
+RUN: p3 -d %s | FileCheck %s.ref
 *)

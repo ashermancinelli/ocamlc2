@@ -76,7 +76,6 @@ struct Unifier {
   llvm::raw_ostream &showTypedTree();
   llvm::raw_ostream &show(ts::Cursor cursor, bool showUnnamed = false, bool showTypes = true);
   llvm::raw_ostream &show(bool showUnnamed = false, bool showTypes = true);
-  using Env = llvm::ScopedHashTable<llvm::StringRef, TypeExpr *>;
   using TypeVarEnv = llvm::ScopedHashTable<llvm::StringRef, TypeVariable *>;
   struct TypeVarEnvScope {
     using ScopeTy = TypeVarEnv::ScopeTy;
@@ -85,12 +84,15 @@ struct Unifier {
   private:
     ScopeTy scope;
   };
-  using EnvScope = Env::ScopeTy;
   using ConcreteTypes = llvm::DenseSet<TypeVariable *>;
   TypeExpr *infer(Cursor ast);
   TypeExpr *infer(ts::Node const &ast);
   inline auto *getInferredType(ts::Node const &ast) {
     return nodeToType.lookup(ast.getID());
+  }
+  template <typename T> T *claim(T *ptr) {
+    typeArena.push_back(std::unique_ptr<T>(ptr));
+    return ptr;
   }
   template <typename T, typename... Args> T *create(Args &&...args) {
     static_assert(std::is_base_of_v<TypeExpr, T>,
@@ -110,12 +112,12 @@ private:
 
   inline auto *createTypeOperator(llvm::StringRef name,
                                   llvm::ArrayRef<TypeExpr *> args = {}) {
-    return create<TypeOperator>(name, args);
+    return create<TypeOperator>(stringArena.save(name), args);
   }
   inline auto *createTypeOperator(TypeOperator::Kind kind,
                                   llvm::StringRef name,
                                   llvm::ArrayRef<TypeExpr *> args = {}) {
-    return create<TypeOperator>(kind, name, args);
+    return create<TypeOperator>(kind, stringArena.save(name), args);
   }
 
 public:
@@ -153,8 +155,8 @@ public:
   inline auto *getOptionalType() {
     return getOptionalTypeOf(createTypeVariable());
   }
-  inline auto *getRecordType(llvm::StringRef recordName, ArrayRef<TypeExpr *> fields, ArrayRef<llvm::StringRef> fieldNames) {
-    return create<RecordOperator>(recordName, fields, fieldNames);
+  inline auto *getRecordType(llvm::StringRef recordName, ArrayRef<TypeExpr*> typeArgs, ArrayRef<TypeExpr *> fields, ArrayRef<llvm::StringRef> fieldNames) {
+    return create<RecordOperator>(recordName, typeArgs, fields, fieldNames);
   }
   bool isVarargs(TypeExpr *type);
   bool isWildcard(TypeExpr *type);
@@ -176,6 +178,7 @@ private:
   // Clone a type expression, replacing generic type variables with new ones
   TypeExpr *clone(TypeExpr *type);
   TypeExpr *clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
+  TypeExpr *cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
 
   // The function Prune is used whenever a type expression has to be inspected:
   // it will always return a type expression which is either an uninstantiated
@@ -217,11 +220,10 @@ private:
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);
+  TypeExpr *inferModuleTypeDefinition(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *inferParenthesizedPattern(Cursor ast);
-  TypeExpr *inferPattern(ts::Node node);
-  TypeExpr *inferProductExpression(Cursor ast);
-  RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, Cursor ast);
+  RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
   RecordOperator *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferRecordExpression(Cursor ast);
   FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);
@@ -274,16 +276,15 @@ private:
     return isSubTypeOfAny(type, concreteTypes);
   }
 
-  inline bool declared(llvm::StringRef name) { return env.count(name); }
-
-  llvm::StringRef saveString(llvm::StringRef str);
+  inline llvm::StringRef saveString(llvm::StringRef str) {
+    return stringArena.save(str);
+  }
 
   // Work with the type of a type
-  TypeExpr *declareType(Node node, TypeExpr *type);
   TypeExpr *declareType(llvm::StringRef name, TypeExpr *type);
-  TypeExpr *maybeGetDeclaredType(llvm::StringRef name);
-  TypeExpr *maybeGetDeclaredTypeWithName(llvm::StringRef name);
-  TypeExpr *getDeclaredType(llvm::StringRef name);
+  TypeExpr *declareType(Node node, TypeExpr *type);
+  TypeExpr *maybeGetDeclaredType(ArrayRef<llvm::StringRef> path);
+  TypeExpr *getDeclaredType(ArrayRef<llvm::StringRef> path);
   TypeExpr *getDeclaredType(Node node);
 
   // Does not error on missing typevariable because TVs are introduced implicitly
@@ -300,15 +301,21 @@ private:
   TypeExpr *declareVariable(Node node, TypeExpr *type);
   TypeExpr *declareConcreteVariable(Node node);
   TypeExpr *declareVariable(llvm::StringRef name, TypeExpr *type);
-  TypeExpr *declareVariablePath(llvm::ArrayRef<llvm::StringRef> path, TypeExpr *type);
   TypeExpr *declarePatternVariables(const ASTNode *ast,
                                     llvm::SmallVector<TypeExpr *> &typevars);
   TypeExpr *getVariableType(const llvm::StringRef name);
-  TypeExpr *maybeGetVariableType(const llvm::StringRef name);
+  TypeExpr *maybeGetVariableType(llvm::ArrayRef<llvm::StringRef> path);
   TypeExpr *maybeGetVariableTypeWithName(const llvm::StringRef name);
   TypeExpr *getVariableType(std::string_view name);
-  TypeExpr *getVariableType(std::vector<std::string> path);
+  TypeExpr *getVariableType(llvm::SmallVector<llvm::StringRef> path);
   TypeExpr *getVariableType(const char *name);
+
+  inline TypeExpr *exportType(llvm::StringRef name, TypeExpr *type) {
+    return moduleStack.back()->exportType(name, type);
+  }
+  inline TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type) {
+    return moduleStack.back()->exportVariable(name, type);
+  }
 
   // Just associates a type with a node ID so it can be retrieved later
   // for printing and debugging.
@@ -325,7 +332,7 @@ private:
   void popModule();
   std::string getHashedPath(llvm::ArrayRef<llvm::StringRef> path);
   llvm::StringRef getHashedPathSaved(llvm::ArrayRef<llvm::StringRef> path);
-  std::vector<std::string> getPathParts(Node node);
+  llvm::SmallVector<llvm::StringRef> getPathParts(Node node);
   void maybeDumpTypes(Node node, TypeExpr *type);
   void saveInterfaceDecl(std::string interface);
 
@@ -339,9 +346,14 @@ private:
   void popTypeVariableScope() {}
 
   // Environment for type variables
-  Env env;
-  Env typeEnv;
+  // Env env;
+  // Env typeEnv;
+  inline Env &env() { return moduleStack.back()->getVariableEnv(); }
+  inline Env &typeEnv() { return moduleStack.back()->getTypeEnv(); }
   TypeVarEnv typeVarEnv;
+  llvm::SmallVector<ModuleOperator *> moduleStack;
+  llvm::SmallVector<ModuleOperator *> openModules;
+  llvm::DenseMap<llvm::StringRef, ModuleOperator *> moduleMap;
 
   // Set of types that have been declared as concrete, usually because they
   // are type variables for parameters of a function.
@@ -351,14 +363,12 @@ private:
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
 
   // Paths to search for type variables
-  llvm::SmallVector<llvm::StringRef> moduleSearchPath;
-
-  // Current module path for code being inferred
-  llvm::SmallVector<llvm::StringRef> currentModule;
+  llvm::SmallVector<llvm::SmallVector<llvm::StringRef>> moduleSearchPath = {{"Stdlib"}};
 
   // It is useful to keep and dump certain nodes and types for debugging
   // and testing. Record them here to be dumped after inference is complete.
   llvm::SmallVector<std::string> nodesToDump;
+  llvm::SmallVector<ModuleOperator*> modulesToDump;
 
   // Sidecar for caching inferred types
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
@@ -375,10 +385,10 @@ private:
   // Root scope for the unifier, created when the unifier is constructed.
   // Sometimes we need to declare stdlib types before actually loading the
   // stdlib, in which case we don't have a compilation unit to create a scope.
-  std::unique_ptr<detail::Scope> rootScope;
-  std::unique_ptr<EnvScope> rootTypeScope;
+  // std::unique_ptr<detail::Scope> rootScope;
+  // std::unique_ptr<EnvScope> rootTypeScope;
 
-  llvm::SmallVector<std::unique_ptr<EnvScope>> typeScopeStack;
+  // llvm::SmallVector<std::unique_ptr<EnvScope>> typeScopeStack;
 
   // Whether we are loading the standard library. It's helpful to skip certain
   // debugging steps when loading the stdlib, as it becomes very noisy when
@@ -416,11 +426,9 @@ private:
 struct ModuleScope {
   ModuleScope(Unifier &unifier, llvm::StringRef module) : unifier(unifier) {
     unifier.pushModule(module);
-    unifier.pushModuleSearchPath({module});
   }
   ~ModuleScope() {
     unifier.popModule();
-    unifier.popModuleSearchPath();
   }
 
 private:
@@ -433,8 +441,7 @@ struct Scope {
 
 private:
   Unifier *unifier;
-  Unifier::EnvScope envScope;
-  // Unifier::EnvScope typeEnvScope;
+  EnvScope envScope;
   Unifier::ConcreteTypes concreteTypes;
 };
 
