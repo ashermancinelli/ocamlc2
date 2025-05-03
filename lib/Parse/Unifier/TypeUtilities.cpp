@@ -85,6 +85,7 @@ llvm::SmallVector<llvm::StringRef> Unifier::getPathParts(Node node) {
     "module_name",
     "module_type_name",
     "constructor_name",
+    "extended_module_path",
     "type_constructor",
     "type_variable",
   };

@@ -202,12 +202,14 @@ private:
   TypeExpr *inferConstructorPath(Cursor ast);
   TypeExpr *inferConstructorPattern(Cursor ast);
   TypeExpr *inferExternal(Cursor ast);
+  TypeExpr *inferFieldGetExpression(Cursor ast);
   TypeExpr *inferForExpression(Cursor ast);
   TypeExpr *inferFunctionExpression(Cursor ast);
   TypeExpr *inferFunctionSpecification(Cursor ast);
   TypeExpr *inferFunctionType(Cursor ast);
   TypeExpr *inferGuard(Cursor ast);
   TypeExpr *inferIfExpression(Cursor ast);
+  TypeExpr *inferIncludeModule(Cursor ast);
   TypeExpr *inferInfixExpression(Cursor ast);
   TypeExpr *inferLabeledArgumentType(Cursor ast);
   TypeExpr *inferLetBinding(Cursor ast);
@@ -219,19 +221,15 @@ private:
   TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
   TypeExpr *inferMatchExpression(Cursor ast);
   TypeExpr *inferModuleBinding(Cursor ast);
-  TypeExpr *inferModuleTypePath(Cursor ast);
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);
   TypeExpr *inferModuleTypeDefinition(Cursor ast);
+  TypeExpr *inferModuleTypePath(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *inferParenthesizedPattern(Cursor ast);
-  RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
-  RecordOperator *inferRecordDeclaration(Cursor ast);
   TypeExpr *inferRecordExpression(Cursor ast);
-  FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);
   TypeExpr *inferRecordPattern(Cursor ast);
-  TypeExpr *findMatchingRecordType(TypeExpr *type);
   TypeExpr *inferSequenceExpression(Cursor ast);
   TypeExpr *inferTupleExpression(Cursor ast);
   TypeExpr *inferTuplePattern(ts::Node node);
@@ -245,7 +243,11 @@ private:
   TypeExpr *inferValueSpecification(Cursor ast);
   TypeExpr *inferVariantConstructor(VariantOperator *variantType, Cursor ast);
   TypeExpr *inferVariantDeclaration(TypeExpr *variantType, Cursor ast);
-  TypeExpr *inferFieldGetExpression(Cursor ast);
+
+  TypeExpr *findMatchingRecordType(TypeExpr *type);
+  FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);
+  RecordOperator *inferRecordDeclaration(Cursor ast);
+  RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
 
   TypeExpr *declareFunctionParameter(Node node);
   TypeExpr *declareFunctionParameter(ParameterDescriptor desc, Node node);

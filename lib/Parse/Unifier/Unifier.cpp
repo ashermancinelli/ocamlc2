@@ -123,14 +123,45 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
 
 LogicalResult Unifier::unifyModuleWithSignature(ModuleOperator *module, SignatureOperator *signature) {
   DBGS("Unifying module with signature:\n" << *module << "\nand\n" << *signature << '\n');
-  return failure();
+  FAIL_IF(module->getExports().size() < signature->getExports().size(),
+          SSWRAP("Could not unify module with signature: " << *module << " and " << *signature));
+  for (auto exported : signature->getExports()) {
+    auto name = exported.name;
+    auto kind = exported.kind;
+    auto type = exported.type;
+    DBGS("Unifying export: " << name << " with kind " << kind << " and type " << *type << '\n');
+    switch (kind) {
+    case SignatureOperator::Export::Type: {
+      DBGS("Unifying type decl\n");
+      auto *matched = module->lookupType(name);
+      FAIL_IF(not matched, SSWRAP("Could not find type "
+                                  << name << " in module " << *module));
+      FAIL_IF(failed(unify(matched, type)), "failed to unify");
+      break;
+    }
+    case SignatureOperator::Export::Variable: {
+      DBGS("Unifying variable type\n");
+      FAIL_IF(not module->lookupVariable(name),
+              SSWRAP("Could not find variable " << name << " in module "
+                                                << *module));
+      FAIL_IF(failed(unify(module->lookupVariable(name), type)),
+              "failed to unify");
+      break;
+    }
+    case SignatureOperator::Export::Exception:
+      assert(false && "NYI");
+      break;
+    }
+  }
+
+  return success();
 }
 
 LogicalResult Unifier::unifySignatureTypes(SignatureOperator *a, SignatureOperator *b) {
   DBGS("Unifying signature types:\n" << *a << "\nand\n" << *b << '\n');
   auto *moa = llvm::dyn_cast<ModuleOperator>(a);
   auto *mob = llvm::dyn_cast<ModuleOperator>(b);
-  FAIL_IF(not moa and not mob, SSWRAP("Does it make sense to unify two non-module signatures?"))
+  FAIL_IF((bool)moa ^ (bool)mob, SSWRAP("Does it make sense to unify two non-module signatures?"))
   if (moa) {
     return unifyModuleWithSignature(moa, b);
   } else {

@@ -58,12 +58,23 @@ TypeExpr* Unifier::inferOpenModule(Cursor ast) {
   auto name = ast.getCurrentNode().getNamedChild(0);
   auto path = getPathParts(name);
   auto *module = getVariableType(path);
-  if (auto *mo = llvm::dyn_cast<ModuleOperator>(module)) {
-    moduleStack.back()->openModule(mo);
-    return mo;
-  } else {
-    RNULL(SSWRAP("Expected module, got " << *module));
-  }
+  ORNULL(module);
+  auto *moduleOperator = llvm::dyn_cast<ModuleOperator>(module);
+  RNULL_IF(not moduleOperator, SSWRAP("Expected module, got " << *module));
+  moduleStack.back()->openModule(moduleOperator);
+  return moduleOperator;
+}
+
+TypeExpr* Unifier::inferIncludeModule(Cursor ast) {
+  TRACE();
+  auto name = ast.getCurrentNode().getNamedChild(0);
+  auto path = getPathParts(name);
+  auto *module = getVariableType(path);
+  ORNULL(module);
+  auto *moduleOperator = llvm::dyn_cast<ModuleOperator>(module);
+  RNULL_IF(not moduleOperator, SSWRAP("Expected module, got " << *module));
+  moduleStack.back()->openModule(moduleOperator);
+  return moduleOperator;
 }
 
 SmallVector<Node> Unifier::flattenType(std::string_view nodeType, Node node) {
@@ -1359,6 +1370,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return getStringType();
   } else if (node.getType() == "guard") {
     return inferGuard(std::move(ast));
+  } else if (node.getType() == "sign_expression") {
+    return infer(node.getChildByFieldName("expression"));
   } else if (node.getType() == "do_clause") {
     return infer(node.getNamedChild(0));
   } else if (node.getType() == "constructor_path") {
@@ -1428,6 +1441,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferFunctionType(std::move(ast));
   } else if (node.getType() == "open_module") {
     return inferOpenModule(std::move(ast));
+  } else if (node.getType() == "include_module") {
+    return inferIncludeModule(std::move(ast));
   } else if (node.getType() == "external") {
     return inferExternal(std::move(ast));
   } else if (node.getType() == "tuple_type") {

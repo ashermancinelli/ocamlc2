@@ -154,6 +154,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
           os << " = " << *e.type;
         }
         os << '\n';
+      } else if (llvm::isa<TypeVariable>(e.type)) {
+        os << "type " << e.name << '\n';
       } else {
         os << "unknown type operator: " << e.name << *e.type << '\n';
         assert(false && "unknown type operator");
