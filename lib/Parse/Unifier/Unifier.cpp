@@ -147,7 +147,12 @@ TypeExpr *Unifier::clone(TypeExpr *type) {
 TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
   if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
     DBGS("Cloning function operator: " << *func << '\n');
-    return getFunctionType(mappedArgs, func->parameterDescriptors);
+    for (auto [arg, mappedArg] : llvm::zip(func->getArgs(), mappedArgs  )) {
+      DBGS("Cloning argument: " << *arg << " to " << *mappedArg << '\n');
+    }
+    auto *newFunc = getFunctionType(mappedArgs, func->parameterDescriptors);
+    DBGS("Cloned function operator: " << *newFunc << '\n');
+    return newFunc;
   } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
     DBGS("Cloning record operator: " << *record << '\n');
     auto fieldNames = record->getFieldNames();
@@ -211,6 +216,7 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
       DBGSCLONE("returning cloned type variable: " << *mapping[tv] << '\n');
       return mapping[tv];
     }
+    DBGSCLONE("type variable is concrete, returning original\n");
   }
   DBGSCLONE("cloned type: " << *type << '\n');
   return type;

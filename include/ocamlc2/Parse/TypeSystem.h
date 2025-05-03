@@ -216,11 +216,12 @@ struct SignatureOperator : public TypeOperator {
   
   SignatureOperator(llvm::StringRef signatureName, llvm::ArrayRef<TypeExpr*> args={})
       : TypeOperator(Kind::Signature, signatureName, args),
-        typeScope(typeEnv),
-        variableScope(variableEnv) {}
+        rootTypeScope(typeEnv),
+        rootVariableScope(variableEnv) {}
   SignatureOperator(const SignatureOperator &other)
       : TypeOperator(other.getKind(), other.getName(), other.getArgs()),
-        typeScope(typeEnv), variableScope(variableEnv),
+        rootTypeScope(typeEnv),
+        rootVariableScope(variableEnv),
         exports(other.exports) {
     for (const auto &e : other.getExports()) {
       if (e.kind == Export::Kind::Type) {
@@ -244,19 +245,23 @@ struct SignatureOperator : public TypeOperator {
   inline llvm::ArrayRef<Export> getExports() const { return exports; }
   inline TypeExpr *exportType(llvm::StringRef name, TypeExpr *type) {
     typeEnv.insert(name, type);
-    exports.push_back(Export(Export::Kind::Type, name, type));
+    if (typeEnv.getCurScope() == &rootTypeScope) {
+      exports.push_back(Export(Export::Kind::Type, name, type));
+    }
     return type;
   }
   inline TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type) {
     variableEnv.insert(name, type);
-    exports.push_back(Export(Export::Kind::Variable, name, type));
+    if (variableEnv.getCurScope() == &rootVariableScope) {
+      exports.push_back(Export(Export::Kind::Variable, name, type));
+    }
     return type;
   }
 private:
   Env typeEnv;
-  EnvScope typeScope;
+  EnvScope rootTypeScope;
   Env variableEnv;
-  EnvScope variableScope;
+  EnvScope rootVariableScope;
   llvm::SmallVector<Export> exports;
 };
 

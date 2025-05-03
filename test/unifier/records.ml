@@ -3,14 +3,6 @@ RUN: p3 -f -d -cpp %s | FileCheck %s.ref
 ocamlc %s -i -pp cppo
 *)
 
-module List : sig
-  val filter : ('a -> bool) -> 'a list -> 'a list
-#ifndef OCAMLC2
-end = struct
-  let filter f lst = ListLabels.filter ~f:f lst
-#endif
-end
-
 type ptype = TNormal | TFire | TWater;;
 type mon = {name : string; hp : int; ptype : ptype};;
 

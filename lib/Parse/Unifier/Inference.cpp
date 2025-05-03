@@ -1258,8 +1258,10 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
     auto *tv = infer(child);
     ORNULL(tv);
     if (auto *typeVar = llvm::dyn_cast<TypeVariable>(tv)) {
-      DBGS("Inserting type variable into concrete types: " << *typeVar << '\n');
-      concreteTypes.insert(typeVar);
+      (void)typeVar;
+      // TODO: is this right?
+      // DBGS("Inserting type variable into concrete types: " << *typeVar << '\n');
+      // concreteTypes.insert(typeVar);
     }
     return tv;
   });

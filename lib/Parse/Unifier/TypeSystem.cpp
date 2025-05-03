@@ -115,7 +115,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               const SignatureOperator &signature) {
   os << (signature.getKind() == TypeOperator::Kind::Module ? "module"
                                                         : "module type")
-     << ' ' << signature.getName() << " = sig\n";
+     << ' ' << signature.getName() << " : sig\n";
   
   // eg type constructors will show up as functions but we don't really want to print those
   llvm::SmallVector<llvm::StringRef> namesToSkip;
@@ -123,6 +123,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
     if (std::find(namesToSkip.begin(), namesToSkip.end(), e.name) != namesToSkip.end()) {
       continue;
     }
+    // only dump once - for type aliases they may show up again
+    // namesToSkip.push_back(e.name);
     switch (e.kind) {
     case SignatureOperator::Export::Type: {
       if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(e.type)) {
@@ -133,7 +135,19 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
       } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(e.type)) {
         os << recordOperator->decl(true) << '\n';
       } else {
-        os << "type " << e.name << " = " << *e.type << '\n';
+        os << "type ";
+        if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+          for (auto *arg : to->getArgs()) {
+            if (TypeVariable *tv = llvm::dyn_cast<TypeVariable>(arg)) {
+              if (!tv->instantiated()) {
+                os << *tv << " ";
+              }
+            } else {
+              os << *arg << " ";
+            }
+          }
+        }
+        os << e.name << " = " << *e.type << '\n';
       }
       break;
     }
@@ -191,8 +205,6 @@ std::string RecordOperator::decl(const bool named) const {
   std::string s;
   llvm::raw_string_ostream ss(s);
   auto zipped = llvm::zip(fieldNames, fieldTypes);
-  auto first = zipped.begin();
-  auto [name, type] = *first;
   if (named) {
     ss << "type ";
     for (auto *arg : getArgs()) {
@@ -200,9 +212,9 @@ std::string RecordOperator::decl(const bool named) const {
     }
     ss << getName() << " = ";
   }
-  ss << "{" << name << ":" << *type;
-  for (auto [name, type] : llvm::drop_begin(zipped)) {
-    ss << "; " << name << ":" << *type;
+  ss << "{ ";
+  for (auto [name, type] : zipped) {
+    ss << name << " : " << *type << "; ";
   }
   ss << '}';
   return ss.str();

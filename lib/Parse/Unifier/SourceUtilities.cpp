@@ -176,12 +176,15 @@ void Unifier::setMaxErrors(int maxErrors) {
 
 void Unifier::loadStdlibInterfaces(fs::path exe) {
   isLoadingStdlib = true;
+  static bool savedDebug = CL::Debug;
+  CL::Debug = false;
   DBGS("Loading stdlib interfaces\n");
   for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
     loadSourceFile(filepath);
   }
   DBGS("Done loading stdlib interfaces\n");
   isLoadingStdlib = false;
+  CL::Debug = savedDebug;
 }
 
 void Unifier::dumpTypes(llvm::raw_ostream &os) {
@@ -216,11 +219,18 @@ llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name
 detail::Scope::Scope(Unifier *unifier)
     : unifier(unifier), envScope(unifier->env()),
       concreteTypes(unifier->concreteTypes) {
-  DBGS("open scope\n");
+  DBGS("open scope with concrete:\n");
+  for (auto *type : unifier->concreteTypes) {
+    DBGS("  " << *type << '\n');
+  }
 }
+
 detail::Scope::~Scope() {
-  DBGS("close scope\n");
+  DBGS("close scope with concrete:\n");
   unifier->concreteTypes = std::move(concreteTypes);
+  for (auto *type : unifier->concreteTypes) {
+    DBGS("  " << *type << '\n');
+  }
 }
 
 Unifier::TypeVarEnvScope::TypeVarEnvScope(Unifier::TypeVarEnv &env) : scope(env) {

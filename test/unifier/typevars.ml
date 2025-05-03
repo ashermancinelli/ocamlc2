@@ -17,15 +17,11 @@ module M = struct
   type 'a tree = Lf | Br of 'a * 'a tree * 'a;;
 end;;
 
+let f t = match t with
+  | M.Br (a, b, c) -> "Br"
+  | M.Lf -> "Lf";;
 
-
-let () = 
-  let f t = match t with
-    | M.Br (a, b, c) -> "Br"
-    | M.Lf -> "Lf"
-  in
-  print_endline @@ f (M.Br (1, M.Br (2, M.Lf, 4), 4));
-;;
+let () = print_endline @@ f (M.Br (1, M.Br (2, M.Lf, 4), 4));
 
 open M;;
 
