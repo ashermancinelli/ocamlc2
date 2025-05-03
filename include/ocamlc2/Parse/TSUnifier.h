@@ -217,6 +217,7 @@ private:
   TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
   TypeExpr *inferMatchExpression(Cursor ast);
   TypeExpr *inferModuleBinding(Cursor ast);
+  TypeExpr *inferModuleTypePath(Cursor ast);
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleSignature(Cursor ast);
   TypeExpr *inferModuleStructure(Cursor ast);

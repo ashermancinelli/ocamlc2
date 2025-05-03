@@ -134,7 +134,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
         }
       } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(e.type)) {
         os << recordOperator->decl(true) << '\n';
-      } else {
+      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
         os << "type ";
         if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
           for (auto *arg : to->getArgs()) {
@@ -147,7 +147,15 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
             }
           }
         }
-        os << e.name << " = " << *e.type << '\n';
+        os << e.name;
+        if (to->getArgs().empty() and e.name == to->getName()) {
+          // just a decl, maybe don't show anything else? eg `type t`
+        } else {
+          os << " = " << *e.type;
+        }
+        os << '\n';
+      } else {
+        assert(false && "unknown type operator");
       }
       break;
     }

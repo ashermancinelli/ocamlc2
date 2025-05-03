@@ -31,6 +31,7 @@ static constexpr std::string_view pathTypes[] = {
     "module_path",
     "constructor_path",
     "type_constructor_path",
+    "module_type_path",
 };
 }
 
@@ -82,6 +83,7 @@ llvm::SmallVector<llvm::StringRef> Unifier::getPathParts(Node node) {
   static constexpr std::string_view nameTypes[] = {
     "value_name",
     "module_name",
+    "module_type_name",
     "constructor_name",
     "type_constructor",
     "type_variable",
@@ -97,6 +99,7 @@ llvm::SmallVector<llvm::StringRef> Unifier::getPathParts(Node node) {
     } else if (childType == "parenthesized_operator") {
       pathParts.push_back(getTextSaved(child.getNamedChild(0)));
     } else {
+      llvm::errs() << "Unknown path part type: " << childType << '\n';
       assert(false && "Unknown path part type");
     }
   }

@@ -10,7 +10,7 @@
   [&](const auto *__ajm_func, auto __ajm_line) {                               \
     if (ocamlc2::debug_enabled(DEBUG_TYPE)) {                                  \
       llvm::errs() << "[" << ocamlc2::ANSIColors::blue() << DEBUG_TYPE << ":"  \
-                   << __ajm_func << ":" << __ajm_line                          \
+                   << __ajm_line << ":" << __ajm_func                          \
                    << ocamlc2::ANSIColors::reset() << "]" << " "               \
                    << ocamlc2::ANSIColors::italic() << __VA_ARGS__             \
                    << ocamlc2::ANSIColors::reset();                            \

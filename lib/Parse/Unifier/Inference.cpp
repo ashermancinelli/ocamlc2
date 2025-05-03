@@ -16,7 +16,7 @@
 #include <sstream>
 #include <llvm/Support/FileSystem.h>
 
-#define DEBUG_TYPE "inference"
+#define DEBUG_TYPE "Inference.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
 #include "UnifierDebug.h"
@@ -733,6 +733,13 @@ TypeExpr* Unifier::inferConstructorPath(Cursor ast) {
   return getVariableType(pathParts);
 }
 
+TypeExpr* Unifier::inferModuleTypePath(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "module_type_path");
+  auto pathParts = getPathParts(node);
+  return getVariableType(pathParts);
+}
+
 TypeExpr* Unifier::inferArrayExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -851,7 +858,21 @@ TypeExpr* Unifier::inferModuleTypeDefinition(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_type_definition");
-  return inferModuleBinding(node.getNamedChild(0).getCursor());
+  auto name = node.getNamedChild(0);
+  assert(!name.isNull() && "Expected module name");
+  assert(name.getType() == "module_type_name" && "Expected module name");
+  auto body = node.getChildByFieldName("body");
+  SignatureOperator *sig = nullptr;
+  {
+    detail::ModuleScope ms{*this, getText(name)};
+    for (auto child : getNamedChildren(body)) {
+      DBGS("Inferring module type definition child: " << child.getType() << '\n');
+      ORNULL(infer(child));
+    }
+    sig = create<SignatureOperator>(*moduleStack.back());
+  }
+  declareVariable(name, sig);
+  return sig;
 }
 
 TypeExpr* Unifier::inferModuleDefinition(Cursor ast) {
@@ -875,12 +896,18 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   const auto numChildren = node.getNumNamedChildren();
   std::optional<Node> signature;
   std::optional<Node> structure;
+  SignatureOperator *sig = nullptr;
   for (unsigned i = 1; i < numChildren; ++i) {
     auto child = node.getNamedChild(i);
     if (child.getType() == "signature") {
       signature = child;
     } else if (child.getType() == "structure") {
       structure = child;
+    } else if (child.getType() == "module_type_path") {
+      auto *type = infer(child);
+      ORNULL(type);
+      sig = llvm::dyn_cast<SignatureOperator>(type);
+      RNULL_IF_NULL(sig, "Expected module type path to be a signature");
     } else {
       show(child.getCursor(), true);
       assert(false && "Unknown module binding child type");
@@ -891,6 +918,10 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   }
   if (structure) {
     inferModuleStructure(structure->getCursor());
+  }
+  auto *module = moduleStack.back();
+  if (sig) {
+    UNIFY_OR_RNULL(sig, module);
   }
   return moduleStack.back();
 }
@@ -1329,6 +1360,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return infer(node.getNamedChild(0));
   } else if (node.getType() == "constructor_path") {
     return inferConstructorPath(std::move(ast));
+  } else if (node.getType() == "module_type_path") {
+    return inferModuleTypePath(std::move(ast));
   } else if (node.getType() == "let_binding") {
     return inferLetBinding(std::move(ast));
   } else if (node.getType() == "let_expression") {
@@ -1358,6 +1391,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferCompilationUnit(std::move(ast));
   } else if (node.getType() == "application_expression") {
     return inferApplicationExpression(std::move(ast));
+  } else if (node.getType() == "module_type_definition") {
+    return inferModuleTypeDefinition(std::move(ast));
   } else if (node.getType() == "module_definition") {
     return inferModuleDefinition(std::move(ast));
   } else if (node.getType() == "value_specification") {
