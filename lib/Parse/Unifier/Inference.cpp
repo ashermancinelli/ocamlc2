@@ -73,7 +73,17 @@ TypeExpr* Unifier::inferIncludeModule(Cursor ast) {
   ORNULL(module);
   auto *moduleOperator = llvm::dyn_cast<ModuleOperator>(module);
   RNULL_IF(not moduleOperator, SSWRAP("Expected module, got " << *module));
-  moduleStack.back()->openModule(moduleOperator);
+  auto exports = moduleOperator->getExports();
+  for (auto exported : exports) {
+    DBGS("Export: " << exported.name << '\n');
+    if (exported.kind == SignatureOperator::Export::Kind::Variable) {
+      exportVariable(exported.name, exported.type);
+    } else if (exported.kind == SignatureOperator::Export::Kind::Type) {
+      exportType(exported.name, exported.type);
+    } else {
+      RNULL(SSWRAP("Unknown export kind: " << exported.kind));
+    }
+  }
   return moduleOperator;
 }
 

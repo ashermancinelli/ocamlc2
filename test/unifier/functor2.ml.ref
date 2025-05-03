@@ -14,6 +14,8 @@ CHECK: type t = int
 CHECK: val compare : (int -> int -> int)
 CHECK: end
 CHECK: module N : sig
+CHECK: type t = int
+CHECK: val compare : (int -> int -> int)
 CHECK: end
 CHECK: val f : (int -> int)
 CHECK: val g : (int -> int)
