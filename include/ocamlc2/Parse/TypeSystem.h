@@ -184,6 +184,7 @@ struct FunctorOperator : public TypeOperator {
         moduleParameters(moduleParameters) {}
   FunctorOperator(const FunctorOperator &other)
       : TypeOperator(other),
+        conformsToSignature(other.conformsToSignature),
         moduleParameters(other.moduleParameters) {}
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Functor; }
   inline void pushModuleParameter(llvm::StringRef name, SignatureOperator *type) {
@@ -192,8 +193,11 @@ struct FunctorOperator : public TypeOperator {
   inline llvm::ArrayRef<std::pair<llvm::StringRef, SignatureOperator*>> getModuleParameters() const {
     return moduleParameters;
   }
+  inline void conformsTo(SignatureOperator *signature) { conformsToSignature = signature; }
+  inline SignatureOperator *getInterfaceSignature() const { return conformsToSignature; }
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const FunctorOperator& functor);
 private:
+  SignatureOperator *conformsToSignature=nullptr;
   llvm::SmallVector<std::pair<llvm::StringRef, SignatureOperator*>> moduleParameters;
 };
 
@@ -247,7 +251,8 @@ struct SignatureOperator : public TypeOperator {
       : TypeOperator(other.getKind(), other.getName(), other.getArgs()),
         rootTypeScope(typeEnv),
         rootVariableScope(variableEnv),
-        exports(other.exports) {
+        exports(other.exports),
+        conformsToSignature(other.conformsToSignature) {
     initFromExports();
   }
   SignatureOperator(llvm::StringRef newName, const SignatureOperator &other) :
@@ -270,28 +275,12 @@ struct SignatureOperator : public TypeOperator {
   virtual TypeExpr *lookupVariable(llvm::StringRef name) const;
   virtual TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path) const;
   inline llvm::ArrayRef<Export> getExports() const { return exports; }
-  inline TypeExpr *exportType(llvm::StringRef name, TypeExpr *type) {
-    typeEnv.insert(name, type);
-    if (typeEnv.getCurScope() == &rootTypeScope) {
-      exports.push_back(Export(Export::Kind::Type, name, type));
-    }
-    return type;
-  }
-  inline TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type) {
-    variableEnv.insert(name, type);
-    if (variableEnv.getCurScope() == &rootVariableScope) {
-      exports.push_back(Export(Export::Kind::Variable, name, type));
-    }
-    return type;
-  }
-  inline TypeExpr *localType(llvm::StringRef name, TypeExpr *type) {
-    typeEnv.insert(name, type);
-    return type;
-  }
-  inline TypeExpr *localVariable(llvm::StringRef name, TypeExpr *type) {
-    variableEnv.insert(name, type);
-    return type;
-  }
+  TypeExpr *exportType(llvm::StringRef name, TypeExpr *type);
+  TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type);
+  TypeExpr *localType(llvm::StringRef name, TypeExpr *type);
+  TypeExpr *localVariable(llvm::StringRef name, TypeExpr *type);
+  inline void conformsTo(SignatureOperator *signature) { conformsToSignature = signature; }
+  inline SignatureOperator *getInterfaceSignature() const { return conformsToSignature; }
   static void useNewline(char newline) {
     SignatureOperator::newline = newline;
   }
@@ -315,6 +304,7 @@ private:
   Env variableEnv;
   EnvScope rootVariableScope;
   llvm::SmallVector<Export> exports;
+  SignatureOperator *conformsToSignature=nullptr;
 protected:
   static char newline;
 };

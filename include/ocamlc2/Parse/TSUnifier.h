@@ -222,11 +222,13 @@ private:
   TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
   TypeExpr *inferMatchExpression(Cursor ast);
   TypeExpr *inferModuleBinding(Cursor ast);
+  TypeExpr *inferModuleBindingFunctorDefinition(llvm::StringRef name, SmallVector<Node> moduleParameters, SignatureOperator *returnSignature, Node structure);
+  TypeExpr *inferModuleBindingModuleDefinition(llvm::StringRef name, SignatureOperator *returnSignature, Node structure);
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleApplication(Cursor ast);
-  TypeExpr *inferModuleSignature(Cursor ast);
-  TypeExpr *inferModuleStructure(Cursor ast);
-  TypeExpr *inferModuleTypeDefinition(Cursor ast);
+  SignatureOperator *inferModuleSignature(Cursor ast);
+  ModuleOperator *inferModuleStructure(Cursor ast);
+  SignatureOperator *inferModuleTypeDefinition(Cursor ast);
   TypeExpr *inferModuleTypePath(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
   TypeExpr *inferParenthesizedPattern(Cursor ast);
@@ -436,8 +438,8 @@ private:
 };
 
 struct ModuleScope {
-  ModuleScope(Unifier &unifier, llvm::StringRef module) : unifier(unifier) {
-    unifier.pushModule(module);
+  ModuleScope(Unifier &unifier, llvm::StringRef module="anonymous") : unifier(unifier) {
+    unifier.pushModule(module, false);
   }
   ~ModuleScope() {
     unifier.popModule();

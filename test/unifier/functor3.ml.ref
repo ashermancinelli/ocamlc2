@@ -4,9 +4,6 @@ CHECK: module Functor3 : sig
 CHECK: module X_int : sig
 CHECK: val x : int
 CHECK: end
-CHECK: module X_int : sig
-CHECK: val x : int
-CHECK: end
 CHECK: module F (M : X_int) : sig
 CHECK: val y : int
 CHECK: end

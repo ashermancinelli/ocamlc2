@@ -60,15 +60,59 @@ TypeExpr *SignatureOperator::lookupVariable(llvm::ArrayRef<llvm::StringRef> path
   return nullptr;
 }
 
+TypeExpr *SignatureOperator::exportType(llvm::StringRef name, TypeExpr *type) {
+  typeEnv.insert(name, type);
+  if (typeEnv.getCurScope() == &rootTypeScope) {
+    auto found = llvm::find_if(exports, [&](const auto &e) {
+      return e.name == name && e.kind == Export::Kind::Type;
+    });
+    auto exported = Export(Export::Kind::Type, name, type);
+    if (found == exports.end()) {
+      exports.push_back(exported);
+    } else {
+      *found = exported;
+    }
+  }
+  return type;
+}
+
+TypeExpr *SignatureOperator::exportVariable(llvm::StringRef name,
+                                            TypeExpr *type) {
+  variableEnv.insert(name, type);
+  if (variableEnv.getCurScope() == &rootVariableScope) {
+    auto found = llvm::find_if(exports, [&](const auto &e) {
+      return e.name == name && e.kind == Export::Kind::Variable;
+    });
+    auto exported = Export(Export::Kind::Variable, name, type);
+    if (found == exports.end()) {
+      exports.push_back(exported);
+    } else {
+      *found = exported;
+    }
+  }
+  return type;
+}
+
+TypeExpr *SignatureOperator::localType(llvm::StringRef name, TypeExpr *type) {
+  typeEnv.insert(name, type);
+  return type;
+}
+
+TypeExpr *SignatureOperator::localVariable(llvm::StringRef name,
+                                           TypeExpr *type) {
+  variableEnv.insert(name, type);
+  return type;
+}
+
 llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const {
   // eg type constructors will show up as functions but we don't really want to print those
   llvm::SmallVector<llvm::StringRef> namesToSkip;
   for (auto e : getExports()) {
-    if (std::find(namesToSkip.begin(), namesToSkip.end(), e.name) != namesToSkip.end()) {
+    if (std::find_if(namesToSkip.begin(), namesToSkip.end(), [&](const auto &other) {
+          return other == e.name;
+        }) != namesToSkip.end()) {
       continue;
     }
-    // only dump once - for type aliases they may show up again
-    // namesToSkip.push_back(e.name);
     switch (e.kind) {
     case SignatureOperator::Export::Type: {
       if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(e.type)) {
@@ -110,7 +154,11 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
     }
     case SignatureOperator::Export::Variable: {
       if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
-        os << *module << SignatureOperator::newline;
+        if (auto *sig = module->getInterfaceSignature()) {
+          os << "module " << e.name << " : " << sig->getName();
+        } else {
+          os << *module << SignatureOperator::newline;
+        }
       } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(e.type)) {
         os << *functor << SignatureOperator::newline;
       } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
@@ -248,7 +296,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &func
   auto *functorResult = functor.back();
   auto *sig = llvm::dyn_cast<SignatureOperator>(functor.back());
   auto showSig = [&] {
-    if (sig) {
+    if (auto *interfaceSig = functor.getInterfaceSignature()) {
+      os << " -> " << interfaceSig->getName();
+    } else if (sig) {
       sig->showSignature(os);
     } else {
       os << *functorResult << SignatureOperator::newlineCharacter();
@@ -266,9 +316,13 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &func
     for (auto [name, type] : functor.getModuleParameters()) {
       os << " (" << name << " : " << type->getName() << ")";
     }
-    os << " : sig" << SignatureOperator::newlineCharacter();
-    showSig();
-    os << "end";
+    if (auto *sig = functor.getInterfaceSignature()) {
+      os << " -> " << sig->getName();
+    } else {
+      os << " : sig" << SignatureOperator::newlineCharacter();
+      showSig();
+      os << "end";
+    }
   }
   return os;
 }
