@@ -7,7 +7,9 @@ CHECK: end
 CHECK: module type OUTPUT : sig
 CHECK: val output_val : bool
 CHECK: end
-CHECK: module F (M : INPUT) -> OUTPUT
+CHECK: module F (M : INPUT) : sig
+CHECK: val output_val : bool
+CHECK: end
 CHECK: module ArgImpl : sig
 CHECK: val input_val : int
 CHECK: val extra_decl : string
