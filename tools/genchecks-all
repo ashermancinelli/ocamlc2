@@ -32,6 +32,9 @@ sub process_file {
     open my $fh, '<', $file or die "Failed to open $file: $!";
     my @lines = <$fh>;
     close $fh;
+    my $read = sub {
+        `read -p 'look ok? '` unless $yes;
+    };
     
     foreach my $line (@lines) {
         if ($line =~ /RUN: (.+)/) {
@@ -43,8 +46,13 @@ sub process_file {
             say $cmd;
             my ($tfh, $temp) = tempfile();
             `$cmd | $tools/genchecks >> $temp`;
-            say `diff -u $ref $temp`;
-            `read -p 'look ok? '` unless $yes;
+            if (not -f $ref) {
+                say "Note: no reference file for $file";
+                print `cat $temp`;
+            } else {
+                say `diff -u $ref $temp`;
+            }
+            $read->();
             `mv $temp $ref`;
         }
     }
