@@ -123,7 +123,7 @@ struct VariantOperator : public TypeOperator {
   inline void addConstructor(llvm::StringRef constructorName) {
     constructors.emplace_back(constructorName);
   }
-  std::string decl() const;
+  llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
 private:
   llvm::raw_ostream& showCtor(llvm::raw_ostream& os, const ConstructorType& ctor) const;
   llvm::SmallVector<ConstructorType> constructors;
@@ -154,7 +154,7 @@ struct RecordOperator : public TypeOperator {
     return llvm::any_of(
         getArgs(), [](auto *arg) { return llvm::isa<WildcardOperator>(arg); });
   }
-  std::string decl(const bool named=false) const;
+  llvm::raw_ostream &decl(llvm::raw_ostream &os, const bool named=false) const;
 private:
   llvm::SmallVector<llvm::StringRef> fieldNames;
   llvm::SmallVector<TypeExpr*> fieldTypes;
@@ -196,6 +196,7 @@ struct FunctorOperator : public TypeOperator {
   }
   inline void conformsTo(SignatureOperator *signature) { conformsToSignature = signature; }
   inline SignatureOperator *getInterfaceSignature() const { return conformsToSignature; }
+  llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const FunctorOperator& functor);
 private:
   SignatureOperator *conformsToSignature=nullptr;
@@ -214,6 +215,7 @@ struct FunctionOperator : public TypeOperator {
       std::copy(descs.begin(), descs.end(), std::back_inserter(parameterDescriptors));
     }
   }
+  llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
   llvm::SmallVector<ParameterDescriptor> parameterDescriptors;
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Function; }
   inline bool isVarargs() const {
@@ -288,7 +290,8 @@ struct SignatureOperator : public TypeOperator {
     return expr->getKind() == Kind::Signature || expr->getKind() == Kind::Module;
   }
   llvm::raw_ostream &showSignature(llvm::raw_ostream &os) const;
-  llvm::raw_ostream &showDeclaration(llvm::raw_ostream &os) const;
+  llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
+  inline bool isAnonymous() const { return getName() == getAnonymousSignatureName(); }
   inline Env &getTypeEnv() { return typeEnv; }
   inline Env &getVariableEnv() { return variableEnv; }
   virtual TypeExpr *lookupType(llvm::StringRef name) const;
@@ -352,6 +355,7 @@ struct ModuleTypeOperator : public SignatureOperator {
       : SignatureOperator(other) {
     this->kind = Kind::ModuleType;
   }
+  llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::ModuleType; }
 };
 
@@ -379,6 +383,7 @@ struct ModuleOperator : public SignatureOperator {
   TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path) const override;
   TypeExpr *lookupVariable(llvm::StringRef name) const override;
   TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path) const override;
+  llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
 private:
   llvm::SmallVector<ModuleOperator *> openModules;
 };
@@ -457,7 +462,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   assert(fieldNames.size() == fieldTypes.size() &&
          "field names and field types must be the same size");
   if (record.getName() == RecordOperator::getAnonRecordName()) {
-    return os << record.decl();
+    return record.decl(os);
   }
   return os << (TypeOperator&)record;
 }

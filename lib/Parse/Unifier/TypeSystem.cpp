@@ -138,12 +138,12 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
     switch (e.kind) {
     case SignatureOperator::Export::Type: {
       if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(e.type)) {
-        os << variantOperator->decl() << SignatureOperator::newline;
+        variantOperator->decl(os) << SignatureOperator::newline;
         for (auto ctor : variantOperator->getConstructorNames()) {
           namesToSkip.push_back(ctor);
         }
       } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(e.type)) {
-        os << recordOperator->decl(true) << SignatureOperator::newline;
+        recordOperator->decl(os, true) << SignatureOperator::newline;
       } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
         os << "type ";
         if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
@@ -151,9 +151,7 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
             os << *arg << " ";
           }
         }
-        if (not e.name.empty()) {
-          os << e.name;
-        }
+        os << e.name;
         if (to->getArgs().empty() and e.name == to->getName()) {
           // just a decl, maybe don't show anything else? eg `type t`
         } else {
@@ -170,21 +168,23 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
     }
     case SignatureOperator::Export::Variable: {
       if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
-        if (auto *sig = module->getInterfaceSignature()) {
-          os << "module " << e.name << " : ";
-          if (sig->getName() != SignatureOperator::getAnonymousSignatureName()) {
-            os << sig->getName();
-          } else {
-            os << "sig" << SignatureOperator::newline;
-            sig->showSignature(os);
-            os << "end";
-          }
-        } else {
-          os << *module;
-        }
-        os << SignatureOperator::newline;
+        module->decl(os) << SignatureOperator::newline;
+        // if (auto *sig = module->getInterfaceSignature()) {
+        //   os << "module " << e.name << " : ";
+        //   if (sig->getName() != SignatureOperator::getAnonymousSignatureName()) {
+        //     os << sig->getName();
+        //   } else {
+        //     os << "sig" << SignatureOperator::newline;
+        //     sig->showSignature(os);
+        //     os << "end";
+        //   }
+        // } else {
+        //   os << *module;
+        // }
+        // os << SignatureOperator::newline;
       } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(e.type)) {
-        os << *functor << SignatureOperator::newline;
+        // os << *functor << SignatureOperator::newline;
+        functor->decl(os) << SignatureOperator::newline;
       } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
         os << "val " << e.name << " : " << *fo << SignatureOperator::newline;
       } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
@@ -214,11 +214,35 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
   return os;
 }
 
-llvm::raw_ostream &SignatureOperator::showDeclaration(llvm::raw_ostream &os) const {
-  os << (isModuleType() ? "module type" : "module")
-     << ' ' << getName() << " : sig" << SignatureOperator::newline;
+llvm::raw_ostream &SignatureOperator::decl(llvm::raw_ostream &os) const {
+  if (!isAnonymous()) {
+    os << (isModuleType() ? "module type" : "module") << ' ' << getName() << " : ";
+  }
+  os << "sig" << SignatureOperator::newline;
   showSignature(os);
   os << "end";
+  return os;
+}
+
+llvm::raw_ostream &ModuleOperator::decl(llvm::raw_ostream &os) const {
+  return SignatureOperator::decl(os);
+}
+
+llvm::raw_ostream &FunctorOperator::decl(llvm::raw_ostream &os) const {
+  auto name = getName();
+  auto args = getArgs().drop_back();
+  auto params = getModuleParameters();
+  auto *resultSignature = back();
+  os << "module " << name;
+  for (auto [param, arg] : llvm::zip_longest(params, args)) {
+    auto *argExpr = *arg;
+    if (param) {
+      os << " (" << param->first << " : " << argExpr->getName() << ")";
+    } else {
+      os << " (" << *argExpr << ")";
+    }
+  }
+  os << " : " << *resultSignature;
   return os;
 }
 
@@ -277,75 +301,55 @@ TypeExpr *ModuleOperator::lookupVariable(llvm::ArrayRef<llvm::StringRef> path) c
 char SignatureOperator::newline = ' ';
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const SignatureOperator &signature) {
-  return signature.showDeclaration(os);
+  return signature.decl(os);
 }
 
-std::string VariantOperator::decl() const {
-  std::string s;
-  llvm::raw_string_ostream ss(s);
-  ss << "type ";
+llvm::raw_ostream &VariantOperator::decl(llvm::raw_ostream &os) const {
+  os << "type ";
   for (auto typeArg : getArgs()) {
-    ss << *typeArg << " ";
+    os << *typeArg << " ";
   }
-  ss << getName() << " = ";
+  os << getName() << " = ";
   auto first = constructors.front();
-  showCtor(ss, first);
+  showCtor(os, first);
   for (auto ctor : llvm::drop_begin(constructors)) {
-    ss << " | ";
-    showCtor(ss, ctor);
+    os << " | ";
+    showCtor(os, ctor);
   }
-  return s;
+  return os;
 }
 
-std::string RecordOperator::decl(const bool named) const {
-  std::string s;
-  llvm::raw_string_ostream ss(s);
+llvm::raw_ostream &RecordOperator::decl(llvm::raw_ostream &os, const bool named) const {
   auto zipped = llvm::zip(fieldNames, fieldTypes);
   if (named) {
-    ss << "type ";
+    os << "type ";
     for (auto *arg : getArgs()) {
-      ss << *arg << " ";
+      os << *arg << " ";
     }
-    ss << getName() << " = ";
+    os << getName() << " = ";
   }
-  ss << "{ ";
+  os << "{ ";
   for (auto [name, type] : zipped) {
-    ss << name << " : " << *type << "; ";
+    os << name << " : " << *type << "; ";
   }
-  ss << '}';
-  return ss.str();
+  os << '}';
+  return os;
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &functor) {
   auto *functorResult = functor.back();
-  // auto *sig = llvm::dyn_cast<SignatureOperator>(functor.back());
-  auto showSig = [&] {
-    // if (auto *interfaceSig = functor.getInterfaceSignature()) {
-    //   os << " -> " << interfaceSig->getName();
-    // } else if (sig) {
-    //   sig->showSignature(os);
-    // } else {
-      os << *functorResult << SignatureOperator::newlineCharacter();
-    // }
-  };
+  auto functorParams = functor.getArgs().drop_back();
+  os << "functor";
   if (functor.getModuleParameters().empty()) {
-    os << "functor";
-    for (auto *arg : llvm::drop_end(functor.getArgs())) {
+    for (auto *arg : functorParams) {
       os << " (" << *arg << ")";
     }
-    os << " -> ";
-    showSig();
   } else {
-    os << "module " << functor.getName();
-    for (auto [param, type] : llvm::zip(functor.getModuleParameters(), functor.getArgs())) {
-      auto [paramName, _] = param;
-      os << " (" << paramName << " : " << *type << ")";
+    for (auto [param, type] : llvm::zip(functor.getModuleParameters(), functorParams)) {
+      os << " (" << param.first << " : " << *type << ")";
     }
-    os << " : sig" << SignatureOperator::newlineCharacter();
-    showSig();
-    os << "end";
   }
-  return os;
+  return os << " -> " << *functorResult << SignatureOperator::newlineCharacter();
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeExpr &type) {

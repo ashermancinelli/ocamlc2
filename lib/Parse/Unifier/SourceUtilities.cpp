@@ -167,7 +167,8 @@ void Unifier::dumpTypes(llvm::raw_ostream &os) {
   // }
   SignatureOperator::useNewline('\n');
   for (auto module : modulesToDump) {
-    os << *module << '\n';
+    module->decl(os) << '\n';
+    // os << *module << '\n';
   }
 }
 

@@ -303,7 +303,7 @@ TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *>
       return clone(arg, mapping);
     }));
     auto *r = create<RecordOperator>(record->getName(), mappedArgs, newFieldTypes, fieldNames);
-    DBGS("Cloned record operator: " << r->decl(true) << '\n');
+    DBGS("Cloned record operator: " << *r << '\n');
     return r;
   } else if (auto *variant = llvm::dyn_cast<VariantOperator>(op)) {
     DBGS("Cloning variant operator: " << *variant << '\n');
