@@ -894,6 +894,7 @@ SignatureOperator* Unifier::inferModuleTypeDefinition(Cursor ast) {
   auto body = node.getChildByFieldName("body");
   auto *sig = [&] -> SignatureOperator* {
     detail::ModuleScope ms{*this, getText(name)};
+    detail::ConcreteTypeVariableScope concreteScope(*this);
     for (auto child : getNamedChildren(body)) {
       DBGS("Inferring module type definition child: " << child.getType() << '\n');
       ORNULL(infer(child));
@@ -932,7 +933,7 @@ FailureOr<std::pair<llvm::StringRef, SignatureOperator *>> Unifier::inferModuleP
   FAIL_IF(type == nullptr, "Failed to infer module type");
   auto *sigType = llvm::dyn_cast<SignatureOperator>(type);
   FAIL_IF(sigType == nullptr, "Expected module type to be a signature");
-  DBGS("Got module parameter type: " << *sigType << '\n');
+  DBGS("Got module parameter type: (" << name << " : " << sigType->getName() << ")\n");
   return success(std::make_pair(name, sigType));
 }
 
@@ -959,6 +960,7 @@ TypeExpr* Unifier::inferModuleApplication(Cursor ast) {
 
   assert(functorApplicationArgs.size() == functor->getArgs().size() &&
          "NYI: partial application of functors");
+  DBGS("Unifying functor application\n");
   UNIFY_OR_RNULL(appliedFunctor, functor);
   auto *resultingType = appliedFunctor->back();
   DBGS("Got resulting type: " << *resultingType << '\n');
@@ -973,12 +975,11 @@ TypeExpr* Unifier::inferModuleBindingFunctorDefinition(llvm::StringRef name, Sma
     auto result = inferModuleParameter(param.getCursor());
     RNULL_IF(failed(result), "Failed to infer module parameter");
     auto [paramName, paramType] = result.value();
-    auto *redeclaredSignature = create<SignatureOperator>("", *paramType);
-    localVariable(paramName, redeclaredSignature);
-    functorTypeArgs.push_back(redeclaredSignature);
+    // auto *redeclaredSignature = create<SignatureOperator>("", *paramType);
+    functorTypeArgs.push_back(paramType);
     functorTypeParams.emplace_back(paramName, paramType);
   }
-  auto *functorReturnSignature = inferModuleStructure(structure.getCursor());
+  auto *functorReturnSignature = inferModuleStructure(structure.getCursor(), functorTypeParams);
   if (returnSignature) {
     UNIFY_OR_RNULL(returnSignature, functorReturnSignature);
   }
@@ -997,27 +998,14 @@ TypeExpr *Unifier::inferModuleBindingModuleDefinition(llvm::StringRef name, Sign
   DBGS("Body type: " << nodeType << '\n');
   if (nodeType == "module_application") {
     TRACE();
-    auto *resultingType = inferModuleApplication(body.getCursor());
-    ORNULL(resultingType);
+    auto *resultingTypeExpr = inferModuleApplication(body.getCursor());
+    ORNULL(resultingTypeExpr);
+    auto *resultingSignature = create<ModuleOperator>(name);
+    UNIFY_OR_RNULL(resultingTypeExpr, resultingSignature);
+    ORNULL(resultingSignature);
+    DBGS("Inferred module result of functor application: " << *resultingSignature << '\n');
     if (returnSignature) {
-      UNIFY_OR_RNULL(returnSignature, resultingType);
-    }
-    auto *resultingSignature = [&] -> SignatureOperator* {
-      if (auto *sigType = llvm::dyn_cast<SignatureOperator>(resultingType)) {
-        return create<SignatureOperator>(name, *sigType);
-      } else if (auto *typeVar = llvm::dyn_cast<TypeVariable>(resultingType)) {
-        if (typeVar->instantiated()) {
-          auto *instance = typeVar->getInstance();
-          auto *clonedInstance = llvm::cast<SignatureOperator>(clone(instance));
-          return create<SignatureOperator>(name, *clonedInstance);
-        } else {
-          RNULL("Expected module application to return a signature-compatible type");
-        }
-      }
-      RNULL(
-          "Expected module application to return a signature-compatible type");
-    }();
-    if (returnSignature) {
+      UNIFY_OR_RNULL(returnSignature, resultingSignature);
       DBGS("Setting signature conformance: " << *resultingSignature << " to " << *returnSignature << '\n');
       resultingSignature->conformsTo(returnSignature);
     }
@@ -1048,6 +1036,7 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   TypeVarEnvScope scope(typeVarEnv);
+  detail::ConcreteTypeVariableScope concreteTypeVarScope(*this);
   assert(node.getType() == "module_binding");
   auto name = node.getNamedChild(0);
   assert(!name.isNull() && "Expected module name");
@@ -1090,9 +1079,25 @@ SignatureOperator* Unifier::inferModuleSignature(Cursor ast) {
   return moduleStack.back();
 }
 
-ModuleOperator* Unifier::inferModuleStructure(Cursor ast) {
+ModuleOperator* Unifier::inferModuleStructure(Cursor ast, SmallVector<std::pair<llvm::StringRef, SignatureOperator*>> functorTypeParams) {
   TRACE();
-  detail::ModuleScope scope(*this);
+  detail::ModuleScope moduleScope(*this);
+  detail::ConcreteTypeVariableScope concreteScope(*this);
+  for (auto [paramName, paramType] : functorTypeParams) {
+    DBGS("Declaring functor type parameter: " << paramName << " : " << *paramType << '\n');
+    localVariable(paramName, paramType); // Declare the module parameter M : S
+    
+    // Mark abstract types from the parameter signature S as concrete for this scope
+    for (const auto& exportItem : paramType->getExports()) {
+      if (exportItem.kind == SignatureOperator::Export::Kind::Type) {
+        auto* type = prune(exportItem.type);
+        if (auto* tv = llvm::dyn_cast<TypeVariable>(type)) {
+           DBGS("Marking functor parameter type variable as concrete: " << *tv << " from signature " << paramType->getName() << '\n');
+           concreteTypes.insert(tv);
+        }
+      }
+    }
+  }
   auto node = ast.getCurrentNode();
   assert(node.getType() == "structure");
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
@@ -1298,6 +1303,7 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_definition");
   TypeExpr *type = nullptr;
+  DBGS("Locals: " << moduleStack.back()->getLocals().size() << '\n');
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     type = inferTypeBinding(child.getCursor());
@@ -1361,7 +1367,6 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto namedChildren = getNamedChildren(node);
   auto *namedIterator = namedChildren.begin();
   SmallVector<TypeExpr*> typeVars;
-  auto savedConcreteTypes = concreteTypes;
   for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
     auto *typeVar = declareTypeVariable(getTextSaved(child));
     typeVars.push_back(typeVar);
@@ -1397,28 +1402,26 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       }
       ORNULL(inferVariantDeclaration(variantType, body->getCursor()));
       setType(node, variantType);
-      concreteTypes = savedConcreteTypes;
-      return variantType;
+      thisType = variantType;
     } else if (body->getType() == "record_declaration") {
       TRACE();
       // Record declarations need the full record type inferred before declaring
       // the record type.
       auto *recordType = inferRecordDeclaration(typeName, typeVars, body->getCursor());
       ORNULL(recordType);
-      concreteTypes = savedConcreteTypes;
-      return declareType(name, recordType);
+      thisType = declareType(name, recordType);
     } else {
       RNULL("Unknown type binding body type", *body);
     }
   } else {
-    concreteTypes = savedConcreteTypes;
     if (!equation) {
+      DBGS("No equation, creating concrete type variable\n");
       auto *tv = createTypeVariable();
       concreteTypes.insert(tv);
       thisType = tv;
     }
-    DBGS("No body, type alias to type constructor: " << *thisType << '\n');
-    ORNULL(declareType(name, thisType));
+    DBGS("No body, type alias to type constructor: " << getTextSaved(name) << " : " << *thisType << '\n');
+    thisType = declareType(name, thisType);
   }
   return thisType;
 }
@@ -1603,6 +1606,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferRecordExpression(std::move(ast));
   } else if (node.getType() == "field_get_expression") {
     return inferFieldGetExpression(std::move(ast));
+  } else if (node.getType() == "structure") {
+    return inferModuleStructure(std::move(ast));
   }
   const auto message = SSWRAP("Unknown node type: " << node.getType());
   llvm::errs() << message << '\n';

@@ -1,7 +1,7 @@
 #include "ocamlc2/Parse/TypeSystem.h"
 #include <llvm/ADT/STLExtras.h>
 
-#define DEBUG_TYPE "typesystem"
+#define DEBUG_TYPE "TypeSystem.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace ocamlc2 {
@@ -11,13 +11,16 @@ TypeExpr *SignatureOperator::lookupType(llvm::StringRef name) const {
   if (auto *type = typeEnv.lookup(name)) {
     return type;
   }
+  DBGS("type not found\n");
   return nullptr;
 }
 
 TypeExpr *SignatureOperator::lookupType(llvm::ArrayRef<llvm::StringRef> path) const {
   DBGS("lookupType: " << llvm::join(path, ".") << '\n');
+  DBGS("Locals: " << locals.size() << " exports: " << exports.size() << '\n');
+  auto front = path.front();
   assert(not path.empty() && "module path cannot be empty");
-  if (auto *type = lookupType(path.front())) {
+  if (auto *type = lookupType(front)) {
     DBGS("found type: " << *type << '\n');
     if (auto *module = llvm::dyn_cast<SignatureOperator>(type)) {
       DBGS("found module: " << *module << '\n');
@@ -28,8 +31,10 @@ TypeExpr *SignatureOperator::lookupType(llvm::ArrayRef<llvm::StringRef> path) co
     }
     return type;
   }
-  if (auto *type = lookupVariable(path.front())) {
-    DBGS("found type: " << *type << '\n');
+  DBGS("Look up path part " << front
+                            << " as a variable in case it's a module\n");
+  if (auto *type = lookupVariable(front)) {
+    DBGS("found type when lookup up the first part of type path: " << *type << '\n');
     if (auto *module = llvm::dyn_cast<SignatureOperator>(type)) {
       assert(path.size() != 1 && "module path cannot be a single module name");
       DBGS("found module: " << *module << '\n');
@@ -70,6 +75,7 @@ TypeExpr *SignatureOperator::lookupVariable(llvm::ArrayRef<llvm::StringRef> path
 }
 
 TypeExpr *SignatureOperator::exportType(llvm::StringRef name, TypeExpr *type) {
+  DBGS("exportType: " << name << " : " << *type << '\n');
   typeEnv.insert(name, type);
   if (typeEnv.getCurScope() == &rootTypeScope) {
     auto found = llvm::find_if(exports, [&](const auto &e) {
@@ -87,6 +93,7 @@ TypeExpr *SignatureOperator::exportType(llvm::StringRef name, TypeExpr *type) {
 
 TypeExpr *SignatureOperator::exportVariable(llvm::StringRef name,
                                             TypeExpr *type) {
+  DBGS("exportVariable: " << name << " : " << *type << '\n');
   variableEnv.insert(name, type);
   if (variableEnv.getCurScope() == &rootVariableScope) {
     auto found = llvm::find_if(exports, [&](const auto &e) {
@@ -103,13 +110,19 @@ TypeExpr *SignatureOperator::exportVariable(llvm::StringRef name,
 }
 
 TypeExpr *SignatureOperator::localType(llvm::StringRef name, TypeExpr *type) {
+  DBGS("localType: " << name << " : " << *type << '\n');
   typeEnv.insert(name, type);
+  locals.push_back(Export(Export::Kind::Type, name, type));
+  DBGS("Locals: " << locals.size() << " exports: " << exports.size() << '\n');
   return type;
 }
 
 TypeExpr *SignatureOperator::localVariable(llvm::StringRef name,
                                            TypeExpr *type) {
+  DBGS("localVariable: " << name << " : " << *type << '\n');
   variableEnv.insert(name, type);
+  locals.push_back(Export(Export::Kind::Variable, name, type));
+  DBGS("Locals: " << locals.size() << " exports: " << exports.size() << '\n');
   return type;
 }
 
@@ -135,13 +148,7 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
         os << "type ";
         if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
           for (auto *arg : to->getArgs()) {
-            if (TypeVariable *tv = llvm::dyn_cast<TypeVariable>(arg)) {
-              if (!tv->instantiated()) {
-                os << *tv << " ";
-              }
-            } else {
-              os << *arg << " ";
-            }
+            os << *arg << " ";
           }
         }
         if (not e.name.empty()) {
@@ -154,7 +161,7 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
         }
         os << SignatureOperator::newline;
       } else if (llvm::isa<TypeVariable>(e.type)) {
-        os << "type " << e.name << SignatureOperator::newline;
+        os << "type " << e.name << " = " << *e.type << SignatureOperator::newline;
       } else {
         os << "unknown type operator: " << e.name << *e.type << SignatureOperator::newline;
         assert(false && "unknown type operator");
@@ -165,7 +172,7 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
       if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
         if (auto *sig = module->getInterfaceSignature()) {
           os << "module " << e.name << " : ";
-          if (sig->getName() != "anonymous") {
+          if (sig->getName() != SignatureOperator::getAnonymousSignatureName()) {
             os << sig->getName();
           } else {
             os << "sig" << SignatureOperator::newline;
@@ -311,15 +318,15 @@ std::string RecordOperator::decl(const bool named) const {
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &functor) {
   auto *functorResult = functor.back();
-  auto *sig = llvm::dyn_cast<SignatureOperator>(functor.back());
+  // auto *sig = llvm::dyn_cast<SignatureOperator>(functor.back());
   auto showSig = [&] {
-    if (auto *interfaceSig = functor.getInterfaceSignature()) {
-      os << " -> " << interfaceSig->getName();
-    } else if (sig) {
-      sig->showSignature(os);
-    } else {
+    // if (auto *interfaceSig = functor.getInterfaceSignature()) {
+    //   os << " -> " << interfaceSig->getName();
+    // } else if (sig) {
+    //   sig->showSignature(os);
+    // } else {
       os << *functorResult << SignatureOperator::newlineCharacter();
-    }
+    // }
   };
   if (functor.getModuleParameters().empty()) {
     os << "functor";
@@ -330,16 +337,13 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &func
     showSig();
   } else {
     os << "module " << functor.getName();
-    for (auto [name, type] : functor.getModuleParameters()) {
-      os << " (" << name << " : " << type->getName() << ")";
+    for (auto [param, type] : llvm::zip(functor.getModuleParameters(), functor.getArgs())) {
+      auto [paramName, _] = param;
+      os << " (" << paramName << " : " << *type << ")";
     }
-    if (auto *sig = functor.getInterfaceSignature()) {
-      os << " -> " << sig->getName();
-    } else {
-      os << " : sig" << SignatureOperator::newlineCharacter();
-      showSig();
-      os << "end";
-    }
+    os << " : sig" << SignatureOperator::newlineCharacter();
+    showSig();
+    os << "end";
   }
   return os;
 }

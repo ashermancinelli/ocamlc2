@@ -213,4 +213,15 @@ Unifier::TypeVarEnvScope::~TypeVarEnvScope() {
   DBGS("close type var env scope\n");
 }
 
+static unsigned openCount = 0;
+void detail::ConcreteTypeVariableScope::logOpen() {
+  DBGS("ConcreteTypeVariableScope::open with open scope count: " << openCount << " and " << concreteTypes.size() << " concrete types\n");
+  ++openCount;
+}
+
+void detail::ConcreteTypeVariableScope::logClose() {
+  --openCount;
+  DBGS("ConcreteTypeVariableScope::close now with open scope count: " << openCount << " and " << concreteTypes.size() << " concrete types\n");
+}
+
 } // namespace ocamlc2

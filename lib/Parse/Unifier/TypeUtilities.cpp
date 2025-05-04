@@ -17,7 +17,7 @@
 #include <sstream>
 #include <llvm/Support/FileSystem.h>
 
-#define DEBUG_TYPE "TypeUtilities"
+#define DEBUG_TYPE "TypeUtilities.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
 #include "UnifierDebug.h"
@@ -124,19 +124,28 @@ TypeExpr *Unifier::declareType(Node node, TypeExpr* type) {
 
 TypeExpr *Unifier::maybeGetDeclaredType(ArrayRef<llvm::StringRef> path) {
   DBGS("maybeGetDeclaredType: " << llvm::join(path, ".") << '\n');
+  DBGS("Locals: " << moduleStack.back()->getLocals().size() << '\n');
   const auto sz = path.size();
 
   // first: look in current module's environment
-  if (auto *type = typeEnv().lookup(path.front())) {
+  if (auto *type = mod().lookupType(path.front())) {
     DBGS("found in current module's environment: " << *type << '\n');
     if (sz == 1) {
       DBGS("returning type from current module's environment: " << *type << '\n');
       return clone(type);
-    } else if (auto *module = llvm::dyn_cast<ModuleOperator>(type)) {
-      DBGS("looking up type in current module: " << *module << '\n');
-      return clone(module->lookupType(path.drop_front()));
     }
     assert(false && "hmm");
+  }
+  if (path.size() > 1) {
+    if (auto *var = mod().lookupVariable(path.front())) {
+      if (auto *sig = llvm::dyn_cast<SignatureOperator>(var)) {
+        DBGS("looking up type in current module: " << *sig << '\n');
+        auto *needle = sig->lookupType(path.drop_front());
+        // ORNULL(needle);
+        DBGS("returning type from current module: " << *needle << '\n');
+        return clone(needle);
+      }
+    }
   }
 
   // third: look in module stack
@@ -147,9 +156,9 @@ TypeExpr *Unifier::maybeGetDeclaredType(ArrayRef<llvm::StringRef> path) {
       if (sz == 1) {
         DBGS("returning type from module: " << *type << '\n');
         return clone(type);
-      } else if (auto *module = llvm::dyn_cast<ModuleOperator>(type)) {
+      } else if (auto *sig = llvm::dyn_cast<SignatureOperator>(type)) {
         DBGS("looking up type in module: " << *module << '\n');
-        return clone(module->lookupType(path.drop_front()));
+        return clone(sig->lookupType(path.drop_front()));
       } else {
         DBGS("returning type from module: " << *type << '\n');
         return clone(type);
@@ -213,9 +222,9 @@ TypeExpr* Unifier::declareVariable(llvm::StringRef name, TypeExpr* type) {
   TRACE();
   ORNULL(type);
   auto savedName = stringArena.save(name);
-  DBGS("Declaring: " << savedName << " as " << *type << '\n');
+  DBGS("Declaring variable: " << savedName << " as " << *type << '\n');
   if (env().count(savedName)) {
-    DBGS("WARNING: Type of " << name << " redeclared (hashed: " << savedName << ")\n");
+    DBGS("WARNING: Variable " << name << " redeclared (hashed: " << savedName << ")\n");
   }
   exportVariable(savedName, type);
   return type;

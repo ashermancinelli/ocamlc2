@@ -61,7 +61,7 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
       return unify(tvb, tva);
     }
     if (*a != *b) {
-      DBGS("Unifying type variable with different type\n");
+      DBGS("Unifying type variable with different type: " << *tva << "'s instance is now: " << *b << "\n");
       FAIL_IF(isSubType(a, b), "Recursive unification");
       tva->instance = b;
     } else {
@@ -72,18 +72,6 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
     if (llvm::isa<TypeVariable>(b)) {
       return unify(b, a);
     } else if (auto *tob = llvm::dyn_cast<TypeOperator>(b)) {
-      // Check if we have any varargs types in the arguments - if so, the forms are allowed
-      // to be different.
-      auto fHasVarargs = [&](TypeExpr* arg) { return llvm::isa<VarargsOperator>(arg); };
-      const bool hasVarargs = llvm::any_of(toa->getArgs(), fHasVarargs) or
-                              llvm::any_of(tob->getArgs(), fHasVarargs);
-      DBGS("has varargs: " << hasVarargs << '\n');
-
-      if (toa->getName() == wildcard->getName() or tob->getName() == wildcard->getName()) {
-        DBGS("Unifying with wildcard\n");
-        return success();
-      }
-
       if (auto *ro = llvm::dyn_cast<RecordOperator>(toa)) {
         if (auto *ro2 = llvm::dyn_cast<RecordOperator>(tob)) {
           return unifyRecordTypes(ro, ro2);
@@ -102,6 +90,18 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
       if (foa or fob) {
         FAIL_IF(not foa or not fob, SSWRAP("Can not unify functor with non-functor"));
         return unifyFunctorTypes(foa, fob);
+      }
+
+      // Check if we have any varargs types in the arguments - if so, the forms are allowed
+      // to be different.
+      auto fHasVarargs = [&](TypeExpr* arg) { return llvm::isa<VarargsOperator>(arg); };
+      const bool hasVarargs = llvm::any_of(toa->getArgs(), fHasVarargs) or
+                              llvm::any_of(tob->getArgs(), fHasVarargs);
+      // DBGS("has varargs: " << hasVarargs << '\n');
+
+      if (toa->getName() == wildcard->getName() or tob->getName() == wildcard->getName()) {
+        DBGS("Unifying with wildcard\n");
+        return success();
       }
 
       // Usual type checking - if we don't have a special case, then we need operator types to
@@ -130,6 +130,63 @@ LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
   return success();
 }
 
+LogicalResult Unifier::unifyNames(SignatureOperator *a, SignatureOperator *b) {
+  DBGS("Unifying signature with signature:\n" << *a << "\nand\n" << *b << '\n');
+  FAIL_IF(not a->getArgs().empty() and not b->getArgs().empty(),
+          SSWRAP("One signature must be empty to unify two plain signatures"));
+  
+  enum ExportKind { Local, Exported };
+  const SmallVector<std::tuple<ArrayRef<SignatureOperator::Export>, ExportKind, SignatureOperator *>> plan{
+    {a->getExports(), ExportKind::Exported, b},
+    {a->getLocals(), ExportKind::Local, b},
+    {b->getExports(), ExportKind::Exported, a},
+    {b->getLocals(), ExportKind::Local, a},
+  };
+  
+  for (auto [exports, localOrExport, signature] : plan) {
+    for (auto exported : exports) {
+      auto name = exported.name;
+      auto kind = exported.kind;
+      auto type = exported.type;
+      DBGS("Unifying exported name: " << name << " kind: " << kind
+                                      << " type: " << *type << '\n');
+      auto *tv = createTypeVariable();
+      switch (kind) {
+      case SignatureOperator::Export::Type: {
+        if (!signature->lookupType(name)) {
+          if (localOrExport == ExportKind::Exported) {
+            signature->exportType(name, tv);
+          } else {
+            signature->localType(name, tv);
+          }
+        }
+        FAIL_IF(failed(unify(a->lookupType(name), b->lookupType(name))),
+                "failed to unify");
+        break;
+      }
+      case SignatureOperator::Export::Variable: {
+        if (!signature->lookupVariable(name)) {
+          if (localOrExport == ExportKind::Exported) {
+            signature->exportVariable(name, tv);
+          } else {
+            signature->localVariable(name, tv);
+          }
+        }
+        FAIL_IF(failed(unify(a->lookupVariable(name), b->lookupVariable(name))),
+                "failed to unify");
+        break;
+      }
+      case SignatureOperator::Export::Exception: {
+        assert(false && "NYI");
+        break;
+      }
+      }
+    }
+  }
+
+  return success();
+}
+
 LogicalResult Unifier::unifyModuleWithSignature(ModuleOperator *module, SignatureOperator *signature) {
   DBGS("Unifying module with signature:\n" << *module << "\nand\n" << *signature << '\n');
   FAIL_IF(module->getExports().size() < signature->getExports().size(),
@@ -138,7 +195,7 @@ LogicalResult Unifier::unifyModuleWithSignature(ModuleOperator *module, Signatur
     auto name = exported.name;
     auto kind = exported.kind;
     auto type = exported.type;
-    DBGS("Unifying export: " << name << " with kind " << kind << " and type " << *type << '\n');
+    DBGS("Unifying exported name: " << name << " kind: " << kind << " type: " << *type << '\n');
     switch (kind) {
     case SignatureOperator::Export::Type: {
       DBGS("Unifying type decl\n");
@@ -187,14 +244,16 @@ LogicalResult Unifier::unifyFunctorTypes(FunctorOperator *a, FunctorOperator *b)
 
 LogicalResult Unifier::unifySignatureTypes(SignatureOperator *a, SignatureOperator *b) {
   DBGS("Unifying signature types:\n" << *a << "\nand\n" << *b << '\n');
-  auto *moa = llvm::dyn_cast<ModuleOperator>(a);
-  auto *mob = llvm::dyn_cast<ModuleOperator>(b);
-  FAIL_IF((bool)moa ^ (bool)mob, SSWRAP("Does it make sense to unify two non-module signatures?"))
-  if (moa) {
-    return unifyModuleWithSignature(moa, b);
-  } else {
-    return unifyModuleWithSignature(mob, a);
-  }
+  // auto *moa = llvm::dyn_cast<ModuleOperator>(a);
+  // auto *mob = llvm::dyn_cast<ModuleOperator>(b);
+  return unifyNames(a, b);
+  // if (moa) {
+  //   return unifyModuleWithSignature(moa, b);
+  // } else if (mob) {
+  //   return unifyModuleWithSignature(mob, a);
+  // } else {
+  //   assert(false && "NYI");
+  // }
 }
 
 LogicalResult Unifier::unifyRecordTypes(RecordOperator *a, RecordOperator *b) {
@@ -263,15 +322,29 @@ TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *>
       }
     }
     return newVariant;
-  } else if (auto *module = llvm::dyn_cast<ModuleOperator>(op)) {
-    DBGS("Cloning module operator: " << *module << '\n');
-    return create<ModuleOperator>(*module);
   } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(op)) {
     DBGS("Cloning functor operator: " << *functor << '\n');
-    return create<FunctorOperator>(*functor);
+    auto mappedParams = llvm::map_to_vector(functor->getModuleParameters(), [&](const std::pair<llvm::StringRef, SignatureOperator *> &param) {
+      auto *clonedParam = clone(param.second, mapping);
+      auto *casted = llvm::cast<SignatureOperator>(clonedParam);
+      return std::make_pair(param.first, casted);
+    });
+    return create<FunctorOperator>(functor->getName(), mappedArgs, mappedParams);
   } else if (auto *signature = llvm::dyn_cast<SignatureOperator>(op)) {
     DBGS("Cloning signature operator: " << *signature << '\n');
-    return create<SignatureOperator>(*signature);
+    auto newLocals = llvm::map_to_vector(signature->getLocals(), [&](const SignatureOperator::Export &e) {
+      return SignatureOperator::Export(e.kind, e.name, clone(e.type, mapping));
+    });
+    auto newExports = llvm::map_to_vector(signature->getExports(), [&](const SignatureOperator::Export &e) {
+      return SignatureOperator::Export(e.kind, e.name, clone(e.type, mapping));
+    });
+    if (auto *module = llvm::dyn_cast<ModuleOperator>(op)) {
+      DBGS("Cloning module operator: " << *module << '\n');
+      auto *clonedModule = create<ModuleOperator>(module->getName(), mappedArgs, newExports, newLocals);
+      // TODO: propagate open modules...
+      return clonedModule;
+    }
+    return create<SignatureOperator>(signature->getName(), mappedArgs, newExports, newLocals);
   } else {
     DBGS("Cloning type operator: " << *op << '\n');
     return createTypeOperator(op->getKind(), op->getName(), mappedArgs);
@@ -282,6 +355,7 @@ TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *>
 TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
   DBGSCLONE("Cloning type: " << *type << '\n');
   type = prune(type);
+  
   DBGSCLONE("recursing on type: " << *type << '\n');
   if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
     auto args =

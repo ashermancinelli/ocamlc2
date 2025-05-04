@@ -243,17 +243,23 @@ struct SignatureOperator : public TypeOperator {
     TypeExpr *type;
     Export(Kind kind, llvm::StringRef name, TypeExpr *type) : kind(kind), name(name), type(type) {}
   };
-  
-  SignatureOperator(llvm::StringRef signatureName, llvm::ArrayRef<TypeExpr*> args={})
+
+  SignatureOperator(llvm::StringRef signatureName,
+                    llvm::ArrayRef<TypeExpr *> args = {},
+                    llvm::ArrayRef<Export> exports = {},
+                    llvm::ArrayRef<Export> locals = {})
       : TypeOperator(Kind::Signature, signatureName, args),
-        rootTypeScope(typeEnv),
-        rootVariableScope(variableEnv) {}
+        rootTypeScope(typeEnv), rootVariableScope(variableEnv),
+        exports(exports), locals(locals) {
+    initFromExports();
+  }
 
   SignatureOperator(const SignatureOperator &other)
       : TypeOperator(other.getKind(), other.getName(), other.getArgs()),
         rootTypeScope(typeEnv),
         rootVariableScope(variableEnv),
         exports(other.exports),
+        locals(other.locals),
         conformsToSignature(other.conformsToSignature) {
     initFromExports();
   }
@@ -262,12 +268,24 @@ struct SignatureOperator : public TypeOperator {
       TypeOperator(other.getKind(), newName, other.getArgs()),
       rootTypeScope(typeEnv),
       rootVariableScope(variableEnv),
-      exports(other.exports) {
+      exports(other.exports),
+      locals(other.locals),
+      conformsToSignature(other.conformsToSignature) {
+    initFromExports();
+  }
+
+  SignatureOperator(llvm::StringRef newName, llvm::ArrayRef<Export> locals, llvm::ArrayRef<Export> exports, const SignatureOperator &other) :
+      TypeOperator(other.getKind(), newName, other.getArgs()),
+      rootTypeScope(typeEnv),
+      rootVariableScope(variableEnv),
+      exports(exports),
+      locals(locals),
+      conformsToSignature(other.conformsToSignature) {
     initFromExports();
   }
 
   static inline bool classof(const TypeExpr *expr) {
-    return expr->getKind() == Kind::Module || expr->getKind() == Kind::Signature;
+    return expr->getKind() == Kind::Signature || expr->getKind() == Kind::Module;
   }
   llvm::raw_ostream &showSignature(llvm::raw_ostream &os) const;
   llvm::raw_ostream &showDeclaration(llvm::raw_ostream &os) const;
@@ -278,6 +296,7 @@ struct SignatureOperator : public TypeOperator {
   virtual TypeExpr *lookupVariable(llvm::StringRef name) const;
   virtual TypeExpr *lookupVariable(llvm::ArrayRef<llvm::StringRef> path) const;
   inline llvm::ArrayRef<Export> getExports() const { return exports; }
+  inline llvm::ArrayRef<Export> getLocals() const { return locals; }
   TypeExpr *exportType(llvm::StringRef name, TypeExpr *type);
   TypeExpr *exportVariable(llvm::StringRef name, TypeExpr *type);
   TypeExpr *localType(llvm::StringRef name, TypeExpr *type);
@@ -293,10 +312,18 @@ struct SignatureOperator : public TypeOperator {
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                        const SignatureOperator &signature);
   friend struct FunctorOperator;
+  static llvm::StringRef getAnonymousSignatureName() { return "_"; }
 
 private:
   void initFromExports() {
     for (const auto &e : getExports()) {
+      if (e.kind == Export::Kind::Type) {
+        typeEnv.insert(e.name, e.type);
+      } else if (e.kind == Export::Kind::Variable) {
+        variableEnv.insert(e.name, e.type);
+      }
+    }
+    for (const auto &e : getLocals()) {
       if (e.kind == Export::Kind::Type) {
         typeEnv.insert(e.name, e.type);
       } else if (e.kind == Export::Kind::Variable) {
@@ -309,6 +336,7 @@ private:
   Env variableEnv;
   EnvScope rootVariableScope;
   llvm::SmallVector<Export> exports;
+  llvm::SmallVector<Export> locals;
   SignatureOperator *conformsToSignature=nullptr;
   bool isaModuleType=false;
 protected:
@@ -329,8 +357,10 @@ struct ModuleTypeOperator : public SignatureOperator {
 
 struct ModuleOperator : public SignatureOperator {
   ModuleOperator(llvm::StringRef moduleName,
-                 llvm::ArrayRef<TypeExpr *> args = {})
-      : SignatureOperator(moduleName, args) {
+                 llvm::ArrayRef<TypeExpr *> args = {},
+                 llvm::ArrayRef<Export> exports = {},
+                 llvm::ArrayRef<Export> locals = {})
+      : SignatureOperator(moduleName, args, exports, locals) {
     this->kind = Kind::Module;
   }
   ModuleOperator(const ModuleOperator &other)
@@ -344,6 +374,7 @@ struct ModuleOperator : public SignatureOperator {
   }
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Module; }
   inline void openModule(ModuleOperator *module) { openModules.push_back(module); }
+  inline llvm::ArrayRef<ModuleOperator *> getOpenModules() const { return openModules; }
   TypeExpr *lookupType(llvm::StringRef name) const override;
   TypeExpr *lookupType(llvm::ArrayRef<llvm::StringRef> path) const override;
   TypeExpr *lookupVariable(llvm::StringRef name) const override;

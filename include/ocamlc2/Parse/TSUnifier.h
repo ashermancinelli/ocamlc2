@@ -30,6 +30,7 @@ namespace detail {
   struct ModuleScope;
   struct Scope;
   struct TypeVariableScope;
+  struct ConcreteTypeVariableScope;
 }
 
 struct Unifier {
@@ -173,8 +174,9 @@ private:
   LogicalResult initializeEnvironment();
 
   LogicalResult unify(TypeExpr *a, TypeExpr *b);
-  LogicalResult unifyModuleWithSignature(ModuleOperator *module, SignatureOperator *signature);
   LogicalResult unifySignatureTypes(SignatureOperator *a, SignatureOperator *b);
+  LogicalResult unifyModuleWithSignature(ModuleOperator *module, SignatureOperator *signature);
+  LogicalResult unifyNames(SignatureOperator *a, SignatureOperator *b);
   LogicalResult unifyFunctorTypes(FunctorOperator *a, FunctorOperator *b);
   LogicalResult unifyRecordTypes(RecordOperator *a, RecordOperator *b);
 
@@ -227,7 +229,7 @@ private:
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleApplication(Cursor ast);
   SignatureOperator *inferModuleSignature(Cursor ast);
-  ModuleOperator *inferModuleStructure(Cursor ast);
+  ModuleOperator *inferModuleStructure(Cursor ast, SmallVector<std::pair<llvm::StringRef, SignatureOperator*>> functorTypeParams={});
   SignatureOperator *inferModuleTypeDefinition(Cursor ast);
   TypeExpr *inferModuleTypePath(Cursor ast);
   TypeExpr *inferOpenModule(Cursor ast);
@@ -364,6 +366,7 @@ private:
   // Env typeEnv;
   inline Env &env() { return moduleStack.back()->getVariableEnv(); }
   inline Env &typeEnv() { return moduleStack.back()->getTypeEnv(); }
+  inline ModuleOperator &mod() { return *moduleStack.back(); }
   TypeVarEnv typeVarEnv;
   llvm::SmallVector<ModuleOperator *> moduleStack;
   llvm::SmallVector<ModuleOperator *> openModules;
@@ -421,10 +424,27 @@ private:
   friend struct detail::ModuleScope;
   friend struct detail::Scope;
   friend struct detail::TypeVariableScope;
+  friend struct detail::ConcreteTypeVariableScope;
 };
 
 namespace detail {
 
+struct ConcreteTypeVariableScope {
+  ConcreteTypeVariableScope(Unifier &unifier)
+      : unifier(unifier), concreteTypes(unifier.concreteTypes) {
+    logOpen();
+  }
+  ~ConcreteTypeVariableScope() {
+    unifier.concreteTypes = concreteTypes;
+    logClose();
+  }
+
+private:
+  void logOpen();
+  void logClose();
+  Unifier &unifier;
+  Unifier::ConcreteTypes concreteTypes;
+};
 struct ModuleSearchPathScope {
   ModuleSearchPathScope(Unifier &unifier,
                         llvm::ArrayRef<llvm::StringRef> modules)
@@ -438,7 +458,7 @@ private:
 };
 
 struct ModuleScope {
-  ModuleScope(Unifier &unifier, llvm::StringRef module="anonymous") : unifier(unifier) {
+  ModuleScope(Unifier &unifier, llvm::StringRef module=SignatureOperator::getAnonymousSignatureName()) : unifier(unifier) {
     unifier.pushModule(module, false);
   }
   ~ModuleScope() {
