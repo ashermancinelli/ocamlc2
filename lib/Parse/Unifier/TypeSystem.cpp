@@ -28,6 +28,15 @@ TypeExpr *SignatureOperator::lookupType(llvm::ArrayRef<llvm::StringRef> path) co
     }
     return type;
   }
+  if (auto *type = lookupVariable(path.front())) {
+    DBGS("found type: " << *type << '\n');
+    if (auto *module = llvm::dyn_cast<SignatureOperator>(type)) {
+      assert(path.size() != 1 && "module path cannot be a single module name");
+      DBGS("found module: " << *module << '\n');
+      return module->lookupType(path.drop_front());
+    }
+    return type;
+  }
   DBGS("type not found\n");
   return nullptr;
 }
@@ -155,10 +164,18 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
     case SignatureOperator::Export::Variable: {
       if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
         if (auto *sig = module->getInterfaceSignature()) {
-          os << "module " << e.name << " : " << sig->getName();
+          os << "module " << e.name << " : ";
+          if (sig->getName() != "anonymous") {
+            os << sig->getName();
+          } else {
+            os << "sig" << SignatureOperator::newline;
+            sig->showSignature(os);
+            os << "end";
+          }
         } else {
-          os << *module << SignatureOperator::newline;
+          os << *module;
         }
+        os << SignatureOperator::newline;
       } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(e.type)) {
         os << *functor << SignatureOperator::newline;
       } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
@@ -191,7 +208,7 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
 }
 
 llvm::raw_ostream &SignatureOperator::showDeclaration(llvm::raw_ostream &os) const {
-  os << (getKind() == TypeOperator::Kind::Module ? "module" : "module type")
+  os << (isModuleType() ? "module type" : "module")
      << ' ' << getName() << " : sig" << SignatureOperator::newline;
   showSignature(os);
   os << "end";

@@ -181,6 +181,7 @@ TypeExpr *Unifier::maybeGetDeclaredType(ArrayRef<llvm::StringRef> path) {
     }
   }
 
+  DBGS("Checking module map: " << path.front() << '\n');
   if (auto *module = moduleMap.lookup(path.front())) {
     DBGS("Checking module: " << module->getName() << '\n');
     auto remainingPath = SmallVector<StringRef>{path.drop_front()};
@@ -190,6 +191,7 @@ TypeExpr *Unifier::maybeGetDeclaredType(ArrayRef<llvm::StringRef> path) {
     }
   }
 
+  DBGS("Type not found\n");
   return nullptr;
 }
 

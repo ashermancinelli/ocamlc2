@@ -353,6 +353,7 @@ TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc, Node node)
   } else if (pattern.getType() == "typed_pattern") {
     TRACE();
     auto *type = infer(desc.type.value());
+    ORNULL(type);
     pattern = pattern.getChildByFieldName("pattern");
     setType(pattern, type);
     return declareVariable(pattern, type);
@@ -362,6 +363,7 @@ TypeExpr *Unifier::declareFunctionParameter(ParameterDescriptor desc, Node node)
     if (desc.type.has_value()) {
       TRACE();
       type = infer(desc.type.value());
+      ORNULL(type);
     } else {
       TRACE();
       auto *tv = createTypeVariable();
@@ -385,6 +387,7 @@ TypeExpr *Unifier::declareFunctionParameter(Node node) {
   } else if (node.getType() == "typed_pattern") {
     auto name = node.getNamedChild(0);
     auto *type = infer(node.getNamedChild(1));
+    ORNULL(type);
     setType(node, type);
     return declareVariable(name, type);
   } else {
@@ -398,12 +401,15 @@ TypeExpr *Unifier::declareFunctionParameter(Node node) {
 TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> parameters, Node body) {
   DBGS("non-recursive let binding, inferring body type\n");
   auto parameterDescriptors = describeParameters(parameters);
-  auto [returnType, types] = [&]() { 
+  auto [returnType, types] = [&]() -> std::pair<TypeExpr*, SmallVector<TypeExpr*>> {
     detail::Scope scope(this);
     SmallVector<TypeExpr*> types = llvm::map_to_vector(llvm::zip(parameterDescriptors, parameters), [&](auto arg) -> TypeExpr* {
       auto [desc, param] = arg;
       return declareFunctionParameter(desc, param);
     });
+    if (llvm::any_of(types, [](auto *t) { return t == nullptr; })) {
+      return std::make_pair(nullptr, types);
+    }
     auto *returnType = infer(body);
     return std::make_pair(returnType, types);
   }();
@@ -424,7 +430,10 @@ TypeExpr *Unifier::inferLetBindingRecursiveFunction(Node name, SmallVector<Node>
     SmallVector<TypeExpr*> types = llvm::map_to_vector(parameters, [&](Node n) -> TypeExpr* {
       return declareFunctionParameter(n);
     });
+    RNULL_IF(llvm::any_of(types, [](auto *t) { return t == nullptr; }),
+             "Failed to infer function parameter type");
     auto *bodyType = infer(body);
+    ORNULL(bodyType);
     types.push_back(bodyType);
     return getFunctionType(types);
   }();
@@ -891,6 +900,7 @@ SignatureOperator* Unifier::inferModuleTypeDefinition(Cursor ast) {
     }
     return create<SignatureOperator>(*moduleStack.back());
   }();
+  sig->setModuleType();
   declareVariable(name, sig);
   return sig;
 }
@@ -986,7 +996,9 @@ TypeExpr *Unifier::inferModuleBindingModuleDefinition(llvm::StringRef name, Sign
   auto nodeType = body.getType();
   DBGS("Body type: " << nodeType << '\n');
   if (nodeType == "module_application") {
+    TRACE();
     auto *resultingType = inferModuleApplication(body.getCursor());
+    ORNULL(resultingType);
     if (returnSignature) {
       UNIFY_OR_RNULL(returnSignature, resultingType);
     }
@@ -1012,13 +1024,21 @@ TypeExpr *Unifier::inferModuleBindingModuleDefinition(llvm::StringRef name, Sign
     declareVariable(name, resultingSignature);
     return resultingSignature;
   } else if (nodeType == "structure") {
+    TRACE();
     auto *module = inferModuleStructure(body.getCursor());
+    ORNULL(module);
+    TRACE();
     if (returnSignature) {
+      TRACE();
       UNIFY_OR_RNULL(returnSignature, module);
       module->conformsTo(returnSignature);
     }
-    declareVariable(name, create<ModuleOperator>(name, *module));
-    return module;
+    TRACE();
+    auto *redeclaredModule = create<ModuleOperator>(name, *module);
+    DBGS("Redeclared module: " << *redeclaredModule << '\n');
+    declareVariable(name, redeclaredModule);
+    moduleMap[name] = redeclaredModule;
+    return redeclaredModule;
   }
   assert(false && "NYI");
   return nullptr;
@@ -1041,9 +1061,11 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
     return n.getType() == "module_parameter";
   });
   if (not moduleParameters.empty()) {
+    TRACE();
     assert(structure && "Expected structure on functor");
     return inferModuleBindingFunctorDefinition(nameText, moduleParameters, declaredReturnSignature, *structure);
   } else {
+    TRACE();
     return inferModuleBindingModuleDefinition(nameText, declaredReturnSignature, *structure);
   }
 }
@@ -1052,10 +1074,18 @@ SignatureOperator* Unifier::inferModuleSignature(Cursor ast) {
   TRACE();
   detail::ModuleScope scope(*this);
   auto node = ast.getCurrentNode();
-  assert(node.getType() == "signature");
+  auto type = node.getType();
+  if (type == "module_type_path") {
+    auto *type = infer(node);
+    ORNULL(type);
+    auto *sigType = llvm::dyn_cast<SignatureOperator>(type);
+    RNULL_IF(sigType == nullptr, "Expected module type path to be a signature");
+    return sigType;
+  }
+  assert(type == "signature");
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
-    infer(child);
+    ORNULL(infer(child));
   }
   return moduleStack.back();
 }
@@ -1067,7 +1097,7 @@ ModuleOperator* Unifier::inferModuleStructure(Cursor ast) {
   assert(node.getType() == "structure");
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
-    infer(child);
+    ORNULL(infer(child));
   }
   return moduleStack.back();
 }

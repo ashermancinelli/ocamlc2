@@ -9,23 +9,30 @@ use v5.32;
 my $tools = dirname(__FILE__);
 my $root = dirname($tools) . '/test';
 my $yes = 0;
-say $root;
+my @files_to_process = ();
 
+# Process command line arguments
 foreach (@ARGV) {
-    if (/-y/ or /-yes/) {
+    if (/-y/ or /--yes/) {
         $yes = 1;
+    } elsif (-f $_) {
+        push @files_to_process, $_;
     }
 }
 
-find(sub {
-    return unless -f;
-    return unless /\.ml$/ or /\.mli$/;
-    my $file = $File::Find::name;
+# Function to process a single file
+sub process_file {
+    my ($file) = @_;
+    return unless -f $file;
+    return unless $file =~ /\.ml$/ or $file =~ /\.mli$/;
+    
     my $dir = dirname($file);
     my $ref = $file . '.ref';
+    
     open my $fh, '<', $file or die "Failed to open $file: $!";
     my @lines = <$fh>;
     close $fh;
+    
     foreach my $line (@lines) {
         if ($line =~ /RUN: (.+)/) {
             my $cmd = $1;
@@ -35,11 +42,23 @@ find(sub {
             say $file;
             say $cmd;
             my ($tfh, $temp) = tempfile();
-            `$cmd | $tools/genchecks > $temp`;
+            `$cmd | $tools/genchecks >> $temp`;
             say `diff -u $ref $temp`;
             `read -p 'look ok? '` unless $yes;
             `mv $temp $ref`;
         }
     }
-}, $root);
+}
+
+# If files were provided on the command line, process them directly
+if (@files_to_process) {
+    process_file($_) for @files_to_process;
+} 
+# Otherwise, search for files recursively
+else {
+    say "Searching in: $root";
+    find(sub {
+        process_file($File::Find::name);
+    }, $root);
+}
 

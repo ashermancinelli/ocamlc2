@@ -40,17 +40,18 @@ struct FunctorOperator;
 struct TypeExpr {
   // clang-format off
   enum Kind {
-    Operator  = 0b0000'0000'0001,
-    Variable  = 0b0000'0000'0010,
-    Record    = 0b0000'0000'0101,
-    Function  = 0b0000'0000'1001,
-    Tuple     = 0b0000'0001'0001,
-    Varargs   = 0b0000'0010'0001,
-    Wildcard  = 0b0000'0100'0001,
-    Variant   = 0b0000'1000'0001,
-    Signature = 0b0001'0000'0001,
-    Module    = 0b0010'0000'0001,
-    Functor   = 0b0100'0000'0001,
+    Operator   = 0b0000'0000'0001,
+    Variable   = 0b0000'0000'0010,
+    Record     = 0b0000'0000'0101,
+    Function   = 0b0000'0000'1001,
+    Tuple      = 0b0000'0001'0001,
+    Varargs    = 0b0000'0010'0001,
+    Wildcard   = 0b0000'0100'0001,
+    Variant    = 0b0000'1000'0001,
+    Signature  = 0b0001'0000'0001,
+    Module     = 0b0010'0000'0001,
+    Functor    = 0b0100'0000'0001,
+    ModuleType = 0b1000'0000'0001,
   };
   // clang-format on
   TypeExpr(Kind kind) : kind(kind) {}
@@ -247,6 +248,7 @@ struct SignatureOperator : public TypeOperator {
       : TypeOperator(Kind::Signature, signatureName, args),
         rootTypeScope(typeEnv),
         rootVariableScope(variableEnv) {}
+
   SignatureOperator(const SignatureOperator &other)
       : TypeOperator(other.getKind(), other.getName(), other.getArgs()),
         rootTypeScope(typeEnv),
@@ -255,6 +257,7 @@ struct SignatureOperator : public TypeOperator {
         conformsToSignature(other.conformsToSignature) {
     initFromExports();
   }
+
   SignatureOperator(llvm::StringRef newName, const SignatureOperator &other) :
       TypeOperator(other.getKind(), newName, other.getArgs()),
       rootTypeScope(typeEnv),
@@ -281,6 +284,8 @@ struct SignatureOperator : public TypeOperator {
   TypeExpr *localVariable(llvm::StringRef name, TypeExpr *type);
   inline void conformsTo(SignatureOperator *signature) { conformsToSignature = signature; }
   inline SignatureOperator *getInterfaceSignature() const { return conformsToSignature; }
+  inline void setModuleType() { isaModuleType = true; }
+  inline bool isModuleType() const { return isaModuleType; }
   static void useNewline(char newline) {
     SignatureOperator::newline = newline;
   }
@@ -305,8 +310,21 @@ private:
   EnvScope rootVariableScope;
   llvm::SmallVector<Export> exports;
   SignatureOperator *conformsToSignature=nullptr;
+  bool isaModuleType=false;
 protected:
   static char newline;
+};
+
+struct ModuleTypeOperator : public SignatureOperator {
+  ModuleTypeOperator(llvm::StringRef moduleTypeName, llvm::ArrayRef<TypeExpr *> args = {})
+      : SignatureOperator(moduleTypeName, args) {
+    this->kind = Kind::ModuleType;
+  }
+  ModuleTypeOperator(const SignatureOperator &other)
+      : SignatureOperator(other) {
+    this->kind = Kind::ModuleType;
+  }
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::ModuleType; }
 };
 
 struct ModuleOperator : public SignatureOperator {

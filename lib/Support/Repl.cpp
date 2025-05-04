@@ -37,7 +37,8 @@ static void runUnderRlwrap(int argc, char **argv, fs::path exe, Unifier &unifier
   if (rlwrap.empty()) {
     return;
   }
-  SmallVector<std::string> newArgs = {rlwrap, exe};
+  SmallVector<std::string> newArgs = {rlwrap, "--no-warnings",
+                                      "--complete-filenames", exe};
   for (int i = 1; i < argc; i++) {
     newArgs.emplace_back(argv[i]);
   }
@@ -174,6 +175,20 @@ struct ShellCommand : public Command {
   }
 };
 
+struct ClearCommand : public Command {
+  std::string &sourceSoFar;
+  ClearCommand(std::string &sourceSoFar) : sourceSoFar(sourceSoFar) {}
+  void callback(Unifier &unifier, ArrayRef<std::string> args) override {
+    sourceSoFar = "";
+  }
+  std::string_view help() const override {
+    return "Clear the current module";
+  }
+  std::string_view name() const override {
+    return "clear";
+  }
+};
+
 [[noreturn]] void exitRepl(Unifier &unifier) {
   llvm::outs() << ANSIColors::faint() << ANSIColors::italic() << "Goodbye!\n" << ANSIColors::reset();
   std::exit(unifier.anyFatalErrors());
@@ -193,7 +208,7 @@ struct ShellCommand : public Command {
   commands.emplace_back(std::make_unique<HelpCommand>(commands));
   commands.emplace_back(std::make_unique<QuietCommand>(CL::Quiet));
   commands.emplace_back(std::make_unique<ShellCommand>());
-
+  commands.emplace_back(std::make_unique<ClearCommand>(sourceSoFar));
   if (not CL::InRLWrap) {
     runUnderRlwrap(argc, argv, exe, unifier);
     assert(false && "Should not return");
@@ -255,9 +270,10 @@ struct ShellCommand : public Command {
       }
       continue;
     }
-    unifier.loadSource(source);
+    unifier.loadSource(sourceSoFar);
     if (failed(unifier)) {
       unifier.showErrors();
+      sourceSoFar = "";
     } else if (not CL::Quiet) {
       unifier.showTypedTree();
     }

@@ -18,7 +18,7 @@
 #include <sstream>
 #include <llvm/Support/FileSystem.h>
 
-#define DEBUG_TYPE "unifier"
+#define DEBUG_TYPE "Unifier.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
 #include "UnifierDebug.h"
