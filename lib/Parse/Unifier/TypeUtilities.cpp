@@ -349,4 +349,11 @@ std::string Unifier::getHashedPath(llvm::ArrayRef<llvm::StringRef> path) {
   return hashPath(path);
 }
 
+namespace isa {
+bool uninstantiatedTypeVariable(TypeExpr *type) {
+  type = Unifier::prune(type);
+  return llvm::isa<TypeVariable>(type) && !llvm::cast<TypeVariable>(type)->instantiated();
+}
+} // namespace isa
+
 } // namespace ocamlc2

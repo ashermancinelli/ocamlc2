@@ -126,6 +126,22 @@ TypeExpr *SignatureOperator::localVariable(llvm::StringRef name,
   return type;
 }
 
+llvm::raw_ostream &TypeAlias::decl(llvm::raw_ostream &os) const {
+  os << "type ";
+  if (auto *to = llvm::dyn_cast<TypeOperator>(getType())) {
+    for (auto *arg : to->getArgs()) {
+      if (isa::uninstantiatedTypeVariable(arg)) {
+        os << *arg << " ";
+      }
+    }
+  }
+  os << getName();
+  if (!isa::uninstantiatedTypeVariable(getType())) {
+    os << " = " << *getType();
+  }
+  return os;
+}
+
 llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const {
   // eg type constructors will show up as functions but we don't really want to print those
   llvm::SmallVector<llvm::StringRef> namesToSkip;
@@ -158,6 +174,8 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
           os << " = " << *e.type;
         }
         os << SignatureOperator::newline;
+      } else if (auto *alias = llvm::dyn_cast<TypeAlias>(e.type)) {
+        alias->decl(os) << SignatureOperator::newlineCharacter();
       } else if (llvm::isa<TypeVariable>(e.type)) {
         os << "type " << e.name << " = " << *e.type << SignatureOperator::newline;
       } else {
@@ -244,6 +262,10 @@ llvm::raw_ostream &FunctorOperator::decl(llvm::raw_ostream &os) const {
   }
   os << " : " << *resultSignature;
   return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeAlias &alias) {
+  return os << alias.getName();
 }
 
 TypeExpr *ModuleOperator::lookupType(llvm::StringRef name) const {
@@ -349,6 +371,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctorOperator &func
       os << " (" << param.first << " : " << *type << ")";
     }
   }
+  if (functor.getInterfaceSignature()) {
+    os << " : " << functor.getInterfaceSignature()->getName();
+  }
   return os << " -> " << *functorResult << SignatureOperator::newlineCharacter();
 }
 
@@ -369,6 +394,10 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeExpr &type) {
     os << *to;
   } else if (auto *tv = llvm::dyn_cast<TypeVariable>(&type)) {
     os << *tv;
+  } else if (auto *alias = llvm::dyn_cast<TypeAlias>(&type)) {
+    os << *alias;
+  } else {
+    assert(false && "unknown type");
   }
   return os;
 }

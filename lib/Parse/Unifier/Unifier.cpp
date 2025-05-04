@@ -47,6 +47,12 @@ namespace ocamlc2 {
 //    one of the subtypes is varargs. If so, we can unify the types if the
 //    other type is a function type.
 LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
+  auto result = doUnify(a, b);
+  // todo propagate type aliases for readabity :/
+  return result;
+}
+
+LogicalResult Unifier::doUnify(TypeExpr* a, TypeExpr* b) {
   ORFAIL(a);
   ORFAIL(b);
   static size_t count = 0;
@@ -244,16 +250,7 @@ LogicalResult Unifier::unifyFunctorTypes(FunctorOperator *a, FunctorOperator *b)
 
 LogicalResult Unifier::unifySignatureTypes(SignatureOperator *a, SignatureOperator *b) {
   DBGS("Unifying signature types:\n" << *a << "\nand\n" << *b << '\n');
-  // auto *moa = llvm::dyn_cast<ModuleOperator>(a);
-  // auto *mob = llvm::dyn_cast<ModuleOperator>(b);
   return unifyNames(a, b);
-  // if (moa) {
-  //   return unifyModuleWithSignature(moa, b);
-  // } else if (mob) {
-  //   return unifyModuleWithSignature(mob, a);
-  // } else {
-  //   assert(false && "NYI");
-  // }
 }
 
 LogicalResult Unifier::unifyRecordTypes(RecordOperator *a, RecordOperator *b) {
@@ -283,7 +280,13 @@ LogicalResult Unifier::unifyRecordTypes(RecordOperator *a, RecordOperator *b) {
 
 TypeExpr *Unifier::clone(TypeExpr *type) {
   llvm::DenseMap<TypeExpr *, TypeExpr *> mapping;
-  return clone(type, mapping);
+  auto *cloned = clone(type, mapping);
+  if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
+    cloned = create<TypeAlias>(alias->getName(), cloned);
+    DBGS("Input was an alias, cloning as alias with the same name: " << *alias << " to " << *cloned << '\n');
+  }
+  DBGS("Cloned type: " << *cloned << '\n');
+  return cloned;
 }
 
 TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
@@ -387,6 +390,9 @@ TypeExpr* Unifier::prune(TypeExpr* type) {
   if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {
     tv->instance = prune(tv->instance);
     return tv->instance;
+  }
+  if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
+    return prune(alias->getType());
   }
   return type;
 }

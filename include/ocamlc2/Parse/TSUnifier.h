@@ -170,10 +170,8 @@ public:
   SmallVector<SourceFile> sources;
   StringArena stringArena;
 
-private:
-  LogicalResult initializeEnvironment();
-
   LogicalResult unify(TypeExpr *a, TypeExpr *b);
+  LogicalResult doUnify(TypeExpr *a, TypeExpr *b);
   LogicalResult unifySignatureTypes(SignatureOperator *a, SignatureOperator *b);
   LogicalResult unifyModuleWithSignature(ModuleOperator *module, SignatureOperator *signature);
   LogicalResult unifyNames(SignatureOperator *a, SignatureOperator *b);
@@ -190,7 +188,10 @@ private:
   // type variable or a type operator; i.e. it will skip instantiated variables,
   // and will actually prune them from expressions to remove long chains of
   // instantiated variables.
-  TypeExpr *prune(TypeExpr *type);
+  static TypeExpr *prune(TypeExpr *type);
+
+private:
+  LogicalResult initializeEnvironment();
 
   // \c infer is just a wrapper around this method which does some printing and
   // caches the type for a given node id. This method does the actual work.

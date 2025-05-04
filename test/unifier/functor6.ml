@@ -27,5 +27,7 @@ module Int = struct
   type t = int
   let compare a b = a - b
 end
+module Float = struct type t = float let compare a b = 1 end
 
 module IntSet = Make(Int)
+module FloatSet = Make(Float)

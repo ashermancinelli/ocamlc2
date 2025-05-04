@@ -40,18 +40,19 @@ struct FunctorOperator;
 struct TypeExpr {
   // clang-format off
   enum Kind {
-    Operator   = 0b0000'0000'0001,
-    Variable   = 0b0000'0000'0010,
-    Record     = 0b0000'0000'0101,
-    Function   = 0b0000'0000'1001,
-    Tuple      = 0b0000'0001'0001,
-    Varargs    = 0b0000'0010'0001,
-    Wildcard   = 0b0000'0100'0001,
-    Variant    = 0b0000'1000'0001,
-    Signature  = 0b0001'0000'0001,
-    Module     = 0b0010'0000'0001,
-    Functor    = 0b0100'0000'0001,
-    ModuleType = 0b1000'0000'0001,
+    Operator   = 0b0000'0000'0000'0001,
+    Variable   = 0b0000'0000'0000'0010,
+    Record     = 0b0000'0000'0000'0101,
+    Function   = 0b0000'0000'0000'1001,
+    Tuple      = 0b0000'0000'0001'0001,
+    Varargs    = 0b0000'0000'0010'0001,
+    Wildcard   = 0b0000'0000'0100'0001,
+    Variant    = 0b0000'0000'1000'0001,
+    Signature  = 0b0000'0001'0000'0001,
+    Module     = 0b0000'0010'0000'0001,
+    Functor    = 0b0000'0100'0000'0001,
+    ModuleType = 0b0000'1000'0000'0001,
+    Alias      = 0b0001'0000'0000'0000,
   };
   // clang-format on
   TypeExpr(Kind kind) : kind(kind) {}
@@ -62,6 +63,18 @@ struct TypeExpr {
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeExpr& type);
 protected:
   Kind kind;
+};
+
+struct TypeAlias : public TypeExpr {
+  TypeAlias(llvm::StringRef name, TypeExpr *type) : TypeExpr(Kind::Alias), type(type), name(name) {}
+  static inline bool classof(const TypeExpr* expr) { return expr->getKind() == Kind::Alias; }
+  inline llvm::StringRef getName() const override { return name; }
+  inline TypeExpr *getType() const { return type; }
+  llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeAlias& alias);
+private:
+  TypeExpr *type;
+  llvm::StringRef name;
 };
 
 struct TypeOperator : public TypeExpr {
@@ -423,9 +436,7 @@ private:
 };
 
 namespace isa {
-inline bool uninstantiatedTypeVariable(const TypeExpr *type) {
-  return llvm::isa<TypeVariable>(type) && !llvm::cast<TypeVariable>(type)->instantiated();
-}
+bool uninstantiatedTypeVariable(TypeExpr *type);
 }
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,

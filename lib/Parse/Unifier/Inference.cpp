@@ -1295,7 +1295,12 @@ TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_constructor_path");
-  return getDeclaredType(node);
+  auto *type = getDeclaredType(node);
+  if (isa::uninstantiatedTypeVariable(type)) {
+    type = create<TypeAlias>(getTextSaved(node), type);
+  }
+  ORNULL(type);
+  return type;
 }
 
 TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
@@ -1303,7 +1308,6 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_definition");
   TypeExpr *type = nullptr;
-  DBGS("Locals: " << moduleStack.back()->getLocals().size() << '\n');
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
     type = inferTypeBinding(child.getCursor());
@@ -1372,6 +1376,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     typeVars.push_back(typeVar);
   }
   auto name = node.getChildByFieldName("name");
+  auto nameText = getTextSaved(name);
   auto equation = toOptional(node.getChildByFieldName("equation"));
   auto body = toOptional(node.getChildByFieldName("body"));
   auto typeName = getTextSaved(name);
@@ -1382,8 +1387,9 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     // we MUST disregard the original type operator so type aliases are fully
     // transparent.
     DBGS("Type binding has an equation\n");
-    thisType = infer(*equation);
-    ORNULL(thisType);
+    auto *inferredType = infer(*equation);
+    ORNULL(inferredType);
+    thisType = inferredType;
     DBGS("equation: " << *thisType << '\n');
     if (auto *to = llvm::dyn_cast<TypeOperator>(thisType)) {
       eqName = to->getName();
@@ -1420,8 +1426,10 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
       concreteTypes.insert(tv);
       thisType = tv;
     }
-    DBGS("No body, type alias to type constructor: " << getTextSaved(name) << " : " << *thisType << '\n');
-    thisType = declareType(name, thisType);
+    DBGS("No body, type alias to type constructor: " << nameText << " : " << *thisType << '\n');
+    thisType = create<TypeAlias>(nameText, thisType);
+    DBGS("Type alias: " << *thisType << " isa operator: " << llvm::isa<TypeOperator>(thisType) << '\n');
+    declareType(name, thisType);
   }
   return thisType;
 }
@@ -1435,13 +1443,6 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
   auto typeArgs = llvm::map_to_vector(children, [&](Node child) -> TypeExpr* {
     DBGS("Inferring type argument for constructed type: " << child.getType() << '\n');
     auto *tv = infer(child);
-    ORNULL(tv);
-    if (auto *typeVar = llvm::dyn_cast<TypeVariable>(tv)) {
-      (void)typeVar;
-      // TODO: is this right?
-      // DBGS("Inserting type variable into concrete types: " << *typeVar << '\n');
-      // concreteTypes.insert(typeVar);
-    }
     return tv;
   });
   auto text = getTextSaved(name);
