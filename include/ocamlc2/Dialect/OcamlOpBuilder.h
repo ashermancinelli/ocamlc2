@@ -72,6 +72,7 @@ public:
   }
 
   mlir::Type getVariantType(llvm::StringRef name, llvm::ArrayRef<llvm::StringRef> constructors, llvm::ArrayRef<mlir::Type> types);
+  mlir::Type getTupleType(llvm::ArrayRef<mlir::Type> types);
 
   mlir::Value createUnit(mlir::Location loc) {
     return create<mlir::ocaml::UnitOp>(loc, getUnitType());

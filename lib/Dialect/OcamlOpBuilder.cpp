@@ -45,4 +45,8 @@ mlir::Type OcamlOpBuilder::getVariantType(llvm::StringRef name, llvm::ArrayRef<l
   return mlir::ocaml::VariantType::get(getContext(), n, c, types);
 }
 
+mlir::Type OcamlOpBuilder::getTupleType(llvm::ArrayRef<mlir::Type> types) {
+  return mlir::ocaml::TupleType::get(getContext(), types);
+}
+
 }

@@ -17,17 +17,17 @@ int main() {
   auto tuple = builder.getTupleType({i64, i64});
 
   llvm::outs() << unit << "\n" << obox << "\n" << box << "\n" << tuple << "\n";
-  // CHECK: !ocaml.unit
-  // CHECK: !ocaml.obox
-  // CHECK: !ocaml.box<i64>
-  // CHECK: tuple<i64, i64>
 
   auto variant = builder.getVariantType("foo", {"None", "Some", "More"},
                                         {unit, i64, tuple});
   llvm::outs() << variant << "\n";
-  // CHECK: !ocaml.variant<"foo" is "None" | "Some" of i64 | "More" of tuple<i64, i64>>
 
   return 0;
 }
 
+// CHECK: !ocaml.unit
+// CHECK: !ocaml.obox
+// CHECK: !ocaml.box<i64>
+// CHECK: !ocaml.tuple<i64, i64>
+// CHECK: !ocaml.variant<"foo" is "None" | "Some" of i64 | "More" of !ocaml.tuple<i64, i64>>
 

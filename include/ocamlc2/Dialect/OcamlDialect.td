@@ -25,7 +25,8 @@ def Ocaml_TupleType : Ocaml_Type<"Tuple", "tuple"> {
   let summary = "OCaml tuple";
   let description = "OCaml tuple";
   let parameters = (ins ArrayRefParameter<"::mlir::Type">:$types);
-  let hasCustomAssemblyFormat = 1;
+  // let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "`<` $types `>`";
   let builders = [
     TypeBuilderWithInferredContext<(ins "llvm::ArrayRef<::mlir::Type>":$types), [{
       return $_get(types[0].getContext(), types);

@@ -36,6 +36,7 @@ namespace mlir::ocaml::detail {
 
 }
 
+#if 0
 void mlir::ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
   printer << "<";
   for (auto type : llvm::enumerate(getTypes())) {
@@ -47,16 +48,6 @@ void mlir::ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
   printer << ">";
 }
 
-static mlir::StringRef ocamlAttributePrefix() {
-  return "ocaml.";
-}
-
-mlir::NamedAttribute mlir::ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
-  auto name = ocamlAttributePrefix() + "match_case";
-  return mlir::NamedAttribute(mlir::StringAttr::get(context, name),
-                              mlir::UnitAttr::get(context));
-}
-
 mlir::Type mlir::ocaml::TupleType::parse(mlir::AsmParser &parser) {
   mlir::SmallVector<mlir::Type> elements;
   if (parser.parseLess())
@@ -66,6 +57,17 @@ mlir::Type mlir::ocaml::TupleType::parse(mlir::AsmParser &parser) {
   if (parser.parseGreater())
     return {};
   return parser.getChecked<TupleType>(parser.getContext(), elements);
+}
+#endif
+
+static mlir::StringRef ocamlAttributePrefix() {
+  return "ocaml.";
+}
+
+mlir::NamedAttribute mlir::ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
+  auto name = ocamlAttributePrefix() + "match_case";
+  return mlir::NamedAttribute(mlir::StringAttr::get(context, name),
+                              mlir::UnitAttr::get(context));
 }
 
 // `variant` `<` $name `is` $ctor `of` $type (`|` $ctor `of` $type)* `>`
