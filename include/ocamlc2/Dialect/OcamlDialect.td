@@ -24,10 +24,10 @@ class Ocaml_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def Ocaml_TupleType : Ocaml_Type<"Tuple", "tuple"> {
   let summary = "OCaml tuple";
   let description = "OCaml tuple";
-  let parameters = (ins ArrayRefParameter<"mlir::Type">:$types);
+  let parameters = (ins ArrayRefParameter<"::mlir::Type">:$types);
   let hasCustomAssemblyFormat = 1;
   let builders = [
-    TypeBuilderWithInferredContext<(ins "llvm::ArrayRef<mlir::Type>":$types), [{
+    TypeBuilderWithInferredContext<(ins "llvm::ArrayRef<::mlir::Type>":$types), [{
       return $_get(types[0].getContext(), types);
     }]>,
   ];
@@ -37,16 +37,18 @@ def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
   let summary = "OCaml variant";
   let description = "OCaml variant";
   let parameters = (ins 
-    "mlir::StringAttr":$name,
-    ArrayRefParameter<"mlir::StringAttr">:$constructors,
-    ArrayRefParameter<"mlir::Type">:$types
+    "::mlir::StringAttr":$name,
+    ArrayRefParameter<"::mlir::StringAttr">:$constructors,
+    ArrayRefParameter<"::mlir::Type">:$types
   );
+  let storageClass = "VariantTypeStorage";
+  let storageNamespace = "detail";
   let hasCustomAssemblyFormat = 1;
   let builders = [
     TypeBuilderWithInferredContext<(ins
-      "mlir::StringAttr":$name,
-      "llvm::ArrayRef<mlir::StringAttr>":$names,
-      "llvm::ArrayRef<mlir::Type>":$types), [{
+      "::mlir::StringAttr":$name,
+      "::llvm::ArrayRef<::mlir::StringAttr>":$names,
+      "::llvm::ArrayRef<::mlir::Type>":$types), [{
       return $_get(name.getContext(), name, names, types);
     }]>,
   ];
@@ -63,7 +65,7 @@ def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
   let description = "OCaml box";
   let parameters = (ins AnyType:$elementType);
   let builders = [
-    TypeBuilderWithInferredContext<(ins "mlir::Type":$elementType), [{
+    TypeBuilderWithInferredContext<(ins "::mlir::Type":$elementType), [{
       return $_get(elementType.getContext(), elementType);
     }]>,
   ];
@@ -91,7 +93,7 @@ def Ocaml_UnitType : Ocaml_Type<"Unit", "unit"> {
   let assemblyFormat = "";
 }
 
-def AnyBoxType : TypeConstraint<CPred<"mlir::isa<mlir::ocaml::BoxType, mlir::ocaml::OpaqueBoxType, mlir::ocaml::UnitType>($_self)">>;
+def AnyBoxType : TypeConstraint<CPred<"::mlir::isa<::mlir::ocaml::BoxType, ::mlir::ocaml::OpaqueBoxType, ::mlir::ocaml::UnitType>($_self)">>;
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
@@ -116,7 +118,6 @@ def Ocaml_UnitOp : Ocaml_Op<"unit"> {
   let summary = "OCaml unit";
   let description = "OCaml unit";
   let arguments = (ins);
-  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
   let results = (outs Ocaml_UnitType:$result);
   let assemblyFormat = "attr-dict";
 }

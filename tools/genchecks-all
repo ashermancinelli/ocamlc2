@@ -7,7 +7,7 @@ use File::Temp qw(tempfile);
 use v5.32;
 
 my $tools = dirname(__FILE__);
-my $root = dirname($tools) . '/test';
+my $root = dirname($tools) . '/test/typecheck';
 my $yes = 0;
 my @files_to_process = ();
 

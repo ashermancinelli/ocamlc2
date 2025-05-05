@@ -448,6 +448,7 @@ TypeExpr *Unifier::inferLetBindingValue(Node name, Node body) {
   ORNULL(bodyType);
   if (name.getType() == "unit") {
     UNIFY_OR_RNULL(bodyType, getUnitType());
+    setType(name, bodyType);
   } else {
     declareVariable(name, bodyType);
   }
@@ -809,6 +810,7 @@ TypeExpr* Unifier::inferInfixExpression(Cursor ast) {
   ORNULL(rhsType);
   assert(!ast.gotoNextSibling());
   auto *opType = getVariableType(op);
+  setType(op, opType);
   ORNULL(opType);
   auto *funcType = getFunctionType({lhsType, rhsType, createTypeVariable()});
   ORNULL(funcType);

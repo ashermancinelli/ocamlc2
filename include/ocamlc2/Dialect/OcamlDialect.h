@@ -10,6 +10,12 @@
 #include <mlir/IR/Attributes.h>
 #include <mlir/Pass/PassManager.h>
 
+namespace mlir::ocaml {
+namespace detail {
+struct VariantTypeStorage;
+}
+}
+
 #define GET_TYPEDEF_CLASSES
 #include "ocamlc2/Dialect/OcamlTypes.h.inc"
 
@@ -17,14 +23,15 @@
 #include "ocamlc2/Dialect/OcamlOps.h.inc"
 
 namespace mlir::ocaml {
-  inline bool isa_box_type(mlir::Type type) {
-    return isa<BoxType, OpaqueBoxType, StringType, UnitType>(type);
-  }
+inline bool isa_box_type(mlir::Type type) {
+  return isa<BoxType, OpaqueBoxType, StringType, UnitType>(type);
+}
 
-  void setupRegistry(mlir::DialectRegistry &registry);
-  void setupContext(mlir::MLIRContext &context);
-  void setupDefaultPipeline(mlir::PassManager &pm);
-  void setupCodegenPipeline(mlir::PassManager &pm);
-  mlir::NamedAttribute getMatchCaseAttr(mlir::MLIRContext *context);
-  bool hasMatchCaseAttr(mlir::Operation *op);
+void setupRegistry(mlir::DialectRegistry &registry);
+void setupContext(mlir::MLIRContext &context);
+void setupDefaultPipeline(mlir::PassManager &pm);
+void setupCodegenPipeline(mlir::PassManager &pm);
+mlir::NamedAttribute getMatchCaseAttr(mlir::MLIRContext *context);
+bool hasMatchCaseAttr(mlir::Operation *op);
+
 }

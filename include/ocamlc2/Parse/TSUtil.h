@@ -1,5 +1,6 @@
 #pragma once
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/ADT/DenseMapInfo.h>
 #include <cpp-tree-sitter.h>
@@ -53,7 +54,7 @@ dump(llvm::raw_ostream &os, ts::Cursor cursor, std::string_view source,
      std::optional<std::function<void(llvm::raw_ostream &, ts::Node)>> dumpNode=std::nullopt);
 std::string_view getText(const ts::Node &node, std::string_view source);
 llvm::SmallVector<ts::Node> getChildren(const ts::Node node);
-llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node node);
+llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node node, llvm::ArrayRef<llvm::StringRef> ofTypes={});
 llvm::SmallVector<ts::Node> getArguments(const ts::Node node);
 bool isLetBindingRecursive(ts::Cursor ast);
 inline std::optional<ts::Node> toOptional(ts::Node node) {

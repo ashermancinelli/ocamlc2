@@ -1,8 +1,3 @@
-get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
-get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
-set(MLIR_LIBS ${dialect_libs} ${conversion_libs} ${extension_libs} MLIRIR MLIRAsmParser MLIRParser MLIRSCFDialect MLIRFuncDialect MLIRLLVMDialect MLIRCallInterfaces MLIRCastInterfaces MLIRFunctionInterfaces MLIRTransforms MLIRArithToLLVM MLIRFuncToLLVM)
-
 function(add_ocamlc2_tool name)
     message(STATUS "Adding tool: ${name}")
     cmake_parse_arguments(ARG "LINK_MLIR_LIBS" "" "" ${ARGN})

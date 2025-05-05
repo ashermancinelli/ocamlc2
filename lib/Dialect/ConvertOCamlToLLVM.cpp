@@ -32,8 +32,8 @@ namespace {
 class ConvertOCamlToLLVMRewriter
     : public ConversionPattern {
 public:
-  ConvertOCamlToLLVMRewriter(mlir::LLVMTypeConverter &typeConverter,
-                             mlir::MLIRContext *context)
+  ConvertOCamlToLLVMRewriter(LLVMTypeConverter &typeConverter,
+                             MLIRContext *context)
       : ConversionPattern(typeConverter, "ocaml.convert", /*benefit=*/10, context) {}
 
   // Match against any ocaml.convert operation
@@ -63,18 +63,18 @@ public:
     } 
     
     // Create an unrealized conversion cast
-    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, targetType, operand);
     return success();
   }
 };
 
-static void addTypeConversions(mlir::LLVMTypeConverter &typeConverter) {
-  typeConverter.addConversion([&](mlir::Type type) -> std::optional<mlir::Type> {
+static void addTypeConversions(LLVMTypeConverter &typeConverter) {
+  typeConverter.addConversion([&](Type type) -> std::optional<Type> {
     DBGS("type conversion: " << type << "\n");
-    if (mlir::isa<mlir::ocaml::OpaqueBoxType, mlir::ocaml::BoxType,
-                  mlir::ocaml::UnitType, mlir::ocaml::StringType,
-                  mlir::ocaml::VariantType, mlir::ocaml::TupleType>(type)) {
+    if (isa<OpaqueBoxType, BoxType,
+                  UnitType, StringType,
+                  VariantType, TupleType>(type)) {
       DBGS("OCaml type converted to LLVM pointer: " << type << "\n");
       return mlir::LLVM::LLVMPointerType::get(type.getContext());
     }
@@ -100,30 +100,30 @@ static void addTypeConversions(mlir::LLVMTypeConverter &typeConverter) {
       });
 
   typeConverter.addSourceMaterialization(
-      [&](mlir::OpBuilder &builder, mlir::Type resultType,
-          mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+      [&](OpBuilder &builder, Type resultType,
+          ValueRange inputs, Location loc) -> Value {
         DBGS("source materialization: " << resultType << " " << loc << "\n");
-        for (mlir::Value input : inputs) {
+        for (Value input : inputs) {
           DBGS("input: " << input << "\n");
         }
         if (inputs.size() != 1)
           return nullptr;
         return builder
-            .create<mlir::UnrealizedConversionCastOp>(loc, resultType, inputs)
+            .create<UnrealizedConversionCastOp>(loc, resultType, inputs)
             .getResult(0);
       });
 
   typeConverter.addTargetMaterialization(
-      [&](mlir::OpBuilder &builder, mlir::Type resultType,
-          mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+      [&](OpBuilder &builder, Type resultType,
+          ValueRange inputs, Location loc) -> Value {
         DBGS("target materialization: " << resultType << " " << loc << "\n");
-        for (mlir::Value input : inputs) {
+        for (Value input : inputs) {
           DBGS("input: " << input << "\n");
         }
         if (inputs.size() != 1)
           return nullptr;
         return builder
-            .create<mlir::UnrealizedConversionCastOp>(loc, resultType, inputs)
+            .create<UnrealizedConversionCastOp>(loc, resultType, inputs)
             .getResult(0);
       });
 }
@@ -131,41 +131,41 @@ static void addTypeConversions(mlir::LLVMTypeConverter &typeConverter) {
 struct ConvertOCamlToLLVM
     : public impl::ConvertOCamlToLLVMBase<ConvertOCamlToLLVM> {
   void runOnOperation() final {
-    mlir::LLVMConversionTarget target(getContext());
-    target.addLegalDialect<mlir::LLVM::LLVMDialect>();
-    target.addLegalOp<mlir::UnrealizedConversionCastOp>();
-    target.addIllegalDialect<mlir::ocaml::OcamlDialect>();
+    LLVMConversionTarget target(getContext());
+    target.addLegalDialect<LLVM::LLVMDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
+    target.addIllegalDialect<OcamlDialect>();
     
-    target.addIllegalOp<mlir::ocaml::ConvertOp>();
-    mlir::LLVMTypeConverter typeConverter(&getContext());
+    target.addIllegalOp<ConvertOp>();
+    LLVMTypeConverter typeConverter(&getContext());
     addTypeConversions(typeConverter);
 
-    target.addDynamicallyLegalOp<mlir::func::FuncOp>(
-        [&](mlir::func::FuncOp op) {
+    target.addDynamicallyLegalOp<func::FuncOp>(
+        [&](func::FuncOp op) {
           // Only check the signature; the patterns handle body conversion.
           return typeConverter.isSignatureLegal(op.getFunctionType());
         });
-    target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
-        [&](mlir::func::ReturnOp op) {
+    target.addDynamicallyLegalOp<func::ReturnOp>(
+        [&](func::ReturnOp op) {
           return typeConverter.isLegal(op.getOperandTypes());
         });
-    target.addDynamicallyLegalOp<mlir::func::CallOp>([&](mlir::func::CallOp op) {
+    target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
       return typeConverter.isLegal(op);
     });
 
     RewritePatternSet patterns(&getContext());
-    mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
         patterns, typeConverter);
-    mlir::populateCallOpTypeConversionPattern(patterns, typeConverter);
-    mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
-    mlir::populateSCFToControlFlowConversionPatterns(patterns);
-    mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
-    mlir::populateFinalizeMemRefToLLVMConversionPatterns(typeConverter,
+    populateCallOpTypeConversionPattern(patterns, typeConverter);
+    populateReturnOpTypeConversionPattern(patterns, typeConverter);
+    populateSCFToControlFlowConversionPatterns(patterns);
+    arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
+    populateFinalizeMemRefToLLVMConversionPatterns(typeConverter,
                                                          patterns);
-    mlir::cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
+    cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
                                                           patterns);
-    mlir::cf::populateAssertToLLVMConversionPattern(typeConverter, patterns);
-    mlir::populateFuncToLLVMConversionPatterns(typeConverter, patterns);
+    cf::populateAssertToLLVMConversionPattern(typeConverter, patterns);
+    populateFuncToLLVMConversionPatterns(typeConverter, patterns);
 
     // Add our OCaml conversion pattern with high benefit to ensure it's applied first
     patterns.add<ConvertOCamlToLLVMRewriter>(typeConverter, &getContext());

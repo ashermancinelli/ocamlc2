@@ -34,7 +34,7 @@ GREEN  = "\e[32m"
 CLR    = "\e[0m"
 
 .DEFAULT_GOAL := build
-.PHONY: all config build install clean init
+.PHONY: all config build install clean init clean check test coverage p3
 
 clean:
 	rm -rf build/* install/*||:
@@ -49,18 +49,15 @@ config:
 build:
 	$(NINJA) -C build
 
-all: config build check
-
-install:
-	$(NINJA) -C build install
-
-check:
-	$(NINJA) -C build check
+all: config build test
 
 i:
 	$(NINJA) -C build stdlib-interfaces
 
-coverage p3:
+test:
+	ctest --test-dir build -VV
+
+%:
 	$(NINJA) -C build $@
 
 repl: p3

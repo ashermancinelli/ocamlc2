@@ -33,4 +33,16 @@ mlir::FailureOr<std::string> binaryOpToRuntimeName(std::string op, mlir::Locatio
   return mlir::emitError(loc) << "Unknown binary operator: " << op;
 }
 
+llvm::SmallVector<mlir::StringAttr> OcamlOpBuilder::createStringAttrVector(llvm::ArrayRef<llvm::StringRef> strings) {
+  return llvm::map_to_vector(strings, [this](llvm::StringRef str) {
+    return mlir::StringAttr::get(getContext(), str);
+  });
+}
+
+mlir::Type OcamlOpBuilder::getVariantType(llvm::StringRef name, llvm::ArrayRef<llvm::StringRef> constructors, llvm::ArrayRef<mlir::Type> types) {
+  auto c = createStringAttrVector(constructors);
+  auto n = getStringAttr(name);
+  return mlir::ocaml::VariantType::get(getContext(), n, c, types);
+}
+
 }

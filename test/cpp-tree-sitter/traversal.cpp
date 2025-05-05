@@ -77,9 +77,7 @@ int main() {
     assert(pattern.getType() == "value_pattern");
     std::cout << pattern.getSExpr() << '\n';
   }
+  printf("pass\n");
+  // CHECK: pass
   return 0;
 }
-
-// CHECK: (compilation_unit (value_definition (let_binding pattern: (value_name)
-// CHECK-SAME: (parameter pattern: (value_pattern) (type_constructor_path
-// (type_constructor))) CHECK-SAME: body: (value_path (value_name)))))

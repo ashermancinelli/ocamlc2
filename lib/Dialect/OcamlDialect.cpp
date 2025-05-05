@@ -4,6 +4,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectInterface.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include "ocamlc2/Dialect/TypeDetail.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -11,9 +12,16 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include <mlir/IR/OpDefinition.h>
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/Support/LLVM.h"
+#include <llvm/ADT/Hashing.h>
+#include <llvm/ADT/TypeSwitch.h>
+#include <llvm/Support/Debug.h>
+#include <optional>
+
+#define DEBUG_TYPE "ocaml-dialect"
+#include "ocamlc2/Support/Debug.h.inc"
 
 using namespace mlir::ocaml;
-using namespace mlir;
 
 #include "ocamlc2/Dialect/OcamlDialect.cpp.inc"
 
@@ -23,7 +31,12 @@ using namespace mlir;
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
 
-void ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
+
+namespace mlir::ocaml::detail {
+
+}
+
+void mlir::ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
   printer << "<";
   for (auto type : llvm::enumerate(getTypes())) {
     printer << type.value();
@@ -34,17 +47,17 @@ void ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
   printer << ">";
 }
 
-static StringRef ocamlAttributePrefix() {
+static mlir::StringRef ocamlAttributePrefix() {
   return "ocaml.";
 }
 
-mlir::NamedAttribute ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
+mlir::NamedAttribute mlir::ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
   auto name = ocamlAttributePrefix() + "match_case";
   return mlir::NamedAttribute(mlir::StringAttr::get(context, name),
                               mlir::UnitAttr::get(context));
 }
 
-mlir::Type ocaml::TupleType::parse(mlir::AsmParser &parser) {
+mlir::Type mlir::ocaml::TupleType::parse(mlir::AsmParser &parser) {
   mlir::SmallVector<mlir::Type> elements;
   if (parser.parseLess())
     return {};
@@ -56,7 +69,7 @@ mlir::Type ocaml::TupleType::parse(mlir::AsmParser &parser) {
 }
 
 // `variant` `<` $name `is` $ctor `of` $type (`|` $ctor `of` $type)* `>`
-mlir::Type VariantType::parse(mlir::AsmParser &parser) {
+mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   std::string name;
   mlir::SmallVector<mlir::Type> elements;
   mlir::SmallVector<mlir::StringAttr> ctors;
@@ -113,7 +126,7 @@ void VariantType::print(mlir::AsmPrinter &printer) const {
   printer << ">";
 }
 
-OpFoldResult ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {
+mlir::OpFoldResult mlir::ocaml::ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {
   auto input = getInput();
   if (getFromType() == getToType()) {
     return input;

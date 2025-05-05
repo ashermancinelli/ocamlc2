@@ -3,8 +3,10 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Builders.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include <llvm/ADT/SmallVectorExtras.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/IR/Attributes.h>
 #include <mlir/IR/ValueRange.h>
 
 namespace mlir::ocaml {
@@ -14,6 +16,9 @@ class OcamlOpBuilder : public mlir::OpBuilder {
 
 public:
   mlir::Value createConvert(mlir::Location loc, mlir::Value input, mlir::Type resultType) {
+    if (resultType == input.getType()) {
+      return input;
+    }
     return create<mlir::ocaml::ConvertOp>(loc, resultType, input);
   }
 
@@ -34,16 +39,16 @@ public:
   }
 
   SmallVector<mlir::Value> prepareArguments(mlir::Location loc, mlir::FunctionType functionType, mlir::ValueRange args) {
-    SmallVector<mlir::Value> convertedArgs;
-    for (auto arg : llvm::enumerate(args)) {
-      convertedArgs.push_back(
-          createConvert(loc, arg.value(), functionType.getInput(arg.index())));
-    }
-    return convertedArgs;
+    return llvm::map_to_vector(llvm::enumerate(args), [this, loc, functionType](auto arg) {
+      return createConvert(loc, arg.value(), functionType.getInput(arg.index()));
+    });
   }
 
   mlir::Value createCall(mlir::Location loc, func::FuncOp function, mlir::ValueRange args) {
-    return create<mlir::func::CallOp>(loc, function, prepareArguments(loc, function.getFunctionType(), args)).getResult(0);
+    return create<mlir::func::CallOp>(
+               loc, function,
+               prepareArguments(loc, function.getFunctionType(), args))
+        .getResult(0);
   }
 
   mlir::Value createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args) {
@@ -65,6 +70,14 @@ public:
   inline mlir::Type getUnitType() {
     return mlir::ocaml::UnitType::get(getContext());
   }
+
+  mlir::Type getVariantType(llvm::StringRef name, llvm::ArrayRef<llvm::StringRef> constructors, llvm::ArrayRef<mlir::Type> types);
+
+  mlir::Value createUnit(mlir::Location loc) {
+    return create<mlir::ocaml::UnitOp>(loc, getUnitType());
+  }
+
+  llvm::SmallVector<mlir::StringAttr> createStringAttrVector(llvm::ArrayRef<llvm::StringRef> strings);
 };
 
 mlir::FailureOr<mlir::Type> resolveTypes(mlir::Type lhs, mlir::Type rhs, mlir::Location loc);

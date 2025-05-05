@@ -10,6 +10,7 @@
 #include "mlir/Transforms/Passes.h"
 #include <iostream>
 #include <filesystem>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/SourceMgr.h>
 #include <memory>
 #include <llvm/Support/CommandLine.h>
@@ -30,7 +31,10 @@ static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::Required,
                                           cl::value_desc("filename"));
 
+static cl::opt<bool> dumpIR("dump-camlir", cl::desc("Dump OCaml IR"), cl::init(false));
+
 int main(int argc, char* argv[]) {
+  fs::path exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);
   mlir::registerAsmPrinterCLOptions();
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
@@ -41,7 +45,9 @@ int main(int argc, char* argv[]) {
   std::string source = must(ocamlc2::slurpFile(filepath));
   DBGS("Source:\n" << source << "\n");
   
-  ocamlc2::Unifier unifier(filepath);
+  ocamlc2::Unifier unifier;
+  unifier.loadStdlibInterfaces(exe);
+  unifier.loadSourceFile(filepath);
   auto root = unifier.sources.back().tree.getRootNode();
   DBG(
     llvm::errs() << "AST:\n";
@@ -60,7 +66,6 @@ int main(int argc, char* argv[]) {
   context.appendDialectRegistry(registry);
   mlir::ocaml::setupContext(context);
 
-
   MLIRGen3 gen(context, unifier, root);
   auto module = gen.gen();
 
@@ -68,8 +73,18 @@ int main(int argc, char* argv[]) {
     DBGS("Failed to generate MLIR for compilation unit\n");
     return 1;
   }
+  auto moduleOp = module->get();
 
-  DBGS("Module:\n" << module->get() << "\n");
+  if (mlir::failed(moduleOp.verify())) {
+    DBGS("Failed to verify module\n");
+    moduleOp.print(llvm::errs());
+    return 1;
+  }
+  DBG(llvm::dbgs() << "Module:\n"; moduleOp.print(llvm::dbgs()); llvm::dbgs() << "\n";);
+
+  if (dumpIR) {
+    llvm::outs() << moduleOp << "\n";
+  }
 
 #if 0
   mlir::PassManager pm(&context);

@@ -1,9 +1,12 @@
+enable_testing()
 add_subdirectory(cpp-tree-sitter)
+add_subdirectory(unit)
+set(CURRENT_LIT_COMMAND ${LIT_COMMAND} -svv ${CMAKE_CURRENT_SOURCE_DIR})
 add_custom_target(check
-    COMMAND ${LIT_COMMAND} -svv ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${CURRENT_LIT_COMMAND}
     DEPENDS all stdlib-interfaces
 )
-
+add_test(NAME lit COMMAND ${CURRENT_LIT_COMMAND})
 if (ENABLE_COVERAGE)
     # Find the main executable target
     # Use p3 as the target for coverage

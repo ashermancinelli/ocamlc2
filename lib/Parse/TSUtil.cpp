@@ -82,10 +82,13 @@ llvm::SmallVector<ts::Node> getChildren(const ts::Node node) {
   return children;
 }
 
-llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node node) {
+llvm::SmallVector<ts::Node> getNamedChildren(const ts::Node node, llvm::ArrayRef<llvm::StringRef> ofTypes) {
   llvm::SmallVector<ts::Node> children;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    children.push_back(node.getNamedChild(i));
+    auto child = node.getNamedChild(i);
+    if (ofTypes.empty() || llvm::is_contained(ofTypes, llvm::StringRef(child.getType()))) {
+      children.push_back(child);
+    }
   }
   return children;
 }

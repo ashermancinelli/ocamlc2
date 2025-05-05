@@ -31,12 +31,12 @@ struct MLIRGen3 {
     return mlir::emitError(loc) << "error: ";
   }
   inline auto error(const Node node) const {
-    unifier.show(node.getCursor(), true);
+    unifier.show(node.getCursor(), false);
     return error(loc(node));
   }
   inline auto nyi(const Node node) const {
-    unifier.show(node.getCursor(), true);
-    return error(node) << "not yet implemented: " << node.getType();
+    unifier.show(node.getCursor(), false);
+    return error(node) << "NYI: " << node.getType();
   }
   inline mlir::ModuleOp getModule() const {
     return module.get();
@@ -48,23 +48,27 @@ private:
   mlir::FailureOr<mlir::Value> genCompilationUnit(const Node node);
   mlir::FailureOr<mlir::Value> genNumber(const Node node);
   mlir::FailureOr<mlir::Value> genApplicationExpression(const Node node);
-  mlir::FailureOr<mlir::Value> genCallee(const Node node);
+  mlir::FailureOr<mlir::func::FuncOp> genCallee(const Node node);
   mlir::FailureOr<mlir::Value> genInfixExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genLetExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genLetBindingValueDefinition(const Node patternNode, const Node bodyNode);
 
   mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(const Node node);
 
-  mlir::FailureOr<mlir::Type> mlirType(const ocamlc2::TypeExpr *type, mlir::Location loc);
+  mlir::FailureOr<mlir::Type> mlirType(ocamlc2::TypeExpr *type, mlir::Location loc);
+  mlir::FailureOr<mlir::Type> mlirType(ocamlc2::VariantOperator *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirType(const Node node);
-  mlir::FailureOr<mlir::Type> mlirFunctionType(const ocamlc2::TypeExpr *type, mlir::Location loc);
+  mlir::FailureOr<mlir::Type> mlirFunctionType(ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirFunctionType(const Node node);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
   llvm::StringRef getText(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);
   }
+  llvm::DenseMap<TypeExpr *, mlir::Type> typeExprToMlirType;
   llvm::ScopedHashTable<llvm::StringRef, mlir::Value> variables;
   mlir::MLIRContext &context;
   mlir::ocaml::OcamlOpBuilder builder;

@@ -327,15 +327,11 @@ mlir::LogicalResult MLIRGen2::genVariantConstructors(mlir::ocaml::VariantType va
   for (auto iter : llvm::enumerate(llvm::zip(constructorNames, constructorTypes))) {
     auto [constructorName, constructorType] = iter.value();
     SmallVector<mlir::Type> argumentTypes;
-    bool emptyCtor = false;
-    if (auto tupleType = llvm::dyn_cast<mlir::ocaml::TupleType>(constructorType)) {
-      argumentTypes = SmallVector<mlir::Type>(tupleType.getTypes());
-    } else if (constructorType != builder.getUnitType()) {
-      argumentTypes.push_back(constructorType);
+    if (!constructorType) {
+      argumentTypes.emplace_back(builder.getUnitType());
     } else {
-      emptyCtor = true;
+      argumentTypes.push_back(constructorType);
     }
-    (void)emptyCtor;
     InsertionGuard guard(builder);
     builder.setInsertionPointToEnd(module->getBody());
     auto functionType = builder.getFunctionType(argumentTypes, variantType);
@@ -368,7 +364,7 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(TypeBindingAST const& node) {
       return mlir::emitError(loc(&node))
           << "Failed to generate type constructor for variant declaration: " << name;
     }
-    SmallVector<SmallVector<mlir::Type, 1>> argumentTypes;
+    SmallVector<mlir::Type> argumentTypes;
     for (auto &ctor : *declarations) {
       auto name = builder.getStringAttr(ctor.first);
       names.push_back(name);
@@ -376,17 +372,17 @@ mlir::FailureOr<mlir::Value> MLIRGen2::gen(TypeBindingAST const& node) {
       if (ctor.second) {
         auto type = ctor.second.value();
         if (auto tupleType = llvm::dyn_cast<mlir::ocaml::TupleType>(type)) {
-          argumentTypes.push_back(SmallVector<mlir::Type>(tupleType.getTypes()));
+          argumentTypes.push_back(tupleType);
         } else {
-          argumentTypes.push_back({type});
+          argumentTypes.push_back(type);
         }
       } else {
-        argumentTypes.push_back({});
+        argumentTypes.push_back(builder.getUnitType());
       }
     }
 
     auto variantType = mlir::ocaml::VariantType::get(
-        builder.getContext(), builder.getStringAttr(name), names, types);
+        builder.getContext(), builder.getStringAttr(name), names, argumentTypes);
     if (failed(genVariantConstructors(variantType, location))) {
       return mlir::emitError(location)
           << "Failed to generate variant constructors for type: " << name;
