@@ -67,7 +67,7 @@ struct TypeCommand : public Command {
       llvm::errs() << "Usage: #type <symbol>\n";
       return;
     }
-    unifier.showType(llvm::outs() << "val ", args[0]) << "\n";
+    unifier.showType(llvm::outs(), args[0]) << "\n";
   }
   std::string_view help() const override {
     return "Show the type of a symbol";

@@ -947,7 +947,7 @@ TypeExpr* Unifier::inferModuleApplication(Cursor ast) {
   ORNULL(module);
   auto *functorExpr = infer(node.getChildByFieldName("functor"));
   ORNULL(functorExpr);
-  auto *functor = llvm::dyn_cast<FunctorOperator>(functorExpr);
+  auto *functor = llvm::dyn_cast<FunctorOperator>(prune(functorExpr));
   RNULL_IF(functor == nullptr, "Expected functor");
   DBGS("Got functor: " << *functor << '\n');
 
@@ -957,11 +957,25 @@ TypeExpr* Unifier::inferModuleApplication(Cursor ast) {
     ORNULL(arg);
     functorApplicationArgs.push_back(arg);
   }
+
   functorApplicationArgs.push_back(createTypeVariable());
+  assert(functorApplicationArgs.size() <= functor->getArgs().size() && "Too many functor arguments");
   auto *appliedFunctor = create<FunctorOperator>("", functorApplicationArgs);
 
-  assert(functorApplicationArgs.size() == functor->getArgs().size() &&
-         "NYI: partial application of functors");
+  auto remainingArgs = functor->getArgs().size() - appliedFunctor->getArgs().size();
+  if (remainingArgs > 0) {
+    DBGS("Normalizing functor from " << *functor << " to match " << *appliedFunctor << '\n');
+    auto remainingArgsAndReturnModule = llvm::SmallVector<TypeExpr *>(
+        llvm::drop_begin(functor->getArgs(), remainingArgs));
+    auto *returnFunctor = create<FunctorOperator>("", remainingArgsAndReturnModule);
+    auto args = functor->getArgs();
+    auto normalizedArgs = llvm::SmallVector<TypeExpr*>(args.begin(), args.begin() + appliedFunctor->getArgs().size() - 1);
+    normalizedArgs.push_back(returnFunctor);
+    auto *normalizedFunctor = create<FunctorOperator>("", normalizedArgs);
+    functor = normalizedFunctor;
+    DBGS("Normalized functor: " << *functor << '\n');
+  }
+
   DBGS("Unifying functor application\n");
   UNIFY_OR_RNULL(appliedFunctor, functor);
   auto *resultingType = appliedFunctor->back();
@@ -998,13 +1012,16 @@ TypeExpr *Unifier::inferModuleBindingModuleDefinition(llvm::StringRef name, Sign
   TRACE();
   auto nodeType = body.getType();
   DBGS("Body type: " << nodeType << '\n');
+
+  auto *bodyTypeExpr = infer(body);
+  ORNULL(bodyTypeExpr);
+
+  auto *resultingSignature = create<ModuleOperator>(name);
+  UNIFY_OR_RNULL(bodyTypeExpr, resultingSignature);
+  ORNULL(resultingSignature);
+
   if (nodeType == "module_application") {
     TRACE();
-    auto *resultingTypeExpr = inferModuleApplication(body.getCursor());
-    ORNULL(resultingTypeExpr);
-    auto *resultingSignature = create<ModuleOperator>(name);
-    UNIFY_OR_RNULL(resultingTypeExpr, resultingSignature);
-    ORNULL(resultingSignature);
     DBGS("Inferred module result of functor application: " << *resultingSignature << '\n');
     if (returnSignature) {
       UNIFY_OR_RNULL(returnSignature, resultingSignature);
@@ -1015,16 +1032,13 @@ TypeExpr *Unifier::inferModuleBindingModuleDefinition(llvm::StringRef name, Sign
     return resultingSignature;
   } else if (nodeType == "structure") {
     TRACE();
-    auto *module = inferModuleStructure(body.getCursor());
-    ORNULL(module);
-    TRACE();
     if (returnSignature) {
-      TRACE();
-      UNIFY_OR_RNULL(returnSignature, module);
-      module->conformsTo(returnSignature);
+      UNIFY_OR_RNULL(returnSignature, resultingSignature);
+      resultingSignature->conformsTo(returnSignature);
     }
     TRACE();
-    auto *redeclaredModule = create<ModuleOperator>(name, *module);
+
+    auto *redeclaredModule = create<ModuleOperator>(name, *resultingSignature);
     DBGS("Redeclared module: " << *redeclaredModule << '\n');
     declareVariable(name, redeclaredModule);
     moduleMap[name] = redeclaredModule;
@@ -1509,108 +1523,111 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     "parenthesized_type",
     "parenthesized_module_expression",
   };
-  if (node.getType() == "number") {
+  auto type = node.getType();
+  if (type == "number") {
     auto text = getText(node);
     return text.contains('.') ? getFloatType() : getIntType();
-  } else if (node.getType() == "float") {
+  } else if (type == "float") {
     return getFloatType();
-  } else if (node.getType() == "boolean") {
+  } else if (type == "boolean") {
     return getBoolType();
-  } else if (node.getType() == "unit") {
+  } else if (type == "unit") {
     return getUnitType();
-  } else if (node.getType() == "string") {
+  } else if (type == "string") {
     return getStringType();
-  } else if (node.getType() == "guard") {
+  } else if (type == "guard") {
     return inferGuard(std::move(ast));
-  } else if (node.getType() == "sign_expression") {
+  } else if (type == "sign_expression") {
     return infer(node.getChildByFieldName("expression"));
-  } else if (node.getType() == "do_clause") {
+  } else if (type == "do_clause") {
     return infer(node.getNamedChild(0));
-  } else if (node.getType() == "constructor_path") {
+  } else if (type == "constructor_path") {
     return inferConstructorPath(std::move(ast));
-  } else if (node.getType() == "module_type_path") {
+  } else if (type == "module_type_path") {
     return inferModuleTypePath(std::move(ast));
-  } else if (node.getType() == "let_binding") {
+  } else if (type == "let_binding") {
     return inferLetBinding(std::move(ast));
-  } else if (node.getType() == "let_expression") {
+  } else if (type == "let_expression") {
     return inferLetExpression(std::move(ast));
-  } else if (node.getType() == "fun_expression") {
+  } else if (type == "fun_expression") {
     return inferFunctionExpression(std::move(ast));
-  } else if (node.getType() == "match_expression") {
+  } else if (type == "match_expression") {
     return inferMatchExpression(std::move(ast));
-  } else if (node.getType() == "value_path" or node.getType() == "module_path") {
+  } else if (type == "value_path" or type == "module_path") {
     return inferValuePath(std::move(ast));
-  } else if (node.getType() == "for_expression") {
+  } else if (type == "for_expression") {
     return inferForExpression(std::move(ast));
-  } else if (node.getType() == "infix_expression") {
+  } else if (type == "infix_expression") {
     return inferInfixExpression(std::move(ast));
-  } else if (node.getType() == "if_expression") {
+  } else if (type == "if_expression") {
     return inferIfExpression(std::move(ast));
-  } else if (node.getType() == "array_expression") {
+  } else if (type == "array_expression") {
     return inferArrayExpression(std::move(ast));
-  } else if (node.getType() == "array_get_expression") {
+  } else if (type == "array_get_expression") {
     return inferArrayGetExpression(std::move(ast));
-  } else if (node.getType() == "list_expression") {
+  } else if (type == "list_expression") {
     return inferListExpression(std::move(ast));
-  } else if (llvm::is_contained(passthroughTypes, node.getType())) {
+  } else if (llvm::is_contained(passthroughTypes, type)) {
     assert(node.getNumNamedChildren() == 1);
     return infer(node.getNamedChild(0));
-  } else if (node.getType() == "compilation_unit") {
+  } else if (type == "compilation_unit") {
     return inferCompilationUnit(std::move(ast));
-  } else if (node.getType() == "application_expression") {
+  } else if (type == "application_expression") {
     return inferApplicationExpression(std::move(ast));
-  } else if (node.getType() == "module_type_definition") {
+  } else if (type == "module_type_definition") {
     return inferModuleTypeDefinition(std::move(ast));
-  } else if (node.getType() == "module_definition") {
+  } else if (type == "module_definition") {
     return inferModuleDefinition(std::move(ast));
-  } else if (node.getType() == "value_specification") {
+  } else if (type == "value_specification") {
     return inferValueSpecification(std::move(ast));
-  } else if (node.getType() == "type_constructor_path") {
+  } else if (type == "type_constructor_path") {
     return inferTypeConstructorPath(std::move(ast));
-  } else if (node.getType() == "record_declaration") {
+  } else if (type == "record_declaration") {
     return inferRecordDeclaration(std::move(ast));
-  } else if (node.getType() == "sequence_expression") {
+  } else if (type == "sequence_expression") {
     return inferSequenceExpression(std::move(ast));
-  } else if (node.getType() == "type_definition") {
+  } else if (type == "type_definition") {
     return inferTypeDefinition(std::move(ast));
-  } else if (node.getType() == "value_pattern") {
+  } else if (type == "value_pattern") {
     return inferValuePattern(std::move(ast));
-  } else if (node.getType() == "constructor_path") {
+  } else if (type == "constructor_path") {
     return inferConstructorPath(node.getCursor());
-  } else if (node.getType() == "parenthesized_pattern") {
+  } else if (type == "parenthesized_pattern") {
     return inferParenthesizedPattern(std::move(ast));
-  } else if (node.getType() == "constructor_pattern") {
+  } else if (type == "constructor_pattern") {
     return inferConstructorPattern(std::move(ast));
-  } else if (node.getType() == "record_pattern") {
+  } else if (type == "record_pattern") {
     return inferRecordPattern(node.getCursor());
-  } else if (node.getType() == "tuple_pattern") {
+  } else if (type == "tuple_pattern") {
     return inferTuplePattern(node);
-  } else if (node.getType() == "type_variable") {
+  } else if (type == "type_variable") {
     return getTypeVariable(node);
-  } else if (node.getType() == "constructed_type") {
+  } else if (type == "constructed_type") {
     return inferConstructedType(std::move(ast));
-  } else if (node.getType() == "function_type") {
+  } else if (type == "function_type") {
     return inferFunctionType(std::move(ast));
-  } else if (node.getType() == "open_module") {
+  } else if (type == "open_module") {
     return inferOpenModule(std::move(ast));
-  } else if (node.getType() == "include_module") {
+  } else if (type == "include_module") {
     return inferIncludeModule(std::move(ast));
-  } else if (node.getType() == "module_name") {
+  } else if (type == "module_name") {
     return getVariableType(getTextSaved(node));
-  } else if (node.getType() == "external") {
+  } else if (type == "external") {
     return inferExternal(std::move(ast));
-  } else if (node.getType() == "tuple_type") {
+  } else if (type == "tuple_type") {
     return inferTupleType(std::move(ast));
-  } else if (node.getType() == "tuple_expression") {
+  } else if (type == "tuple_expression") {
     return inferTupleExpression(std::move(ast));
-  } else if (node.getType() == "labeled_argument_type") {
+  } else if (type == "labeled_argument_type") {
     return inferLabeledArgumentType(std::move(ast));
-  } else if (node.getType() == "record_expression") {
+  } else if (type == "record_expression") {
     return inferRecordExpression(std::move(ast));
-  } else if (node.getType() == "field_get_expression") {
+  } else if (type == "field_get_expression") {
     return inferFieldGetExpression(std::move(ast));
-  } else if (node.getType() == "structure") {
+  } else if (type == "structure") {
     return inferModuleStructure(std::move(ast));
+  } else if (type == "module_application") {
+    return inferModuleApplication(std::move(ast));
   }
   const auto message = SSWRAP("Unknown node type: " << node.getType());
   llvm::errs() << message << '\n';

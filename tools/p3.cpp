@@ -39,9 +39,6 @@ int main(int argc, char* argv[]) {
   TRACE();
   unifier.loadStdlibInterfaces(exe);
   TRACE();
-  if (CL::Repl or CL::InRLWrap or inputFilenames.empty()) {
-    runRepl(argc, argv, exe, unifier);
-  }
   auto set = std::set<std::string>(inputFilenames.begin(), inputFilenames.end());
   if (set.size() != inputFilenames.size()) {
     llvm::errs() << "Duplicate input file(s)\n";
@@ -64,6 +61,9 @@ int main(int argc, char* argv[]) {
     auto rootNode = unifier.sources.back().tree.getRootNode();
     auto *te = unifier.getType(rootNode.getID());
     DBGS("Inferred type: " << *te << '\n');
+  }
+  if (CL::Repl or CL::InRLWrap or inputFilenames.empty()) {
+    runRepl(argc, argv, exe, unifier);
   }
   if (CL::DumpTypes) {
     unifier.dumpTypes(llvm::outs());

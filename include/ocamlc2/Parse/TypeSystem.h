@@ -85,6 +85,8 @@ struct TypeOperator : public TypeExpr {
   static inline bool classof(const TypeExpr* expr) { return (expr->getKind() & Kind::Operator) != 0; }
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const TypeOperator& op);
   inline TypeExpr* at(size_t index) const { return args[index]; }
+  inline TypeExpr *back() const { return args.back(); }
+  inline std::size_t size() const { return args.size(); }
   consteval static llvm::StringRef getConstructorOperatorName() { return "V"; }
   consteval static llvm::StringRef getListOperatorName() { return "list"; }
   consteval static llvm::StringRef getArrayOperatorName() { return "array"; }
@@ -97,7 +99,6 @@ struct TypeOperator : public TypeExpr {
   consteval static llvm::StringRef getBoolOperatorName() { return "bool"; }
   consteval static llvm::StringRef getOptionalOperatorName() { return "option"; }
   consteval static llvm::StringRef getFunctorOperatorName() { return "functor"; }
-  inline TypeExpr *back() const { return args.back(); }
 
 protected:
   llvm::SmallVector<TypeExpr*> args;

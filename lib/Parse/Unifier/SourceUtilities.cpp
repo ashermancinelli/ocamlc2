@@ -6,10 +6,12 @@
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Support/Utils.h"
 #include <cstdint>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringExtras.h>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/iterator_range.h>
 #include <llvm/Support/raw_ostream.h>
 #include <algorithm>
@@ -179,9 +181,24 @@ void Unifier::showErrors() {
   }
 }
 
+static void stringToPath(llvm::StringRef name, llvm::SmallVector<llvm::StringRef> &pathSoFar) {
+  auto [head, tail] = name.split('.');
+  pathSoFar.push_back(head);
+  while (!tail.empty()) {
+    std::tie(head, tail) = tail.split('.');
+    pathSoFar.push_back(head);
+  }
+}
+
+static SmallVector<llvm::StringRef> stringToPath(llvm::StringRef name) {
+  SmallVector<llvm::StringRef> path;
+  stringToPath(name, path);
+  return path;
+}
+
 llvm::raw_ostream &Unifier::showType(llvm::raw_ostream &os, llvm::StringRef name) {
-  name = stringArena.save(name);
-  if (auto *type = maybeGetVariableType(name)) {
+  auto path = stringToPath(name);
+  if (auto *type = maybeGetVariableType(path)) {
     os << name << " : " << *type;
   } else {
     os << "Type unknown for symbol: '" << name << "'\n";
