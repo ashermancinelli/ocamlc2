@@ -1,6 +1,7 @@
 #include "ocamlc2/Parse/TypeSystem.h"
 #include <llvm/ADT/STLExtras.h>
-
+#include <llvm/ADT/TypeSwitch.h>
+#include "ocamlc2/Parse/TSUnifier.h"
 #define DEBUG_TYPE "TypeSystem.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
@@ -151,61 +152,51 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
         }) != namesToSkip.end()) {
       continue;
     }
+    auto *exportedType = Unifier::pruneTypeVariables(e.type);
     switch (e.kind) {
     case SignatureOperator::Export::Type: {
-      if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(e.type)) {
+      if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(exportedType)) {
         variantOperator->decl(os) << SignatureOperator::newline;
         for (auto ctor : variantOperator->getConstructorNames()) {
           namesToSkip.push_back(ctor);
         }
-      } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(e.type)) {
+      } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(exportedType)) {
         recordOperator->decl(os, true) << SignatureOperator::newline;
-      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+      } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
         os << "type ";
-        if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+        if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
           for (auto *arg : to->getArgs()) {
-            os << *arg << " ";
+            arg = Unifier::pruneTypeVariables(arg);
+            if (isa::uninstantiatedTypeVariable(arg)) {
+              os << *arg << " ";
+            }
           }
         }
         os << e.name;
         if (to->getArgs().empty() and e.name == to->getName()) {
           // just a decl, maybe don't show anything else? eg `type t`
         } else {
-          os << " = " << *e.type;
+          os << " = " << *exportedType;
         }
         os << SignatureOperator::newline;
-      } else if (auto *alias = llvm::dyn_cast<TypeAlias>(e.type)) {
+      } else if (auto *alias = llvm::dyn_cast<TypeAlias>(exportedType)) {
         alias->decl(os) << SignatureOperator::newlineCharacter();
-      } else if (llvm::isa<TypeVariable>(e.type)) {
-        os << "type " << e.name << " = " << *e.type << SignatureOperator::newline;
+      } else if (llvm::isa<TypeVariable>(exportedType)) {
+        os << "type " << e.name << " = " << *exportedType << SignatureOperator::newline;
       } else {
-        os << "unknown type operator: " << e.name << *e.type << SignatureOperator::newline;
+        os << "unknown type operator: " << e.name << *exportedType << SignatureOperator::newline;
         assert(false && "unknown type operator");
       }
       break;
     }
     case SignatureOperator::Export::Variable: {
-      if (auto *module = llvm::dyn_cast<ModuleOperator>(e.type)) {
+      if (auto *module = llvm::dyn_cast<ModuleOperator>(exportedType)) {
         module->decl(os) << SignatureOperator::newline;
-        // if (auto *sig = module->getInterfaceSignature()) {
-        //   os << "module " << e.name << " : ";
-        //   if (sig->getName() != SignatureOperator::getAnonymousSignatureName()) {
-        //     os << sig->getName();
-        //   } else {
-        //     os << "sig" << SignatureOperator::newline;
-        //     sig->showSignature(os);
-        //     os << "end";
-        //   }
-        // } else {
-        //   os << *module;
-        // }
-        // os << SignatureOperator::newline;
-      } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(e.type)) {
-        // os << *functor << SignatureOperator::newline;
+      } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(exportedType)) {
         functor->decl(os) << SignatureOperator::newline;
-      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(e.type)) {
+      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
         os << "val " << e.name << " : " << *fo << SignatureOperator::newline;
-      } else if (auto *to = llvm::dyn_cast<TypeOperator>(e.type)) {
+      } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
         os << "val " << e.name << " : ";
         if (!to->getArgs().empty()) {
           auto *arg = to->getArgs().front();
@@ -452,6 +443,25 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctionOperator &fun
     return os << "<error>";
   os << *returnType;
   return os << ')';
+}
+
+llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeExpr &type) {
+  if (auto *ro = llvm::dyn_cast<RecordOperator>(&type)) {
+    return ro->decl(os);
+  } else if (auto *so = llvm::dyn_cast<SignatureOperator>(&type)) {
+    return so->decl(os);
+  } else if (auto *vo = llvm::dyn_cast<VariantOperator>(&type)) {
+    return vo->decl(os);
+  } else if (auto *mo = llvm::dyn_cast<ModuleOperator>(&type)) {
+    return mo->decl(os);
+  } else if (auto *fo = llvm::dyn_cast<FunctorOperator>(&type)) {
+    return fo->decl(os);
+  } else if (auto *ta = llvm::dyn_cast<TypeAlias>(&type)) {
+    return ta->decl(os);
+  } else {
+    return os << type;
+
+  }
 }
 
 } // namespace ocamlc2

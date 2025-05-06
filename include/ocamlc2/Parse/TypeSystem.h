@@ -502,5 +502,6 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const SignatureOperator &signature);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeExpr &type);
+llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeExpr &type);
 
 } // namespace ocamlc2

@@ -189,6 +189,7 @@ public:
   // and will actually prune them from expressions to remove long chains of
   // instantiated variables.
   static TypeExpr *prune(TypeExpr *type);
+  static TypeExpr *pruneTypeVariables(TypeExpr *type);
 
 private:
   LogicalResult initializeEnvironment();

@@ -386,6 +386,13 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
 }
 #undef DBGSCLONE
 
+TypeExpr* Unifier::pruneTypeVariables(TypeExpr* type) {
+  if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {
+    return pruneTypeVariables(tv->instance);
+  }
+  return type;
+}
+
 TypeExpr* Unifier::prune(TypeExpr* type) {
   if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {
     tv->instance = prune(tv->instance);

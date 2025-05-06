@@ -25,6 +25,7 @@ bool Repl = false;
 bool InRLWrap = false;
 bool Quiet = false;
 bool PreprocessWithCPPO = false;
+bool OCamlFormat = false;
 
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
 
@@ -115,4 +116,9 @@ static cl::opt<bool, true> clDTypedTree("dtypedtree",
 static cl::opt<bool> clNoColor("no-color",
                                   cl::desc("Disable color output"),
                                   cl::cb<void, bool>([](bool value) { Color = !value; }),
+                                  cl::cat(OcamlOptions));
+
+static cl::opt<bool, true> clOCamlFormat("ocamlformat",
+                                  cl::desc("Enable ocamlformat"),
+                                  cl::location(OCamlFormat),
                                   cl::cat(OcamlOptions));

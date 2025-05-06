@@ -1,6 +1,6 @@
 
 (* 
-RUN: p3 -d -f %s | FileCheck %s
+RUN: p3 -d -f %s | FileCheck %s.ref
 *)
 
 module type SigA = sig

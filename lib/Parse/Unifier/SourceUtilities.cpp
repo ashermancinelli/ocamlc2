@@ -13,6 +13,7 @@
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/iterator_range.h>
+#include <llvm/Support/Program.h>
 #include <llvm/Support/raw_ostream.h>
 #include <algorithm>
 #include <numeric>
@@ -160,17 +161,47 @@ void Unifier::loadStdlibInterfaces(fs::path exe) {
   CL::Debug = savedDebug;
 }
 
+static void runOCamlFormat(ModuleOperator *module) {
+  auto tool = llvm::sys::findProgramByName("ocamlformat");
+  if (!tool) {
+    llvm::errs() << "NOTE: Failed to find ocamlformat\n";
+    module->decl(llvm::outs()) << '\n';
+    return;
+  }
+
+  std::string declaration;
+  std::error_code ec;
+  auto tmpFile = fs::path(".tmp.mli");
+  llvm::raw_fd_ostream os(tmpFile.string(), ec);
+  if (ec) {
+    llvm::errs() << "Failed to open tmp.mli: " << ec.message() << '\n';
+    assert(false && "Failed to open tmp.mli");
+  }
+  module->decl(os) << '\n';
+  os.close();
+
+  fs::path exe = tool.get();
+  static std::string exeStr = exe.string();
+  static std::string tmpFileStr = tmpFile.string();
+  SmallVector<llvm::StringRef> args = {exeStr, tmpFileStr, "--intf"};
+  auto rc = llvm::sys::ExecuteAndWait(exeStr, args);
+  if (rc != 0) {
+    llvm::errs() << "ocamlformat failed with rc: " << rc << '\n';
+    module->decl(llvm::outs()) << '\n';
+  }
+}
+
 void Unifier::dumpTypes(llvm::raw_ostream &os) {
   if (!diagnostics.empty()) {
     return showErrors();
   }
-  // for (auto node : nodesToDump) {
-  //   os << node << '\n';
-  // }
   SignatureOperator::useNewline('\n');
   for (auto module : modulesToDump) {
-    module->decl(os) << '\n';
-    // os << *module << '\n';
+    if (CL::OCamlFormat) {
+      runOCamlFormat(module);
+    } else {
+      module->decl(os) << '\n';
+    }
   }
 }
 
