@@ -1441,6 +1441,7 @@ TypeExpr* Unifier::inferTypeConstructorPath(Cursor ast) {
 
 TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   TRACE();
+  TypeVarEnvScope scope(typeVarEnv);
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_definition");
   TypeExpr *type = nullptr;
@@ -1501,7 +1502,6 @@ TypeExpr* Unifier::inferVariantDeclaration(TypeExpr *type, Cursor ast) {
 
 TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   TRACE();
-  TypeVarEnvScope scope(typeVarEnv);
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_binding");
   auto namedChildren = getNamedChildren(node);
@@ -1601,9 +1601,11 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
       return typeOperator;
     }
     return type;
+  } else {
+    DBGS("Failed to find type operator, creating new one: " << text << '\n');
+    auto *inferredType = createTypeOperator(text, typeArgs);
+    return inferredType;
   }
-  auto *inferredType = createTypeOperator(text, typeArgs);
-  return inferredType;
 }
 
 TypeExpr* Unifier::inferParenthesizedPattern(Cursor ast) {

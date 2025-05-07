@@ -4,3 +4,6 @@
 [submodule "tpl/cpp-tree-sitter"]
 	path = tpl/cpp-tree-sitter
 	url = https://github.com/nsumner/cpp-tree-sitter.git
+[submodule "tpl/cpp-subprocess"]
+	path = tpl/cpp-subprocess
+	url = https://github.com/arun11299/cpp-subprocess.git

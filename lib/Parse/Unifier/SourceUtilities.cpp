@@ -1,4 +1,4 @@
-
+#include "llvm/Support/Process.h"
 #include "ocamlc2/Support/CL.h"
 #include "ocamlc2/Parse/TypeSystem.h"
 #include "ocamlc2/Parse/TSUnifier.h"
@@ -7,6 +7,7 @@
 #include "ocamlc2/Support/Utils.h"
 #include <cstdint>
 #include <llvm/ADT/Twine.h>
+#include <llvm/ADT/iterator.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/STLExtras.h>
@@ -23,6 +24,7 @@
 #include <sstream>
 #include <llvm/Support/FileSystem.h>
 #include <string>
+#include <cpp-subprocess/subprocess.hpp>
 
 #define DEBUG_TYPE "sourceutils"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -165,37 +167,48 @@ void Unifier::loadStdlibInterfaces(fs::path exe) {
   CL::Debug = savedDebug;
 }
 
-static void runOCamlFormat(ModuleOperator *module) {
-  auto tool = llvm::sys::findProgramByName("ocamlformat");
-  if (!tool) {
-    llvm::errs() << "NOTE: Failed to find ocamlformat\n";
-    module->decl(llvm::outs()) << '\n';
+llvm::raw_ostream& operator<<(llvm::raw_ostream &os, subprocess::Buffer const& buf) {
+  for (auto c : buf.buf) {
+    os << c;
+  }
+  return os;
+}
+
+static void runOCamlFormat(ModuleOperator *module, llvm::raw_ostream &os) {
+  auto ocamlFormat = llvm::sys::findProgramByName("ocamlformat");
+  auto bat = llvm::sys::findProgramByName("bat");
+  if (!ocamlFormat || !bat) {
+    llvm::errs() << "NOTE: Failed to find ocamlformat or bat\n";
+    module->decl(os) << '\n';
     return;
   }
 
   fs::path tmpDir = fs::temp_directory_path();
-  std::string randomName = "m" + std::to_string(std::random_device{}()) + std::string(".mli");
-  std::string name = (tmpDir / randomName).string();
+  std::string randomName =
+      "m" + std::to_string(std::random_device{}()) + std::string(".mli");
+  std::string tmpFileName = (tmpDir / randomName).string();
   std::error_code ec;
-  llvm::raw_fd_ostream os(name, ec);
+  llvm::raw_fd_ostream fs(tmpFileName, ec);
   if (ec) {
     llvm::errs() << "Failed to create tmp file: " << ec.message() << '\n';
     module->decl(llvm::outs()) << '\n';
+  }
+
+  module->decl(fs) << '\n';
+  fs.close();
+
+  std::vector<std::string> args = {*ocamlFormat, "--enable-outside-detected-project", "--intf", tmpFileName, "-i"};
+  DBGS("Running ocamlformat with args:\n" << llvm::join(args, " ") << '\n');
+  auto formatProcess = subprocess::check_output(args);
+
+  if (!llvm::sys::Process::StandardOutIsDisplayed() or !CL::Color) {
+    os << subprocess::check_output({"cat", tmpFileName});
     return;
   }
-  module->decl(os) << '\n';
-  os.flush();
 
-  fs::path exe = tool.get();
-  std::string exeStr = exe.string();
-  SmallVector<llvm::StringRef> args = {exeStr, "--enable-outside-detected-project", "-", "--intf"};
-  DBGS("Running ocamlformat with args:\n" << llvm::join(args, " ") << '\n');
-  auto rc = llvm::sys::ExecuteAndWait(
-      exeStr, args, {}, {name, "/dev/stdout", "/dev/stderr"});
-  if (rc != 0) {
-    llvm::errs() << "ocamlformat failed with rc: " << rc << '\n';
-    module->decl(llvm::outs()) << '\n';
-  }
+  std::vector<std::string> highlightArgs = {*bat, "-lml", "--plain", "--color", "always", tmpFileName};
+  DBGS("Running bat with args:\n" << llvm::join(highlightArgs, " ") << '\n');
+  os << subprocess::check_output(highlightArgs);
 }
 
 void Unifier::dumpTypes(llvm::raw_ostream &os) {
@@ -205,7 +218,7 @@ void Unifier::dumpTypes(llvm::raw_ostream &os) {
   SignatureOperator::useNewline('\n');
   for (auto module : modulesToDump) {
     if (CL::OCamlFormat) {
-      runOCamlFormat(module);
+      runOCamlFormat(module, os);
     } else {
       module->decl(os) << '\n';
     }

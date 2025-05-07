@@ -110,6 +110,7 @@ include(AddMLIR)
 include(HandleLLVMOptions)
 
 include_directories(include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tpl/cpp-subprocess)
 
 add_subdirectory(tpl)
 add_subdirectory(include)

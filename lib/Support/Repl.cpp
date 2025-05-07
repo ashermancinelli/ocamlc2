@@ -189,6 +189,29 @@ struct ClearCommand : public Command {
   }
 };
 
+struct DumpAllTypesCommand : public Command {
+  DumpAllTypesCommand() {
+    auto path = llvm::sys::findProgramByName("bat");
+    if (path) {
+      DBGS("Found bat: " << *path << '\n');
+      bat = *path;
+    } else {
+      DBGS("Did not find bat\n");
+    }
+  }
+  void callback(Unifier &unifier, ArrayRef<std::string> args) override {
+    unifier.dumpTypes(llvm::outs());
+  }
+  std::string_view help() const override {
+    return "Dump all types";
+  }
+  std::string_view name() const override {
+    return "types";
+  }
+private:
+  std::optional<fs::path> bat;
+};
+
 [[noreturn]] void exitRepl(Unifier &unifier) {
   llvm::outs() << ANSIColors::faint() << ANSIColors::italic() << "Goodbye!\n" << ANSIColors::reset();
   std::exit(unifier.anyFatalErrors());
@@ -209,6 +232,7 @@ struct ClearCommand : public Command {
   commands.emplace_back(std::make_unique<QuietCommand>(CL::Quiet));
   commands.emplace_back(std::make_unique<ShellCommand>());
   commands.emplace_back(std::make_unique<ClearCommand>(sourceSoFar));
+  commands.emplace_back(std::make_unique<DumpAllTypesCommand>());
   if (not CL::InRLWrap) {
     runUnderRlwrap(argc, argv, exe, unifier);
     assert(false && "Should not return");
@@ -270,11 +294,12 @@ struct ClearCommand : public Command {
       }
       continue;
     }
-    unifier.loadSource(sourceSoFar);
+    unifier.loadSource(source);
     if (failed(unifier)) {
       unifier.showErrors();
       sourceSoFar = "";
-    } else if (not CL::Quiet) {
+    }
+    if (CL::Debug) {
       unifier.showTypedTree();
     }
   }
