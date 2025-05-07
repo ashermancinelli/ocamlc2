@@ -25,7 +25,7 @@ bool Repl = false;
 bool InRLWrap = false;
 bool Quiet = false;
 bool PreprocessWithCPPO = false;
-bool OCamlFormat = false;
+bool OCamlFormat = true;
 
 llvm::cl::OptionCategory OcamlOptions("OCaml Options", "");
 
@@ -118,7 +118,7 @@ static cl::opt<bool> clNoColor("no-color",
                                   cl::cb<void, bool>([](bool value) { Color = !value; }),
                                   cl::cat(OcamlOptions));
 
-static cl::opt<bool, true> clOCamlFormat("ocamlformat",
+static cl::opt<bool, true> clOCamlFormat("fmt",
                                   cl::desc("Enable ocamlformat"),
                                   cl::location(OCamlFormat),
                                   cl::cat(OcamlOptions));

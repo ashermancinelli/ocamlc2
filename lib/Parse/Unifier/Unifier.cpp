@@ -48,7 +48,6 @@ namespace ocamlc2 {
 //    other type is a function type.
 LogicalResult Unifier::unify(TypeExpr* a, TypeExpr* b) {
   auto result = doUnify(a, b);
-  // todo propagate type aliases for readabity :/
   return result;
 }
 
@@ -59,6 +58,12 @@ LogicalResult Unifier::doUnify(TypeExpr* a, TypeExpr* b) {
   auto *wildcard = getWildcardType();
   a = prune(a);
   b = prune(b);
+  // if (auto *alias = llvm::dyn_cast<TypeAlias>(a)) {
+  //   return unify(alias->getType(), b);
+  // }
+  // if (auto *alias = llvm::dyn_cast<TypeAlias>(b)) {
+  //   return unify(a, alias->getType());
+  // }
   DBGS("Unifying:" << count++ << ": " << *a << " and " << *b << '\n');
   if (auto *tva = llvm::dyn_cast<TypeVariable>(a)) {
     if (auto *tvb = llvm::dyn_cast<TypeVariable>(b);
@@ -150,6 +155,8 @@ LogicalResult Unifier::unifyNames(SignatureOperator *a, SignatureOperator *b) {
   };
   
   for (auto [exports, localOrExport, signature] : plan) {
+    if (signature->isModuleType())
+      continue;
     for (auto exported : exports) {
       auto name = exported.name;
       auto kind = exported.kind;
@@ -281,10 +288,6 @@ LogicalResult Unifier::unifyRecordTypes(RecordOperator *a, RecordOperator *b) {
 TypeExpr *Unifier::clone(TypeExpr *type) {
   llvm::DenseMap<TypeExpr *, TypeExpr *> mapping;
   auto *cloned = clone(type, mapping);
-  if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
-    cloned = create<TypeAlias>(alias->getName(), cloned);
-    DBGS("Input was an alias, cloning as alias with the same name: " << *alias << " to " << *cloned << '\n');
-  }
   DBGS("Cloned type: " << *cloned << '\n');
   return cloned;
 }
@@ -360,7 +363,12 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
   type = prune(type);
   
   DBGSCLONE("recursing on type: " << *type << '\n');
-  if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
+  if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
+    DBGSCLONE("cloning type alias: " << alias->getName() << '\n');
+    auto *cloned = create<TypeAlias>(alias->getName(), clone(alias->getType(), mapping));
+    DBGSCLONE("cloned type alias: " << *cloned << '\n');
+    return cloned;
+  } else if (auto *op = llvm::dyn_cast<TypeOperator>(type)) {
     auto args =
         llvm::to_vector(llvm::map_range(op->getArgs(), [&](TypeExpr *arg) {
           return clone(arg, mapping);
@@ -388,7 +396,8 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
 
 TypeExpr* Unifier::pruneTypeVariables(TypeExpr* type) {
   if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {
-    return pruneTypeVariables(tv->instance);
+    tv->instance = pruneTypeVariables(tv->instance);
+    return tv->instance;
   }
   return type;
 }

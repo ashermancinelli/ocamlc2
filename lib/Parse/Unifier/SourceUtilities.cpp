@@ -6,6 +6,8 @@
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Support/Utils.h"
 #include <cstdint>
+#include <llvm/ADT/Twine.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
@@ -17,8 +19,10 @@
 #include <llvm/Support/raw_ostream.h>
 #include <algorithm>
 #include <numeric>
+#include <random>
 #include <sstream>
 #include <llvm/Support/FileSystem.h>
+#include <string>
 
 #define DEBUG_TYPE "sourceutils"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -169,22 +173,25 @@ static void runOCamlFormat(ModuleOperator *module) {
     return;
   }
 
-  std::string declaration;
+  fs::path tmpDir = fs::temp_directory_path();
+  std::string randomName = "m" + std::to_string(std::random_device{}()) + std::string(".mli");
+  std::string name = (tmpDir / randomName).string();
   std::error_code ec;
-  auto tmpFile = fs::path(".tmp.mli");
-  llvm::raw_fd_ostream os(tmpFile.string(), ec);
+  llvm::raw_fd_ostream os(name, ec);
   if (ec) {
-    llvm::errs() << "Failed to open tmp.mli: " << ec.message() << '\n';
-    assert(false && "Failed to open tmp.mli");
+    llvm::errs() << "Failed to create tmp file: " << ec.message() << '\n';
+    module->decl(llvm::outs()) << '\n';
+    return;
   }
   module->decl(os) << '\n';
-  os.close();
+  os.flush();
 
   fs::path exe = tool.get();
-  static std::string exeStr = exe.string();
-  static std::string tmpFileStr = tmpFile.string();
-  SmallVector<llvm::StringRef> args = {exeStr, tmpFileStr, "--intf"};
-  auto rc = llvm::sys::ExecuteAndWait(exeStr, args);
+  std::string exeStr = exe.string();
+  SmallVector<llvm::StringRef> args = {exeStr, "--enable-outside-detected-project", "-", "--intf"};
+  DBGS("Running ocamlformat with args:\n" << llvm::join(args, " ") << '\n');
+  auto rc = llvm::sys::ExecuteAndWait(
+      exeStr, args, {}, {name, "/dev/stdout", "/dev/stderr"});
   if (rc != 0) {
     llvm::errs() << "ocamlformat failed with rc: " << rc << '\n';
     module->decl(llvm::outs()) << '\n';

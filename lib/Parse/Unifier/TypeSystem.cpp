@@ -1,11 +1,55 @@
 #include "ocamlc2/Parse/TypeSystem.h"
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include "ocamlc2/Parse/TSUnifier.h"
 #define DEBUG_TYPE "TypeSystem.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
 namespace ocamlc2 {
+
+static llvm::raw_ostream &showTypeVariables(llvm::raw_ostream &os, const TypeOperator &type) {
+  auto vars = SmallVector<TypeExpr *>(type.getArgs());
+  switch (vars.size()) {
+  case 0:
+    break;
+  case 1:
+    os << *vars.front();
+    break;
+  default: {
+    os << '(' << *vars.front();
+    for (auto *arg : llvm::drop_begin(vars)) {
+      os << ", " << *arg;
+    }
+    os << ')';
+  }
+  }
+  return os << ' ';
+}
+
+[[maybe_unused]] static llvm::raw_ostream &showUninstantiatedTypeVariables(llvm::raw_ostream &os, const TypeOperator &type) {
+  SmallVector<const TypeExpr *> vars;
+  for (auto *arg : type.getArgs()) {
+    if (isa::uninstantiatedTypeVariable(arg)) {
+      vars.push_back(arg);
+    }
+  }
+  switch (vars.size()) {
+  case 0:
+    break;
+  case 1:
+    os << *vars.front();
+    break;
+  default: {
+    os << '(' << *vars.front();
+    for (auto *arg : llvm::drop_begin(vars)) {
+      os << ", " << *arg;
+    }
+    os << ')';
+  }
+  }
+  return os << ' ';
+}
 
 TypeExpr *SignatureOperator::lookupType(llvm::StringRef name) const {
   DBGS("lookupType: " << name << '\n');
@@ -137,10 +181,30 @@ llvm::raw_ostream &TypeAlias::decl(llvm::raw_ostream &os) const {
     }
   }
   os << getName();
-  if (!isa::uninstantiatedTypeVariable(getType())) {
-    os << " = " << *getType();
+  auto *type = Unifier::pruneTypeVariables(getType());
+  if (isa::uninstantiatedTypeVariable(type)) {
+    return os;
+  } else if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
+    os << " = " << alias->getName();
+  } else {
+    os << " = " << *type;
   }
+  // os << " (alias " << *this << ")";
   return os;
+}
+
+static llvm::StringRef escape(llvm::StringRef str) {
+  static constexpr llvm::StringRef namesToWrapInParens[]{
+      "^",  "let*", "let+", "+",  "-",  "*",  "/",  "%",  "<",
+      "*.", "/.",   "<.",   "+.", "-.", "<=", ">",  ">=", "=",
+      "<>", "&&",   "||",   "@@", "^",  "=",  "<>", "<",
+  };
+  static std::vector<std::string> saved;
+  if (llvm::is_contained(namesToWrapInParens, str)) {
+    saved.push_back("( " + str.str() + " )");
+    return saved.back();
+  }
+  return str;
 }
 
 llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const {
@@ -163,24 +227,22 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
       } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(exportedType)) {
         recordOperator->decl(os, true) << SignatureOperator::newline;
       } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
+        os << "type " << e.name << " = " << *to << SignatureOperator::newline;
+        // ::ocamlc2::decl(os, *to) << SignatureOperator::newline;
+      } else if (auto *alias = llvm::dyn_cast<TypeAlias>(exportedType)) {
         os << "type ";
-        if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
-          for (auto *arg : to->getArgs()) {
-            arg = Unifier::pruneTypeVariables(arg);
-            if (isa::uninstantiatedTypeVariable(arg)) {
-              os << *arg << " ";
-            }
+        auto *type = Unifier::pruneTypeVariables(alias->getType());
+        if (auto *to = llvm::dyn_cast<TypeOperator>(type)) {
+          showUninstantiatedTypeVariables(os, *to);
+          os << ' ' << e.name << " = " << *to;
+        } else {
+          os << ' ' << e.name;
+          if (!isa::uninstantiatedTypeVariable(type)) {
+            os << " = " << *type;
           }
         }
-        os << e.name;
-        if (to->getArgs().empty() and e.name == to->getName()) {
-          // just a decl, maybe don't show anything else? eg `type t`
-        } else {
-          os << " = " << *exportedType;
-        }
         os << SignatureOperator::newline;
-      } else if (auto *alias = llvm::dyn_cast<TypeAlias>(exportedType)) {
-        alias->decl(os) << SignatureOperator::newlineCharacter();
+        // alias->decl(os) << SignatureOperator::newlineCharacter();
       } else if (llvm::isa<TypeVariable>(exportedType)) {
         os << "type " << e.name << " = " << *exportedType << SignatureOperator::newline;
       } else {
@@ -190,14 +252,15 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
       break;
     }
     case SignatureOperator::Export::Variable: {
+      auto name = escape(e.name);
       if (auto *module = llvm::dyn_cast<ModuleOperator>(exportedType)) {
         module->decl(os) << SignatureOperator::newline;
       } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(exportedType)) {
         functor->decl(os) << SignatureOperator::newline;
       } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
-        os << "val " << e.name << " : " << *fo << SignatureOperator::newline;
+        os << "val " << name << " : " << *fo << SignatureOperator::newline;
       } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
-        os << "val " << e.name << " : ";
+        os << "val " << name << " : ";
         if (!to->getArgs().empty()) {
           auto *arg = to->getArgs().front();
           if (to->getArgs().size() > 1) {
@@ -212,7 +275,7 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
         }
         os << to->getName() << SignatureOperator::newline;
       } else {
-        os << "val " << e.name << " : " << *e.type << SignatureOperator::newline;
+        os << "val " << name << " : " << *e.type << SignatureOperator::newline;
       }
       break;
     }
@@ -225,7 +288,8 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
 
 llvm::raw_ostream &SignatureOperator::decl(llvm::raw_ostream &os) const {
   if (!isAnonymous()) {
-    os << (isModuleType() ? "module type" : "module") << ' ' << getName() << " : ";
+    os << (isModuleType() ? "module type" : "module") << ' ' << getName();
+    os << (isModuleType() ? " = " : " : ");
   }
   os << "sig" << SignatureOperator::newline;
   showSignature(os);
@@ -242,7 +306,7 @@ llvm::raw_ostream &FunctorOperator::decl(llvm::raw_ostream &os) const {
   auto args = getArgs().drop_back();
   auto params = getModuleParameters();
   auto *resultSignature = back();
-  os << "module " << name;
+  os << "module " << name << " :";
   for (auto [param, arg] : llvm::zip_longest(params, args)) {
     auto *argExpr = *arg;
     if (param) {
@@ -251,11 +315,15 @@ llvm::raw_ostream &FunctorOperator::decl(llvm::raw_ostream &os) const {
       os << " (" << *argExpr << ")";
     }
   }
-  os << " : " << *resultSignature;
+  os << " -> " << *resultSignature;
   return os;
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeAlias &alias) {
+  // return os << "alias " << alias.getName() << " = " << *alias.getType();
+  // if (auto *to = llvm::dyn_cast<TypeOperator>(alias.getType())) {
+  //   showUninstantiatedTypeVariables(os, *to);
+  // }
   return os << alias.getName();
 }
 
@@ -336,9 +404,7 @@ llvm::raw_ostream &RecordOperator::decl(llvm::raw_ostream &os, const bool named)
   auto zipped = llvm::zip(fieldNames, fieldTypes);
   if (named) {
     os << "type ";
-    for (auto *arg : getArgs()) {
-      os << *arg << " ";
-    }
+    showTypeVariables(os, *this);
     os << getName() << " = ";
   }
   os << "{ ";
@@ -445,6 +511,27 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const FunctionOperator &fun
   return os << ')';
 }
 
+
+static llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeOperator &type) {
+  os << "type ";
+  const auto arity = type.size();
+  if (arity > 1) {
+    os << "(";
+    for (auto [i, rawArg] : llvm::enumerate(type.getArgs())) {
+      auto *arg = Unifier::pruneTypeVariables(rawArg);
+      if (isa::uninstantiatedTypeVariable(arg)) {
+        os << *arg << (i == arity - 1 ? "" : ", ");
+      }
+    }
+    os << ") ";
+  } else if (arity == 1) {
+    os << type.getArgs().front() << ' ';
+  }
+  os << type.getName();
+  os << " = " << type;
+  return os;
+}
+
 llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeExpr &type) {
   if (auto *ro = llvm::dyn_cast<RecordOperator>(&type)) {
     return ro->decl(os);
@@ -456,12 +543,29 @@ llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeExpr &type) {
     return mo->decl(os);
   } else if (auto *fo = llvm::dyn_cast<FunctorOperator>(&type)) {
     return fo->decl(os);
+  } else if (auto *to = llvm::dyn_cast<TypeOperator>(&type)) {
+    return decl(os, *to);
   } else if (auto *ta = llvm::dyn_cast<TypeAlias>(&type)) {
     return ta->decl(os);
   } else {
     return os << type;
-
   }
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeOperator &op) {
+  auto args = op.getArgs();
+  auto name = op.getName().str();
+  if (args.empty()) {
+    return os << name;
+  }
+  if (args.size() == 1) {
+    return os << *args.front() << ' ' << name;
+  }
+  os << '(' << *args.front();
+  for (auto *arg : args.drop_front()) {
+    os << ", " << *arg;
+  }
+  return os << ") " << name;
 }
 
 } // namespace ocamlc2

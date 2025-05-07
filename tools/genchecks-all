@@ -42,17 +42,24 @@ sub process_file {
             $cmd =~ s/%s/$file/;
             $cmd =~ s/%S/$dir/;
             $cmd =~ s/\|.+//;
+            $cmd .= " | $tools/genchecks";
             say $file;
             say $cmd;
             my ($tfh, $temp) = tempfile();
-            `$cmd | $tools/genchecks >> $temp`;
+            `$cmd >> $temp`;
             if (not -f $ref) {
                 say "Note: no reference file for $file";
                 print `cat $temp`;
             } else {
-                say `diff -u $ref $temp`;
+                my $diff = `diff -u $ref $temp`;
+                if (not $diff) {
+                    say "No changes";
+                    next;
+                }
+                say $diff;
             }
             $read->();
+            say "mv $temp $ref";
             `mv $temp $ref`;
         }
     }

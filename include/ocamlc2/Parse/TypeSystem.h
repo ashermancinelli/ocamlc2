@@ -441,23 +441,6 @@ bool uninstantiatedTypeVariable(TypeExpr *type);
 }
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                                     const TypeOperator &op) {
-  auto args = op.getArgs();
-  auto name = op.getName().str();
-  if (args.empty()) {
-    return os << name;
-  }
-  if (args.size() == 1) {
-    return os << *args.front() << ' ' << name;
-  }
-  os << '(' << *args.front();
-  for (auto *arg : args.drop_front()) {
-    os << ", " << *arg;
-  }
-  return os << ") " << name;
-}
-
-inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const TupleOperator &tuple) {
   auto args = tuple.getArgs();
   os << *args.front();
@@ -502,6 +485,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const SignatureOperator &signature);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeExpr &type);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeOperator &op);
 llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeExpr &type);
 
 } // namespace ocamlc2

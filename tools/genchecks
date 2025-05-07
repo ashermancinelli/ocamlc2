@@ -18,11 +18,12 @@ def generate_filecheck_pattern(input_str):
     """
     # Find all type variables in the format 't<number>
     type_vars = re.findall(r"'[a-z0-9]+", input_str)
+    type_vars = sorted(set(type_vars))
     
     # Create a mapping from each unique type variable to its FileCheck replacement
     var_map = {}
     pattern_map = {}
-    for i, var in enumerate(set(type_vars), 1):
+    for i, var in enumerate(type_vars, 1):
         var_map[var] = f"'[[T{i}]]"
         pattern_map[var] = f"'[[T{i}:.+]]"
     
