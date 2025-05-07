@@ -212,89 +212,110 @@ static llvm::StringRef escape(llvm::StringRef str) {
   return str;
 }
 
+llvm::raw_ostream &SignatureOperator::showOneExport(
+    llvm::raw_ostream &os, const Export &e,
+    llvm::SmallVector<llvm::StringRef> &namesToSkip, bool isMemberOfMutuallyRecursiveGroup) const {
+  if (llvm::is_contained(namesToSkip, e.name)) {
+    return os;
+  }
+  llvm::StringRef typeKeyword = isMemberOfMutuallyRecursiveGroup ? "and" : "type";
+  auto *exportedType = Unifier::pruneTypeVariables(e.type);
+  switch (e.kind) {
+  case SignatureOperator::Export::Type: {
+    if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(exportedType)) {
+      variantOperator->decl(os) << SignatureOperator::newline;
+      for (auto ctor : variantOperator->getConstructorNames()) {
+        namesToSkip.push_back(ctor);
+      }
+    } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
+      os << typeKeyword << " ";
+      auto freeTypeVariables = collectFreeTypeVariables(fo);
+      if (!freeTypeVariables.empty()) {
+        showUninstantiatedTypeVariables(os, freeTypeVariables);
+      }
+      os << " " << e.name << " = ";
+      fo->decl(os) << SignatureOperator::newline;
+    } else if (auto *recordOperator =
+                   llvm::dyn_cast<RecordOperator>(exportedType)) {
+      recordOperator->decl(os, true) << SignatureOperator::newline;
+    } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
+      os << typeKeyword << " " << e.name << " = " << *to << SignatureOperator::newline;
+      // ::ocamlc2::decl(os, *to) << SignatureOperator::newline;
+    } else if (auto *alias = llvm::dyn_cast<TypeAlias>(exportedType)) {
+      os << typeKeyword << " ";
+      auto *type = Unifier::pruneTypeVariables(alias->getType());
+      if (auto *to = llvm::dyn_cast<TypeOperator>(type)) {
+        showUninstantiatedTypeVariables(os, *to);
+        os << ' ' << e.name << " = " << *to;
+      } else {
+        os << ' ' << e.name;
+        if (!isa::uninstantiatedTypeVariable(type)) {
+          os << " = " << *type;
+        }
+      }
+      os << SignatureOperator::newline;
+      // alias->decl(os) << SignatureOperator::newlineCharacter();
+    } else if (llvm::isa<TypeVariable>(exportedType)) {
+      os << typeKeyword << " " << e.name << " = " << *exportedType
+         << SignatureOperator::newline;
+    } else {
+      os << "unknown type operator: " << e.name << *exportedType
+         << SignatureOperator::newline;
+      assert(false && "unknown type operator");
+    }
+
+    if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
+      // DBGS("\nmutually recursive type group: type " << e.name << " and " << llvm::join(to->getMutuallyRecursiveTypeGroup(), "and ") << '\n');
+      for (auto groupMember : to->getMutuallyRecursiveTypeGroup()) {
+        auto e = llvm::find_if(exports, [&](const auto &e) {
+          return e.name == groupMember && e.kind == Export::Kind::Type;
+        });
+        assert(e != exports.end() && "Member of mutually recursive type group not found");
+        showOneExport(os, *e, namesToSkip, true);
+        namesToSkip.push_back(groupMember);
+      }
+    }
+    break;
+  }
+  case SignatureOperator::Export::Variable: {
+    auto name = escape(e.name);
+    if (auto *module = llvm::dyn_cast<ModuleOperator>(exportedType)) {
+      module->decl(os) << SignatureOperator::newline;
+    } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(exportedType)) {
+      functor->decl(os) << SignatureOperator::newline;
+    } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
+      os << "val " << name << " : " << *fo << SignatureOperator::newline;
+    } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
+      os << "val " << name << " : ";
+      if (!to->getArgs().empty()) {
+        auto *arg = to->getArgs().front();
+        if (to->getArgs().size() > 1) {
+          os << "(" << *arg;
+          for (auto *arg : llvm::drop_begin(to->getArgs())) {
+            os << ", " << *arg;
+          }
+          os << ") ";
+        } else {
+          os << *arg << " ";
+        }
+      }
+      os << to->getName() << SignatureOperator::newline;
+    } else {
+      os << "val " << name << " : " << *e.type << SignatureOperator::newline;
+    }
+    break;
+  }
+  default:
+    assert(false && "unknown export kind");
+  }
+  return os;
+}
+
 llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const {
   // eg type constructors will show up as functions but we don't really want to print those
   llvm::SmallVector<llvm::StringRef> namesToSkip;
   for (auto e : getExports()) {
-    if (std::find_if(namesToSkip.begin(), namesToSkip.end(), [&](const auto &other) {
-          return other == e.name;
-        }) != namesToSkip.end()) {
-      continue;
-    }
-    auto *exportedType = Unifier::pruneTypeVariables(e.type);
-    switch (e.kind) {
-    case SignatureOperator::Export::Type: {
-      if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(exportedType)) {
-        variantOperator->decl(os) << SignatureOperator::newline;
-        for (auto ctor : variantOperator->getConstructorNames()) {
-          namesToSkip.push_back(ctor);
-        }
-      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
-        os << "type ";
-        auto freeTypeVariables = collectFreeTypeVariables(fo);
-        if (!freeTypeVariables.empty()) {
-          showUninstantiatedTypeVariables(os, freeTypeVariables);
-        }
-        os << " " << e.name << " = ";
-        fo->decl(os) << SignatureOperator::newline;
-      } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(exportedType)) {
-        recordOperator->decl(os, true) << SignatureOperator::newline;
-      } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
-        os << "type " << e.name << " = " << *to << SignatureOperator::newline;
-        // ::ocamlc2::decl(os, *to) << SignatureOperator::newline;
-      } else if (auto *alias = llvm::dyn_cast<TypeAlias>(exportedType)) {
-        os << "type ";
-        auto *type = Unifier::pruneTypeVariables(alias->getType());
-        if (auto *to = llvm::dyn_cast<TypeOperator>(type)) {
-          showUninstantiatedTypeVariables(os, *to);
-          os << ' ' << e.name << " = " << *to;
-        } else {
-          os << ' ' << e.name;
-          if (!isa::uninstantiatedTypeVariable(type)) {
-            os << " = " << *type;
-          }
-        }
-        os << SignatureOperator::newline;
-        // alias->decl(os) << SignatureOperator::newlineCharacter();
-      } else if (llvm::isa<TypeVariable>(exportedType)) {
-        os << "type " << e.name << " = " << *exportedType << SignatureOperator::newline;
-      } else {
-        os << "unknown type operator: " << e.name << *exportedType << SignatureOperator::newline;
-        assert(false && "unknown type operator");
-      }
-      break;
-    }
-    case SignatureOperator::Export::Variable: {
-      auto name = escape(e.name);
-      if (auto *module = llvm::dyn_cast<ModuleOperator>(exportedType)) {
-        module->decl(os) << SignatureOperator::newline;
-      } else if (auto *functor = llvm::dyn_cast<FunctorOperator>(exportedType)) {
-        functor->decl(os) << SignatureOperator::newline;
-      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
-        os << "val " << name << " : " << *fo << SignatureOperator::newline;
-      } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
-        os << "val " << name << " : ";
-        if (!to->getArgs().empty()) {
-          auto *arg = to->getArgs().front();
-          if (to->getArgs().size() > 1) {
-            os << "(" << *arg;
-            for (auto *arg : llvm::drop_begin(to->getArgs())) {
-              os << ", " << *arg;
-            }
-            os << ") ";
-          } else {
-            os << *arg << " ";
-          }
-        }
-        os << to->getName() << SignatureOperator::newline;
-      } else {
-        os << "val " << name << " : " << *e.type << SignatureOperator::newline;
-      }
-      break;
-    }
-    default:
-      assert(false && "unknown export kind");
-    }
+    showOneExport(os, e, namesToSkip, false);
   }
   return os;
 }

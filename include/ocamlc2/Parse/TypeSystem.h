@@ -87,6 +87,11 @@ struct TypeOperator : public TypeExpr {
   inline TypeExpr* at(size_t index) const { return args[index]; }
   inline TypeExpr *back() const { return args.back(); }
   inline std::size_t size() const { return args.size(); }
+  inline llvm::ArrayRef<llvm::StringRef> getMutuallyRecursiveTypeGroup() const {return mutuallyRecursiveTypeGroup;}
+  inline void addMutuallyRecursiveType(llvm::StringRef name) { mutuallyRecursiveTypeGroup.push_back(name); }
+  inline void addMutuallyRecursiveTypes(llvm::ArrayRef<llvm::StringRef> names) {
+    llvm::copy(names, std::back_inserter(mutuallyRecursiveTypeGroup));
+  }
   consteval static llvm::StringRef getConstructorOperatorName() { return "V"; }
   consteval static llvm::StringRef getListOperatorName() { return "list"; }
   consteval static llvm::StringRef getArrayOperatorName() { return "array"; }
@@ -102,6 +107,7 @@ struct TypeOperator : public TypeExpr {
 
 protected:
   llvm::SmallVector<TypeExpr*> args;
+  llvm::SmallVector<llvm::StringRef> mutuallyRecursiveTypeGroup;
   llvm::StringRef name;
 };
 
@@ -304,6 +310,7 @@ struct SignatureOperator : public TypeOperator {
     return expr->getKind() == Kind::Signature || expr->getKind() == Kind::Module;
   }
   llvm::raw_ostream &showSignature(llvm::raw_ostream &os) const;
+  llvm::raw_ostream &showOneExport(llvm::raw_ostream &os, const Export &e, llvm::SmallVector<llvm::StringRef> &namesToSkip, bool isMemberOfMutuallyRecursiveGroup) const;
   llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
   inline bool isAnonymous() const { return getName() == getAnonymousSignatureName(); }
   inline Env &getTypeEnv() { return typeEnv; }

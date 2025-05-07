@@ -292,7 +292,7 @@ TypeExpr *Unifier::clone(TypeExpr *type) {
   return cloned;
 }
 
-TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
+TypeOperator *Unifier::cloneOperatorWithoutMutuallyRecursiveTypes(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
   if (auto *func = llvm::dyn_cast<FunctionOperator>(op)) {
     DBGS("Cloning function operator: " << *func << '\n');
     for (auto [arg, mappedArg] : llvm::zip(func->getArgs(), mappedArgs  )) {
@@ -355,6 +355,17 @@ TypeExpr *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *>
     DBGS("Cloning type operator: " << *op << '\n');
     return createTypeOperator(op->getKind(), op->getName(), mappedArgs);
   }
+}
+
+TypeOperator *Unifier::cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping) {
+  DBGS("Cloning operator: " << *op << '\n');
+  auto *cloned = cloneOperatorWithoutMutuallyRecursiveTypes(op, mappedArgs, mapping);
+  // cloned->addMutuallyRecursiveTypes(op->getMutuallyRecursiveTypeGroup());
+  for (auto name : op->getMutuallyRecursiveTypeGroup()) {
+    DBGS("Adding mutually recursive type: " << name << '\n');
+    cloned->addMutuallyRecursiveType(name);
+  }
+  return cloned;
 }
 
 #define DBGSCLONE DBGS

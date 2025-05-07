@@ -1446,15 +1446,27 @@ TypeExpr* Unifier::inferTypeDefinition(Cursor ast) {
   TypeVarEnvScope scope(typeVarEnv);
   auto node = ast.getCurrentNode();
   assert(node.getType() == "type_definition");
-  TypeExpr *type = nullptr;
+  TypeExpr *firstType = nullptr;
+  TypeOperator *firstTypeOperator = nullptr;
   for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
     auto child = node.getNamedChild(i);
-    type = inferTypeBinding(child.getCursor());
+    auto *type = inferTypeBinding(child.getCursor());
     ORNULL(type);
     setType(child, type);
+    if (firstType == nullptr) {
+      firstType = type;
+      firstTypeOperator = llvm::dyn_cast<TypeOperator>(prune(firstType));
+    } else {
+      assert(firstTypeOperator && "Expected type operator if part of mutually recursive type group");
+      auto name = child.getChildByFieldName("name");
+      assert(!name.isNull() && "Expected name in type binding");
+      auto nameText = getTextSaved(name);
+      firstTypeOperator->addMutuallyRecursiveType(nameText);
+      DBGS("Adding mutually recursive type: " << nameText << " to " << *firstTypeOperator << '\n');
+    }
   }
-  setType(node, type);
-  return type;
+  setType(node, firstType);
+  return firstType;
 }
 
 TypeExpr* Unifier::inferVariantConstructor(VariantOperator* variantType, Cursor ast) {

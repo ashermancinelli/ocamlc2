@@ -191,7 +191,8 @@ public:
   // Clone a type expression, replacing generic type variables with new ones
   TypeExpr *clone(TypeExpr *type);
   TypeExpr *clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
-  TypeExpr *cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
+  TypeOperator *cloneOperator(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
+  TypeOperator *cloneOperatorWithoutMutuallyRecursiveTypes(TypeOperator *op, llvm::SmallVector<TypeExpr *> &mappedArgs, llvm::DenseMap<TypeExpr *, TypeExpr *> &mapping);
 
   // The function Prune is used whenever a type expression has to be inspected:
   // it will always return a type expression which is either an uninstantiated
