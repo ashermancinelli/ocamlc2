@@ -573,6 +573,42 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   return moduleStack.back();
 }
 
+TypeExpr* Unifier::inferValueDefinition(Cursor ast) {
+  TRACE();
+  auto children = getNamedChildren(ast.getCurrentNode());
+  if (children.size() == 1) {
+    return infer(children[0]);
+  } else if (children.size() == 2) {
+    auto op = children[0];
+    auto argument = children[1];
+    if (op.getType() == "let_operator") {
+      return inferLetOperatorApplication(getTextSaved(op), argument);
+    }
+  }
+  assert(false);
+}
+
+TypeExpr* Unifier::inferLetOperatorApplication(llvm::StringRef op, Node argument) {
+  assert(false);
+  assert(argument.getType() == "let_binding");
+  static constexpr llvm::StringRef allowedOps[] = {"let*", "let+"};
+  if (!llvm::is_contained(allowedOps, op)) {
+    RNULL(SSWRAP("Invalid let operator: " << op));
+  }
+  auto *opType = getVariableType(op);
+  RNULL_IF_NULL(opType, "Invalid let operator");
+  auto *bindType = getFunctionType(
+      {createTypeVariable(), createTypeVariable(), createTypeVariable()});
+  UNIFY_OR_RNULL(opType, bindType);
+  // auto pattern = argument.getChildByFieldName("pattern");
+  // declareVariable(pattern, bodyType);
+  // auto body = argument.getChildByFieldName("body");
+  // auto *bodyType = infer(body);
+  // RNULL_IF_NULL(bodyType, "Invalid let operator body expression");
+  // auto *inferredLetOperatorType = getFunctionType()
+  return nullptr;
+}
+
 TypeExpr* Unifier::inferValuePath(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "value_path" or node.getType() == "module_path");
@@ -828,10 +864,94 @@ TypeExpr* Unifier::inferGuard(Cursor ast) {
   return getBoolType();
 }
 
+std::optional<detail::UserDefinedLetOperator> Unifier::isUserDefinedLetOperator(Node node) {
+  if (node.getType() == "let_expression") {
+    auto children = getNamedChildren(node, {"value_definition"});
+    if (!children.empty()) {
+      assert(children.size() == 1 && "Expected exactly one value definition in let expression");
+      auto letBinding = getNamedChildren(children.front(), {"let_operator", "let_binding"});
+      if (letBinding.size() == 2) {
+        auto op = letBinding.front();
+        assert(op.getType() == "let_operator");
+        auto binding = letBinding.back();
+        assert(binding.getType() == "let_binding");
+        auto exprBody = node.getChildByFieldName("body");
+        return detail::UserDefinedLetOperator{
+          getTextSaved(op),
+          binding.getChildByFieldName("pattern"),
+          binding.getChildByFieldName("body"),
+          exprBody
+        };
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+TypeExpr* Unifier::inferUserDefinedLetExpression(detail::UserDefinedLetOperator letOperator) {
+  TRACE();
+  static constexpr llvm::StringRef allowedOps[] = {"let*", "let+"};
+  auto [op, bindingPattern, bindingBody, exprBody] = letOperator.tuple();
+  assert(llvm::is_contained(allowedOps, op) && "Expected user defined let operator");
+  auto *opType = getVariableType(op);
+  ORNULL(opType);
+  DBGS("Declared let operator type: " << *opType << '\n');
+
+  // 
+  // let ( let* ) o f =
+  //   match o with
+  //     | None -> None
+  //     | Some x -> f x
+  // let return x = Some x
+  // 
+  // # val ( let* ) : 'a option -> ('a -> 'b option) -> 'b option = <fun>
+  // # val return : 'a -> 'a option = <fun>
+
+  // Match the monadic bind/>>= pattern:
+  // val ( let* ) : 'a option -> ('a -> 'b option) -> 'b option
+  //                ^ am          ^ a   ^ bm          ^ bm
+  //                             ^^^^^^^^^^^^^^^^^ ft
+
+  auto *am = createTypeVariable();
+  auto *a = createTypeVariable();
+  auto *bm = createTypeVariable();
+  auto *ft = getFunctionType({a, bm});
+  auto *letOperatorInferredType = getFunctionType({am, ft, bm});
+  DBGS("Inferred let operator type: " << *letOperatorInferredType << '\n');
+
+  UNIFY_OR_RNULL(opType, letOperatorInferredType);
+  DBGS("Inferred let operator type: " << *letOperatorInferredType << '\n');
+
+  DBGS("Inferred binding body type\n");
+  auto *bindingBodyType = infer(bindingBody);
+  ORNULL(bindingBodyType);
+  DBGS("Inferred binding body type: " << *bindingBodyType << '\n');
+  UNIFY_OR_RNULL(bindingBodyType, am);
+  DBGS("Inferred binding body type after unification: " << *bindingBodyType << '\n');
+
+  {
+    detail::Scope scope(this);
+    auto *patternType = declareConcreteVariable(bindingPattern);
+    DBGS("Declared pattern type: " << *patternType << '\n');
+    auto *inferredExprBodyType = infer(exprBody);
+    ORNULL(inferredExprBodyType);
+    DBGS("Inferred expr body type: " << *inferredExprBodyType << '\n');
+    UNIFY_OR_RNULL(inferredExprBodyType, bm);
+    UNIFY_OR_RNULL(patternType, a);
+    DBGS("Inferred expr body type after unification: " << *inferredExprBodyType << '\n');
+    (void)patternType;
+  }
+
+  return bm;
+}
+
 TypeExpr* Unifier::inferLetExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "let_expression");
+  if (auto udlo = isUserDefinedLetOperator(node)) {
+    return inferUserDefinedLetExpression(udlo.value());
+  }
   auto children = getNamedChildren(node);
   auto valueExpression = llvm::find_if(children, [](auto n) {
     return n.getType() == "value_definition";
@@ -1518,7 +1638,6 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     "parenthesized_expression",
     "then_clause",
     "else_clause",
-    "value_definition",
     "expression_item",
     "parenthesized_type",
     "parenthesized_module_expression",
@@ -1628,6 +1747,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferModuleStructure(std::move(ast));
   } else if (type == "module_application") {
     return inferModuleApplication(std::move(ast));
+  } else if (type == "value_definition") {
+    return inferValueDefinition(std::move(ast));
   }
   const auto message = SSWRAP("Unknown node type: " << node.getType());
   llvm::errs() << message << '\n';

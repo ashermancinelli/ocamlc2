@@ -26,11 +26,21 @@ using ts::Node;
 using ts::NodeID;
 using ts::Cursor;
 namespace detail {
-  struct ModuleSearchPathScope;
-  struct ModuleScope;
-  struct Scope;
-  struct TypeVariableScope;
-  struct ConcreteTypeVariableScope;
+struct ModuleSearchPathScope;
+struct ModuleScope;
+struct Scope;
+struct TypeVariableScope;
+struct ConcreteTypeVariableScope;
+
+struct UserDefinedLetOperator {
+  llvm::StringRef op;
+  Node bindingPattern;
+  Node bindingBody;
+  Node exprBody;
+  auto tuple() const {
+    return std::make_tuple(op, bindingPattern, bindingBody, exprBody);
+  }
+};
 }
 
 struct Unifier {
@@ -251,6 +261,9 @@ private:
   TypeExpr *inferValueSpecification(Cursor ast);
   TypeExpr *inferVariantConstructor(VariantOperator *variantType, Cursor ast);
   TypeExpr *inferVariantDeclaration(TypeExpr *variantType, Cursor ast);
+  TypeExpr *inferValueDefinition(Cursor ast);
+  TypeExpr *inferLetOperatorApplication(llvm::StringRef op, Node argument);
+  TypeExpr *inferUserDefinedLetExpression(detail::UserDefinedLetOperator letOperator);
 
   TypeExpr *findMatchingRecordType(TypeExpr *type);
   FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);
@@ -258,10 +271,13 @@ private:
   RecordOperator *inferRecordDeclaration(Cursor ast);
   RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
 
+  std::optional<detail::UserDefinedLetOperator>
+  isUserDefinedLetOperator(Node node);
   TypeExpr *declareFunctionParameter(Node node);
   TypeExpr *declareFunctionParameter(ParameterDescriptor desc, Node node);
   ParameterDescriptor describeParameter(Node node);
-  SmallVector<ParameterDescriptor> describeParameters(SmallVector<Node> parameters);
+  SmallVector<ParameterDescriptor>
+  describeParameters(SmallVector<Node> parameters);
   FailureOr<ParameterDescriptor> describeFunctionArgumentType(Node node);
 
   inline SmallVector<Node> flattenFunctionType(Node node) {
@@ -301,10 +317,10 @@ private:
   TypeExpr *getDeclaredType(ArrayRef<llvm::StringRef> path);
   TypeExpr *getDeclaredType(Node node);
 
-  // Does not error on missing typevariable because TVs are introduced implicitly
-  // in value specifications and we need to create them on-demand, different from
-  // function parameters. e.g. the following declaration does not declare the TV
-  // before using it.
+  // Does not error on missing typevariable because TVs are introduced
+  // implicitly in value specifications and we need to create them on-demand,
+  // different from function parameters. e.g. the following declaration does
+  // not declare the TV before using it.
   //
   // val access : 'a list -> 'a
   TypeVariable *declareTypeVariable(llvm::StringRef name);
@@ -382,12 +398,13 @@ private:
   std::vector<std::unique_ptr<TypeExpr>> typeArena;
 
   // Paths to search for type variables
-  llvm::SmallVector<llvm::SmallVector<llvm::StringRef>> moduleSearchPath = {{"Stdlib"}};
+  llvm::SmallVector<llvm::SmallVector<llvm::StringRef>> moduleSearchPath = {
+      {"Stdlib"}};
 
   // It is useful to keep and dump certain nodes and types for debugging
   // and testing. Record them here to be dumped after inference is complete.
   llvm::SmallVector<std::string> nodesToDump;
-  llvm::SmallVector<ModuleOperator*> modulesToDump;
+  llvm::SmallVector<ModuleOperator *> modulesToDump;
 
   // Sidecar for caching inferred types
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;
@@ -397,9 +414,11 @@ private:
   llvm::DenseMap<ts::NodeID, ParameterDescriptor> parameterDescSidecar;
 
   // Record the record fields seen so far so we can infer the use of a field
-  // on an uninferred variable can automatically promote to the last seen record
-  // type with a matching field name.
-  llvm::SmallVector<std::pair<llvm::StringRef, llvm::SmallVector<llvm::StringRef>>> seenRecordFields;
+  // on an uninferred variable can automatically promote to the last seen
+  // record type with a matching field name.
+  llvm::SmallVector<
+      std::pair<llvm::StringRef, llvm::SmallVector<llvm::StringRef>>>
+      seenRecordFields;
 
   // Root scope for the unifier, created when the unifier is constructed.
   // Sometimes we need to declare stdlib types before actually loading the
@@ -418,10 +437,13 @@ private:
   int maxErrors = 5;
 
   SmallVector<Diagnostic> diagnostics;
-  nullptr_t error(std::string message, ts::Node node, const char* filename, unsigned long lineno);
-  nullptr_t error(std::string message, const char* filename, unsigned long lineno);
+  nullptr_t error(std::string message, ts::Node node, const char *filename,
+                  unsigned long lineno);
+  nullptr_t error(std::string message, const char *filename,
+                  unsigned long lineno);
 
-  // RAII wrappers for pushing and popping search paths and environment scopes.
+  // RAII wrappers for pushing and popping search paths and environment
+  // scopes.
   friend struct detail::ModuleSearchPathScope;
   friend struct detail::ModuleScope;
   friend struct detail::Scope;
@@ -460,12 +482,13 @@ private:
 };
 
 struct ModuleScope {
-  ModuleScope(Unifier &unifier, llvm::StringRef module=SignatureOperator::getAnonymousSignatureName()) : unifier(unifier) {
+  ModuleScope(
+      Unifier &unifier,
+      llvm::StringRef module = SignatureOperator::getAnonymousSignatureName())
+      : unifier(unifier) {
     unifier.pushModule(module, false);
   }
-  ~ModuleScope() {
-    unifier.popModule();
-  }
+  ~ModuleScope() { unifier.popModule(); }
 
 private:
   Unifier &unifier;
