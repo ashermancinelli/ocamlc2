@@ -48,7 +48,8 @@ static llvm::raw_ostream &showUninstantiatedTypeVariables(llvm::raw_ostream &os,
 static llvm::raw_ostream &showUninstantiatedTypeVariables(llvm::raw_ostream &os, const TypeOperator &type) {
   SmallVector<const TypeVariable *> vars;
   for (auto *arg : type.getArgs()) {
-    if (auto *tv = llvm::dyn_cast<TypeVariable>(arg); tv && isa::uninstantiatedTypeVariable(tv)) {
+    if (auto *tv = llvm::dyn_cast<TypeVariable>(Unifier::prune(arg));
+        tv && isa::uninstantiatedTypeVariable(tv)) {
       vars.push_back(tv);
     }
   }
@@ -219,7 +220,7 @@ llvm::raw_ostream &SignatureOperator::showOneExport(
     return os;
   }
   llvm::StringRef typeKeyword = isMemberOfMutuallyRecursiveGroup ? "and" : "type";
-  auto *exportedType = Unifier::pruneTypeVariables(e.type);
+  auto *exportedType = Unifier::prune(e.type);
   switch (e.kind) {
   case SignatureOperator::Export::Type: {
     if (auto *variantOperator = llvm::dyn_cast<VariantOperator>(exportedType)) {
@@ -239,11 +240,13 @@ llvm::raw_ostream &SignatureOperator::showOneExport(
                    llvm::dyn_cast<RecordOperator>(exportedType)) {
       recordOperator->decl(os, true) << SignatureOperator::newline;
     } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
-      os << typeKeyword << " " << e.name << " = " << *to << SignatureOperator::newline;
+      os << typeKeyword << " ";
+      showUninstantiatedTypeVariables(os, *to);
+      os << e.name << " = " << *to << SignatureOperator::newline;
       // ::ocamlc2::decl(os, *to) << SignatureOperator::newline;
     } else if (auto *alias = llvm::dyn_cast<TypeAlias>(exportedType)) {
       os << typeKeyword << " ";
-      auto *type = Unifier::pruneTypeVariables(alias->getType());
+      auto *type = Unifier::prune(alias->getType());
       if (auto *to = llvm::dyn_cast<TypeOperator>(type)) {
         showUninstantiatedTypeVariables(os, *to);
         os << ' ' << e.name << " = " << *to;
@@ -425,9 +428,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const SignatureOperator &si
 
 llvm::raw_ostream &VariantOperator::decl(llvm::raw_ostream &os) const {
   os << "type ";
-  for (auto typeArg : getArgs()) {
-    os << *typeArg << " ";
-  }
+  showUninstantiatedTypeVariables(os, *this);
   os << getName() << " = ";
   auto first = constructors.front();
   showCtor(os, first);

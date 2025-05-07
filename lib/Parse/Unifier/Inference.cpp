@@ -1517,6 +1517,8 @@ TypeExpr* Unifier::inferVariantDeclaration(TypeExpr *type, Cursor ast) {
 TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
+  auto firstChild = getTextSaved(node.getChild(0));
+  assert(firstChild != "+" and firstChild != "-" and "NYI: co/contravaraince");
   assert(node.getType() == "type_binding");
   auto namedChildren = getNamedChildren(node);
   auto *namedIterator = namedChildren.begin();
