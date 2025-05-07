@@ -567,7 +567,9 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
       }
     } while (ast.gotoNextSibling());
   }
-  if (!isLoadingStdlib) {
+  if (isLoadingStdlib) {
+    stdlibModules.push_back(moduleStack.back());
+  } else {
     modulesToDump.push_back(moduleStack.back());
   }
   return moduleStack.back();
@@ -1508,7 +1510,7 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto *namedIterator = namedChildren.begin();
   SmallVector<TypeExpr*> typeVars;
   for (auto child = *namedIterator; child.getType() == "type_variable"; child = *++namedIterator) {
-    auto *typeVar = declareTypeVariable(getTextSaved(child));
+    auto *typeVar = getTypeVariable(child);
     typeVars.push_back(typeVar);
   }
   auto name = node.getChildByFieldName("name");
@@ -1516,8 +1518,8 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   auto equation = toOptional(node.getChildByFieldName("equation"));
   auto body = toOptional(node.getChildByFieldName("body"));
   auto typeName = getTextSaved(name);
-  TypeExpr *thisType = createTypeOperator(typeName, typeVars);
   std::optional<StringRef> eqName = std::nullopt;;
+  TypeExpr *thisType = nullptr; //createTypeOperator(typeName, typeVars);
   if (equation) {
     // This is a type alias and we can disregard the original type operator.
     // we MUST disregard the original type operator so type aliases are fully
@@ -1530,7 +1532,9 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
     if (auto *to = llvm::dyn_cast<TypeOperator>(thisType)) {
       eqName = to->getName();
     }
-  } 
+  } else {
+    thisType = create<TypeOperator>(typeName, typeVars);
+  }
   if (body) {
     DBGS("has body\n");
     if (body->getType() == "variant_declaration") {
@@ -1570,6 +1574,28 @@ TypeExpr* Unifier::inferTypeBinding(Cursor ast) {
   return thisType;
 }
 
+LogicalResult Unifier::specializeConstructedType(TypeExpr *type, ArrayRef<TypeExpr *> typeArgs) {
+  type = prune(type);
+  if (typeArgs.empty()) {
+    DBGS("No more type args, done specializing constructed type\n");
+    return success();
+  }
+  auto *to = llvm::dyn_cast<TypeOperator>(type);
+  if (!to) {
+    DBGS("Not a type operator, done specializing constructed type\n");
+    return success();
+  }
+  auto freeTypeVariables = collectFreeTypeVariables(to);
+  assert(freeTypeVariables.size() >= typeArgs.size());
+  for (auto [i, typeArg] : llvm::enumerate(typeArgs)) {
+    auto *freeTypeVariable = freeTypeVariables[i];
+    if (failed(unify(freeTypeVariable, typeArg))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
 TypeExpr* Unifier::inferConstructedType(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
@@ -1584,8 +1610,14 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
   auto text = getTextSaved(name);
   if (auto *type = maybeGetDeclaredType(text)) {
     DBGS("Type already exists: " << *type << '\n');
+    auto specialized = specializeConstructedType(type, typeArgs);
+    if (failed(specialized)) {
+      RNULL("Failed to specialize constructed type", name);
+    }
+    return type;
+    #if 0
     if (auto *typeOperator = llvm::dyn_cast<TypeOperator>(type)) {
-      DBGS("Type operator found\n");
+      DBGS("Type operator found: " << *typeOperator << '\n');
       auto toArgs = typeOperator->getArgs();
       DBG(llvm::for_each(toArgs, [&](auto arg) { DBGS("toArg: " << *arg << '\n'); }));
       DBG(llvm::for_each(typeArgs, [&](auto arg) { DBGS("typeArg: " << *arg << '\n'); }));
@@ -1600,7 +1632,7 @@ TypeExpr* Unifier::inferConstructedType(Cursor ast) {
       }
       return typeOperator;
     }
-    return type;
+    #endif
   } else {
     DBGS("Failed to find type operator, creating new one: " << text << '\n');
     auto *inferredType = createTypeOperator(text, typeArgs);

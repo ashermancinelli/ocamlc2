@@ -74,7 +74,7 @@ struct Unifier {
 
   // Show recorded function definitions, declarations, and variable let bindings,
   // for debugging and testing.
-  void dumpTypes(llvm::raw_ostream &os);
+  void dumpTypes(llvm::raw_ostream &os, bool showStdlib = false);
 
   [[nodiscard]] bool anyFatalErrors() const;
   void showErrors();
@@ -270,6 +270,8 @@ private:
   FailureOr<std::pair<llvm::StringRef, SignatureOperator *>> inferModuleParameter(Cursor ast);
   RecordOperator *inferRecordDeclaration(Cursor ast);
   RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
+  LogicalResult specializeConstructedType(TypeExpr *type, ArrayRef<TypeExpr *> typeArgs);
+  // LogicalResult specializeConstructedType(TypeExpr *type, ArrayRef<TypeExpr *> typeArgs, llvm::DenseMap<TypeExpr*, TypeExpr*> &mapping);
 
   std::optional<detail::UserDefinedLetOperator>
   isUserDefinedLetOperator(Node node);
@@ -405,6 +407,7 @@ private:
   // and testing. Record them here to be dumped after inference is complete.
   llvm::SmallVector<std::string> nodesToDump;
   llvm::SmallVector<ModuleOperator *> modulesToDump;
+  llvm::SmallVector<ModuleOperator *> stdlibModules;
 
   // Sidecar for caching inferred types
   llvm::DenseMap<ts::NodeID, TypeExpr *> nodeToType;

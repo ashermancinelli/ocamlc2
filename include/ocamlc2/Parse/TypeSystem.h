@@ -488,4 +488,6 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeExpr &type);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeOperator &op);
 llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeExpr &type);
 
+llvm::SmallVector<TypeVariable *> collectFreeTypeVariables(TypeOperator *to);
+
 } // namespace ocamlc2

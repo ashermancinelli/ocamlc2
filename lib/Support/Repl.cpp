@@ -67,6 +67,7 @@ struct TypeCommand : public Command {
       llvm::errs() << "Usage: #type <symbol>\n";
       return;
     }
+    llvm::outs() << "val ";
     unifier.showType(llvm::outs(), args[0]) << "\n";
   }
   std::string_view help() const override {
@@ -136,10 +137,8 @@ private:
 };
 
 struct QuietCommand : public Command {
-  bool &quiet;
-  QuietCommand(bool &quiet) : quiet(quiet) {}
   void callback(Unifier &unifier, ArrayRef<std::string> args) override {
-    quiet = true;
+    CL::Quiet = true;
   }
   std::string_view help() const override {
     return "Disable AST and type printing after each command";
@@ -200,7 +199,7 @@ struct DumpAllTypesCommand : public Command {
     }
   }
   void callback(Unifier &unifier, ArrayRef<std::string> args) override {
-    unifier.dumpTypes(llvm::outs());
+    unifier.dumpTypes(llvm::outs(), false);
   }
   std::string_view help() const override {
     return "Dump all types";
@@ -210,6 +209,18 @@ struct DumpAllTypesCommand : public Command {
   }
 private:
   std::optional<fs::path> bat;
+};
+
+struct DumpStdlibTypesCommand : public Command {
+  void callback(Unifier &unifier, ArrayRef<std::string> args) override {
+    unifier.dumpTypes(llvm::outs(), true);
+  }
+  std::string_view help() const override {
+    return "Dump all types, including stdlib types";
+  }
+  std::string_view name() const override {
+    return "stdlib";
+  }
 };
 
 [[noreturn]] void exitRepl(Unifier &unifier) {
@@ -229,10 +240,11 @@ private:
   commands.emplace_back(std::make_unique<ShowTypedASTCommand>());
   commands.emplace_back(std::make_unique<ShowSourceCommand>(sourceSoFar));
   commands.emplace_back(std::make_unique<HelpCommand>(commands));
-  commands.emplace_back(std::make_unique<QuietCommand>(CL::Quiet));
+  commands.emplace_back(std::make_unique<QuietCommand>());
   commands.emplace_back(std::make_unique<ShellCommand>());
   commands.emplace_back(std::make_unique<ClearCommand>(sourceSoFar));
   commands.emplace_back(std::make_unique<DumpAllTypesCommand>());
+  commands.emplace_back(std::make_unique<DumpStdlibTypesCommand>());
   if (not CL::InRLWrap) {
     runUnderRlwrap(argc, argv, exe, unifier);
     assert(false && "Should not return");

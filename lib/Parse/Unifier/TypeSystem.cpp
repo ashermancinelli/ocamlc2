@@ -27,13 +27,7 @@ static llvm::raw_ostream &showTypeVariables(llvm::raw_ostream &os, const TypeOpe
   return os << ' ';
 }
 
-[[maybe_unused]] static llvm::raw_ostream &showUninstantiatedTypeVariables(llvm::raw_ostream &os, const TypeOperator &type) {
-  SmallVector<const TypeExpr *> vars;
-  for (auto *arg : type.getArgs()) {
-    if (isa::uninstantiatedTypeVariable(arg)) {
-      vars.push_back(arg);
-    }
-  }
+static llvm::raw_ostream &showUninstantiatedTypeVariables(llvm::raw_ostream &os, ArrayRef<const TypeVariable *> vars) {
   switch (vars.size()) {
   case 0:
     break;
@@ -49,6 +43,17 @@ static llvm::raw_ostream &showTypeVariables(llvm::raw_ostream &os, const TypeOpe
   }
   }
   return os << ' ';
+}
+
+static llvm::raw_ostream &showUninstantiatedTypeVariables(llvm::raw_ostream &os, const TypeOperator &type) {
+  SmallVector<const TypeVariable *> vars;
+  for (auto *arg : type.getArgs()) {
+    if (auto *tv = llvm::dyn_cast<TypeVariable>(arg); tv && isa::uninstantiatedTypeVariable(tv)) {
+      vars.push_back(tv);
+    }
+  }
+  showUninstantiatedTypeVariables(os, vars);
+  return os;
 }
 
 TypeExpr *SignatureOperator::lookupType(llvm::StringRef name) const {
@@ -224,6 +229,14 @@ llvm::raw_ostream &SignatureOperator::showSignature(llvm::raw_ostream &os) const
         for (auto ctor : variantOperator->getConstructorNames()) {
           namesToSkip.push_back(ctor);
         }
+      } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
+        os << "type ";
+        auto freeTypeVariables = collectFreeTypeVariables(fo);
+        if (!freeTypeVariables.empty()) {
+          showUninstantiatedTypeVariables(os, freeTypeVariables);
+        }
+        os << " " << e.name << " = ";
+        fo->decl(os) << SignatureOperator::newline;
       } else if (auto *recordOperator = llvm::dyn_cast<RecordOperator>(exportedType)) {
         recordOperator->decl(os, true) << SignatureOperator::newline;
       } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
@@ -295,6 +308,10 @@ llvm::raw_ostream &SignatureOperator::decl(llvm::raw_ostream &os) const {
   showSignature(os);
   os << "end";
   return os;
+}
+
+llvm::raw_ostream &FunctionOperator::decl(llvm::raw_ostream &os) const {
+  return os << *this;
 }
 
 llvm::raw_ostream &ModuleOperator::decl(llvm::raw_ostream &os) const {
@@ -566,6 +583,23 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeOperator &op) {
     os << ", " << *arg;
   }
   return os << ") " << name;
+}
+
+static void collectFreeTypeVariables(TypeOperator *to, SmallVector<TypeVariable *> &freeTypeVariables) {
+  for (auto *arg : to->getArgs()) {
+    arg = Unifier::prune(arg);
+    if (auto *tv = llvm::dyn_cast<TypeVariable>(arg)) {
+      freeTypeVariables.push_back(tv);
+    } else if (auto *to2 = llvm::dyn_cast<TypeOperator>(arg)) {
+      collectFreeTypeVariables(to2, freeTypeVariables);
+    }
+  }
+}
+
+SmallVector<TypeVariable *> collectFreeTypeVariables(TypeOperator *to) {
+  SmallVector<TypeVariable *> freeTypeVariables;
+  collectFreeTypeVariables(to, freeTypeVariables);
+  return freeTypeVariables;
 }
 
 } // namespace ocamlc2

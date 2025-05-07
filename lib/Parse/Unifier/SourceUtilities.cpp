@@ -155,16 +155,17 @@ void Unifier::setMaxErrors(int maxErrors) {
 }
 
 void Unifier::loadStdlibInterfaces(fs::path exe) {
+  DBGS("Disabling debug while loading stdlib interfaces\n");
   isLoadingStdlib = true;
-  static bool savedDebug = CL::Debug;
+  bool savedDebug = CL::Debug;
   CL::Debug = false;
-  DBGS("Loading stdlib interfaces\n");
   for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
+    DBGS("Loading stdlib interface file: " << filepath << "\n");
     loadSourceFile(filepath);
   }
-  DBGS("Done loading stdlib interfaces\n");
   isLoadingStdlib = false;
   CL::Debug = savedDebug;
+  DBGS("Done loading stdlib interfaces\n");
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream &os, subprocess::Buffer const& buf) {
@@ -211,17 +212,25 @@ static void runOCamlFormat(ModuleOperator *module, llvm::raw_ostream &os) {
   os << subprocess::check_output(highlightArgs);
 }
 
-void Unifier::dumpTypes(llvm::raw_ostream &os) {
+void Unifier::dumpTypes(llvm::raw_ostream &os, bool showStdlib) {
   if (!diagnostics.empty()) {
     return showErrors();
   }
   SignatureOperator::useNewline('\n');
-  for (auto module : modulesToDump) {
+  auto show = [&](ModuleOperator *module) {
     if (CL::OCamlFormat) {
       runOCamlFormat(module, os);
     } else {
       module->decl(os) << '\n';
     }
+  };
+  if (showStdlib) {
+    for (auto module : stdlibModules) {
+      show(module);
+    }
+  }
+  for (auto module : modulesToDump) {
+    show(module);
   }
 }
 

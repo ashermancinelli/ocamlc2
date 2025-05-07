@@ -23,7 +23,7 @@ bool DParseTree = false;
 bool DTypedTree = false;
 bool Repl = false;
 bool InRLWrap = false;
-bool Quiet = false;
+bool Quiet = true;
 bool PreprocessWithCPPO = false;
 bool OCamlFormat = true;
 
