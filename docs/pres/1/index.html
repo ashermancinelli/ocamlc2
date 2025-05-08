@@ -24,6 +24,8 @@
       .type-comment { color: #888; font-style: italic; }
       .caret-line { color: #ffff5a; }
       .typevar { color: #5affff; font-style: italic; }
+      p { font-size: 0.7em; }
+      li { font-size: 0.7em; }
     </style>
   </head>
   <body>
@@ -262,10 +264,269 @@
           </section>
           <section data-auto-animate>
             <pre data-id="code-2"><code data-trim data-line-numbers>
-              let x: 'a -> ('b -> 'c) -> 'b -> 'c
+              let x: ('b -> 'c) -> 'b -> 'c
                   f: 'b -> 'c
                   y: 'b
                   = f y: 'c;;
+            </code></pre>
+          </section>
+        </section>
+
+        <!-- Option Type Inference Demo -->
+        <section>
+          <section data-auto-animate>
+            <h3 data-auto-animate-id="type-operators-title">Type Operators</h3>
+            <p>Let's examine how OCaml infers types with the option type</p>
+          </section>
+
+          <section data-auto-animate>
+            <h3 data-auto-animate-id="type-operators-title">Type Operators</h3>
+            <pre><code data-trim data-line-numbers>
+              (* Option type in OCaml *)
+              type 'a option = None | Some of 'a
+            </code></pre>
+            <ul>
+              <li>Used to represent computations that might not return a value</li>
+              <li>Safer alternative to null or undefined</li>
+              <li>Forces handling of "missing" cases via pattern matching</li>
+            </ul>
+          </section>
+
+          <section data-auto-animate>
+            <h3 data-auto-animate-id="type-operators-title">Type Operators</h3>
+            <p class="type-comment">
+              Explanation of each step in the type inference process will looks like this.
+              <span class="fragment fade-up">
+                And type variables will look like <span class="typevar">this</span>.
+              </span>
+            </p>
+          </section>
+
+          <!-- The find_index function -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p>A function that finds the index of an item in an array</p>
+          </section>
+          
+          <!-- Step 1: Initial function signature -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              (* Starting the type inference process: *)
+              <br><span class="typevar">find_index</span>: <span class="typevar">'a</span> (fresh type variable)
+              <br><span class="typevar">item</span>: <span class="typevar">'b</span> (fresh type variable)
+              <br><span class="typevar">arr</span>: <span class="typevar">'c</span> (fresh type variable)
+            </p>
+          </section>
+
+          <!-- Step 1b: Inner function aux -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                (*             ^ *)
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              (* Now examining inner function aux and its parameter *)
+              <br><span class="typevar">find_index</span>: <span class="typevar">'a</span>
+              <br><span class="typevar">item</span>: <span class="typevar">'b</span>
+              <br><span class="typevar">arr</span>: <span class="typevar">'c</span>
+              <br><span class="typevar">aux</span>: <span class="typevar">'d</span> (fresh type variable)
+              <br><span class="typevar">i</span>: <span class="typevar">'e</span> (fresh type variable)
+            </p>
+          </section>
+
+          <!-- Step 2: Looking at Array.length -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  (*               ^ *)
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              (* Just processed Array.length *)
+              <br><span class="typevar">Array.length</span>: <span class="typevar">'d array -> int</span>
+              <br>Therefore, <span class="typevar">arr</span> must be an array: <span class="typevar">'d array</span>
+              <br>And expression <span class="typevar">i >= Array.length arr</span> has type <span class="typevar">bool</span>
+            </p>
+          </section>
+
+          <!-- Step 3: Analyzing array access -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  (*        ^ *)
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              (* Just processed array access *)
+              <br><span class="typevar">arr.(i)</span>: Array access requires <span class="typevar">i</span> to be <span class="typevar">int</span>
+              <br>Element accessed has type <span class="typevar">'d</span> (element type of array)
+            </p>
+          </section>
+
+          <!-- Step 4: Analyzing comparison -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  (*               ^ *)
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              (* Just processed equality comparison *)
+              <br><span class="typevar">arr.(i) = item</span>: Equality comparison requires same types
+              <br>Therefore <span class="typevar">item</span> must have same type as array elements: <span class="typevar">'d</span>
+              <br>Equality comparison returns <span class="typevar">bool</span>
+            </p>
+          </section>
+
+          <!-- Step 5: Analyzing branch return types -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  (*                         ^ *)
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              (* Just processed Some i *)
+              <br><span class="typevar">None</span> has type <span class="typevar">'e option</span> for some type <span class="typevar">'e</span>
+              <br><span class="typevar">Some i</span> has type <span class="typevar">int option</span> (because <span class="typevar">i</span> is <span class="typevar">int</span>)
+              <br>Both branches must return the same type, so <span class="typevar">'e</span> = <span class="typevar">int</span>
+            </p>
+          </section>
+
+          <!-- Step 6: Analyzing recursive call -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                  (*    ^ *)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              (* Just processed aux recursive call *)
+              <br><span class="typevar">aux</span> takes an <span class="typevar">int</span> parameter and returns <span class="typevar">int option</span>
+              <br>So <span class="typevar">aux</span> has type <span class="typevar">int -> int option</span>
+            </p>
+          </section>
+
+          <!-- Step 7: Calling aux with 0 -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                in
+                aux 0
+                (* ^ *)
+            </code></pre>
+            <p class="type-comment">
+              (* Just processed aux 0 *)
+              <br><span class="typevar">aux 0</span> has type <span class="typevar">int option</span>
+              <br>This is the return type of <span class="typevar">find_index</span>
+            </p>
+          </section>
+
+          <!-- Final type -->
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                in
+                aux 0
+                
+              (* Inferred type:
+                val find_index : 'a -> 'a array -> int option *)
+            </code></pre>
+            <p class="type-comment">
+              <span class="typevar">find_index</span> takes an item of type <span class="typevar">'a</span>
+              <br>and an array of the same type <span class="typevar">'a array</span>
+              <br>and returns an <span class="typevar">int option</span>
+            </p>
+          </section>
+
+          <!-- Using the function -->
+          <section>
+            <h3>Using the function</h3>
+            <pre><code data-trim data-line-numbers>
+              let arr = [|1; 2; 3; 4; 5|]
+              let item = 3
+              let result = find_index item arr
+              
+              (* Pattern matching on the option type *)
+              match result with
+              | Some i -> Printf.printf "Found at index %d\n" i
+              | None -> print_endline "Not found"
+            </code></pre>
+            <p>Pattern matching ensures we handle both possible outcomes</p>
+          </section>
+          
+          <!-- Option type in the standard library -->
+          <section>
+            <h3>Option Type in the Standard Library</h3>
+            <pre><code data-trim data-line-numbers>
+              (* Standard library functions *)
+              val bind : 'a option -> ('a -> 'b option) -> 'b option
+              val map : ('a -> 'b) -> 'a option -> 'b option
+              val value : 'a option -> default:'a -> 'a
+              
+              (* Common monadic operations *)
+              let (>>=) opt f = Option.bind opt f
+              let (|>) x f = f x
+              
+              find_index 3 arr 
+                |> Option.map (fun i -> i * 2)
+                >>= (fun doubled -> Some (doubled + 1))
             </code></pre>
           </section>
         </section>
