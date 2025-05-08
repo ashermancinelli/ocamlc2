@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>OCaml Type Inference</title>
+
+    <link rel="stylesheet" href="dist/reset.css">
+    <link rel="stylesheet" href="dist/reveal.css">
+    <link rel="stylesheet" href="dist/theme/black.css">
+
+    <!-- Theme used for syntax highlighted code -->
+    <link rel="stylesheet" href="plugin/highlight/monokai.css">
+    <style>
+      .highlight-red { color: #ff5a5a; }
+      .highlight-green { color: #5aff5a; }
+      .highlight-blue { color: #5a5aff; }
+      .highlight-yellow { color: #ffff5a; }
+      .highlight-purple { color: #ff5aff; }
+      .highlight-cyan { color: #5affff; }
+      .highlight-orange { color: #ffa55a; }
+      .reveal pre code { max-height: 500px; }
+      .type-comment { color: #888; font-style: italic; }
+      .caret-line { color: #ffff5a; }
+      .typevar { color: #5affff; font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <h3>Type Inference Process</h3>
+          <p>Watch the typechecker examine each component</p>
+        </section>
+
+        <section>
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*   ^ *)
+              (* Examining 'let' keyword *)
+              (* No types assigned yet *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*   ^ *)
+              (* Just processed: x *)
+              (* x: 'a (fresh type variable assigned) *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*     ^ *)
+              (* Just processed: f *)
+              (* x: 'a *)
+              (* f: 'b (fresh type variable assigned) *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*       ^ *)
+              (* Just processed: y *)
+              (* x: 'a *)
+              (* f: 'b *)
+              (* y: 'c (fresh type variable assigned) *)
+            </code></pre>
+          </section>
+
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*         ^ *)
+              (* Just processed: = *)
+              (* x: 'a *)
+              (* f: 'b *)
+              (* y: 'c *)
+              (* Now looking at right-hand side *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*           ^ *)
+              (* Just processed: f (in function position) *)
+              (* x: 'a *)
+              (* f: 'b - must be a function! *)
+              (* y: 'c *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*             ^ *)
+              (* Just processed: y (as argument) *)
+              (* x: 'a *)
+              (* f: 'c -> 'd (function taking y's type) *)
+              (* y: 'c *)
+              (* About to finish application *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*              ^ *)
+              (* Just processed: function application f y *)
+              (* x: 'a *)
+              (* f: 'c -> 'd *)
+              (* y: 'c *)
+              (* f y: 'd *)
+              (* Constraint: 'b = 'c -> 'd *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*               ^ *)
+              (* Just processed: entire expression *)
+              (* x: 'a *)
+              (* f: 'c -> 'd *)
+              (* y: 'c *)
+              (* f y: 'd *)
+              (* x is a function taking f, y and returning 'd *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="code-1"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              (*               ^ *)
+              (* Generalized type: *)
+              (* val x : 'a -> ('b -> 'c) -> 'b -> 'c *)
+            </code></pre>
+          </section>
+        </section>
+        
+        <!-- Visual flow diagram -->
+        <section>
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                   ^
+              
+              (* Environment: *)
+              (* x: 'a (fresh) *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                     ^
+              
+              (* Environment: *)
+              (* x: 'a (fresh) *)
+              (* f: 'b (fresh) *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                       ^
+              
+              (* Environment: *)
+              (* x: 'a (fresh) *)
+              (* f: 'b (fresh) *)
+              (* y: 'c (fresh) *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                             ^
+              
+              (* Environment: *)
+              (* x: 'a (fresh) *)
+              (* f: 'b (fresh) → must be a function! *)
+              (* y: 'c (fresh) *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                               ^
+              
+              (* Environment: *)
+              (* x: 'a (fresh) *)
+              (* f: 'c → 'd    (refined) *)
+              (* y: 'c (fresh) *)
+              (* Constraint: 'b = 'c → 'd *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                           ^^^^^
+              
+              (* Environment: *)
+              (* x: 'a (fresh) *)
+              (* f: 'c → 'd *)
+              (* y: 'c *)
+              (* Result type: 'd *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                ^^^^^^^^^^^^^
+              
+              (* Function analysis: *)
+              (* x takes parameters: f: 'c → 'd, y: 'c *)
+              (* x returns: 'd *)
+              (* x's type: 'a → ('c → 'd) → 'c → 'd *)
+            </code></pre>
+          </section>
+          
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              
+              (* FINAL TYPE (α-renamed): *)
+              (* val x : 'a → ('b → 'c) → 'b → 'c *)
+              
+              (* A polymorphic higher-order function! *)
+            </code></pre>
+          </section>
+        </section>
+
+        <!-- Existing sections -->
+        <section>
+          <section data-auto-animate>
+            <pre data-id="code-2"><code data-trim data-line-numbers>
+              let x: 'a
+                  f: 'b
+                  y: 'c
+                  = f y;;
+            </code></pre>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="code-2"><code data-trim data-line-numbers>
+              let x: 'a
+                  f: 'c -> 'd
+                  y: 'c
+                  = f y: 'd;;
+            </code></pre>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="code-2"><code data-trim data-line-numbers>
+              let x: 'a -> ('b -> 'c) -> 'b -> 'c
+                  f: 'b -> 'c
+                  y: 'b
+                  = f y: 'c;;
+            </code></pre>
+          </section>
+        </section>
+      </div>
+    </div>
+
+    <script src="dist/reveal.js"></script>
+    <script src="plugin/notes/notes.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script src="plugin/highlight/highlight.js"></script>
+    <script>
+      // More info about initialization & config:
+      // - https://revealjs.com/initialization/
+      // - https://revealjs.com/config/
+      Reveal.initialize({
+        hash: true,
+        autoAnimateDuration: 0.6,
+        autoAnimateEasing: 'ease-out',
+        highlight: {
+          defaultLanguage: 'ocaml',
+        },
+
+        // Learn about plugins: https://revealjs.com/plugins/
+        plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
+      });
+    </script>
+  </body>
+</html>
