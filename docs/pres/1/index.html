@@ -257,6 +257,14 @@
           <section data-auto-animate>
             <pre data-id="code-2"><code data-trim data-line-numbers>
               let x: 'a
+                  f: 'b
+                  y: 'c
+                  = f y: 'd;;
+            </code></pre>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="code-2"><code data-trim data-line-numbers>
+              let x: 'a
                   f: 'c -> 'd
                   y: 'c
                   = f y: 'd;;
@@ -264,10 +272,10 @@
           </section>
           <section data-auto-animate>
             <pre data-id="code-2"><code data-trim data-line-numbers>
-              let x: ('b -> 'c) -> 'b -> 'c
-                  f: 'b -> 'c
-                  y: 'b
-                  = f y: 'c;;
+              let x: ('c -> 'd) -> 'c -> 'd
+                  f: 'c -> 'd
+                  y: 'c
+                  = f y: 'd;;
             </code></pre>
           </section>
         </section>
