@@ -19,7 +19,7 @@ module type S = sig
   val empty : set_type
 end
 
-module Make (Dep : ORDERED) : S = struct
+module Make (Dep : ORDERED) = struct
   type element_type = Dep.t
   type set_type = element_type array
 

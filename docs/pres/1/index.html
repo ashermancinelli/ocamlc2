@@ -336,7 +336,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              (* Starting the type inference process: *)
+              Starting the type inference process:
               <br><span class="typevar">find_index</span>: <span class="typevar">'a</span> (fresh type variable)
               <br><span class="typevar">item</span>: <span class="typevar">'b</span> (fresh type variable)
               <br><span class="typevar">arr</span>: <span class="typevar">'c</span> (fresh type variable)
@@ -356,7 +356,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              (* Now examining inner function aux and its parameter *)
+              Now examining inner function aux and its parameter
               <br><span class="typevar">find_index</span>: <span class="typevar">'a</span>
               <br><span class="typevar">item</span>: <span class="typevar">'b</span>
               <br><span class="typevar">arr</span>: <span class="typevar">'c</span>
@@ -378,7 +378,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              (* Just processed Array.length *)
+              Just processed Array.length
               <br><span class="typevar">Array.length</span>: <span class="typevar">'d array -> int</span>
               <br>Therefore, <span class="typevar">arr</span> must be an array: <span class="typevar">'d array</span>
               <br>And expression <span class="typevar">i >= Array.length arr</span> has type <span class="typevar">bool</span>
@@ -398,7 +398,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              (* Just processed array access *)
+              Just processed array access
               <br><span class="typevar">arr.(i)</span>: Array access requires <span class="typevar">i</span> to be <span class="typevar">int</span>
               <br>Element accessed has type <span class="typevar">'d</span> (element type of array)
             </p>
@@ -417,7 +417,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              (* Just processed equality comparison *)
+              Just processed equality comparison
               <br><span class="typevar">arr.(i) = item</span>: Equality comparison requires same types
               <br>Therefore <span class="typevar">item</span> must have same type as array elements: <span class="typevar">'d</span>
               <br>Equality comparison returns <span class="typevar">bool</span>
@@ -437,7 +437,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              (* Just processed Some i *)
+              Just processed Some i
               <br><span class="typevar">None</span> has type <span class="typevar">'e option</span> for some type <span class="typevar">'e</span>
               <br><span class="typevar">Some i</span> has type <span class="typevar">int option</span> (because <span class="typevar">i</span> is <span class="typevar">int</span>)
               <br>Both branches must return the same type, so <span class="typevar">'e</span> = <span class="typevar">int</span>
@@ -457,7 +457,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              (* Just processed aux recursive call *)
+              Just processed aux recursive call
               <br><span class="typevar">aux</span> takes an <span class="typevar">int</span> parameter and returns <span class="typevar">int option</span>
               <br>So <span class="typevar">aux</span> has type <span class="typevar">int -> int option</span>
             </p>
@@ -476,7 +476,7 @@
                 (* ^ *)
             </code></pre>
             <p class="type-comment">
-              (* Just processed aux 0 *)
+              Just processed aux 0
               <br><span class="typevar">aux 0</span> has type <span class="typevar">int option</span>
               <br>This is the return type of <span class="typevar">find_index</span>
             </p>
@@ -535,6 +535,97 @@
               find_index 3 arr 
                 |> Option.map (fun i -> i * 2)
                 >>= (fun doubled -> Some (doubled + 1))
+            </code></pre>
+          </section>
+        </section>
+        <section>
+          <section data-auto-animate>
+            <h3>Functors</h3>
+          </section>
+          <section data-auto-animate>
+            <h3>Functors</h3>
+            <p class="fragment">
+              Functors are a way to create new modules from existing ones.
+            </p>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="code-3"><code data-trim data-line-numbers="1-3">
+              module Int = struct
+                type t = int
+                let compare a b = a - b
+              end
+            </code></pre>
+            <p class="type-comment">
+              A module contains types, values, and functions
+            </p>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="code-3"><code data-trim data-line-numbers="5-9">
+              module Int = struct
+                type t = int
+                let compare a b = a - b
+              end
+
+              module type OrderedType = sig
+                type t
+                val compare : t -> t -> int
+              end
+            </code></pre>
+            <p class="type-comment">
+              A module type specifies the signature of a module
+            </p>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="code-3"><code data-trim data-noescape data-line-numbers="11-16">
+              module Int = struct
+                type t = int
+                let compare a b = a - b
+              end
+
+              module type OrderedType = sig
+                type t
+                val compare : t -> t -> int
+              end
+
+              module Make (Dep : OrderedType) = struct
+                type element_type = Dep.t
+                type set_type = element_type array
+                let compare = Dep.compare
+                let empty = [||]
+              end
+            </code></pre>
+            <p class="type-comment">
+              A functor takes a module type as an argument and returns a module (or another functor)
+            </p>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="code-3"><code data-trim data-noescape data-line-numbers="18-18">
+              module Int = struct
+                type t = int
+                let compare a b = a - b
+              end
+
+              module type OrderedType = sig
+                type t
+                val compare : t -> t -> int
+              end
+
+              module Make (Dep : OrderedType) = struct
+                type element_type = Dep.t
+                type set_type = element_type array
+                let compare = Dep.compare
+                let empty = [||]
+              end
+
+              module IntSet = Make (Int)
+            </code></pre>
+            <p class="type-comment">
+              A functor application passes a module to a functor, returning a module (or another functor, if partially applied)
+            </p>
+          </section>
+          <section>
+            <pre><code data-trim data-line-numbers>
+              p3 -d -f test/typecheck/functor6.ml
             </code></pre>
           </section>
         </section>
