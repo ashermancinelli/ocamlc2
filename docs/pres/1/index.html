@@ -541,9 +541,6 @@
         <section>
           <section data-auto-animate>
             <h3>Functors</h3>
-          </section>
-          <section data-auto-animate>
-            <h3>Functors</h3>
             <p class="fragment">
               Functors are a way to create new modules from existing ones.
             </p>
@@ -627,6 +624,77 @@
             <pre><code data-trim data-line-numbers>
               p3 -d -f test/typecheck/functor6.ml
             </code></pre>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h3>How does this compare to Algorithm W?</h3>
+            <p class="fragment">Mostly row-polymorphism.</p>
+          </section>
+          <section>
+            <ul>
+              <li><a href="https://ocaml.org/manual/5.3/polyvariant.html">Polymorphic Variants in OCaml</a></li>
+            </ul>
+          </section>
+          
+          <section>
+            <h3>Row Polymorphism</h3>
+            <p class="type-comment">
+              In type theory, a row is a mapping from field names to types
+            </p>
+            <p class="fragment">
+              Row polymorphism enables functions to operate on records and types with <em>varying</em> fields
+            </p>
+          </section>
+          
+          <section>
+            <pre><code data-trim data-line-numbers>
+              (* In a row polymorphic system: *)
+              type person = {name: string; age: int}
+              type employee = {name: string; age: int; salary: float}
+            
+              (* This function works with BOTH types *)
+              let get_name : {name: string; 'r} -> string = fun p -> p.name
+            </code></pre>
+            <p class="type-comment fragment">
+              The row variable <span class="typevar">'r</span> represents "all the other fields"
+            </p>
+            <p class="type-comment fragment">
+              We don't care if the types identically match a given name, just that
+              it provides the names we care about.
+            </p>
+          </section>
+          
+          <section>
+            <h3>Polymorphic Variants in OCaml</h3>
+            <pre><code data-trim data-line-numbers>
+              (* Standard variants with fixed constructors *)
+              type result = Ok of int | Error of string
+              
+              (* Polymorphic variants are more flexible *)
+              let process variant = match variant with
+                | `Ok n -> n
+                | `Error msg -> failwith msg
+            </code></pre>
+            <p class="type-comment">
+              The [> ...] syntax indicates an "open" set of variants
+            </p>
+          </section>
+          
+          <section>
+            <h3>Connection to Type Inference</h3>
+            <pre><code data-trim data-line-numbers>
+              (* OCaml automatically infers and constraints row types *)
+              let f x = match x with
+                | `A -> "Got A"
+                | `B n -> "Got B: " ^ string_of_int n
+              
+              (* Inferred type: f : [< `A | `B of int ] -> string *)
+              (* The [< means "at most these variants" *)
+            </code></pre>
+            <p class="type-comment">
+              Row polymorphism extends Hindley-Milner with constraint-based inference for variant types
+            </p>
           </section>
         </section>
       </div>
