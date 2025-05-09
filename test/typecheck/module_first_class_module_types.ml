@@ -1,6 +1,5 @@
 (*
 RUN: p3 -d -f %s | FileCheck %s.ref
-XFAIL: *
 *)
 module type XY = sig
   type x

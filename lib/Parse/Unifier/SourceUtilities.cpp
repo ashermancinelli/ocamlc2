@@ -26,7 +26,7 @@
 #include <string>
 #include <cpp-subprocess/subprocess.hpp>
 
-#define DEBUG_TYPE "sourceutils"
+#define DEBUG_TYPE "SourceUtilities.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
 #include "UnifierDebug.h"
@@ -210,6 +210,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream &os, subprocess::Buffer const& b
 static void runOCamlFormat(ModuleOperator *module, llvm::raw_ostream &os) {
   auto ocamlFormat = llvm::sys::findProgramByName("ocamlformat");
   auto bat = llvm::sys::findProgramByName("bat");
+  auto cat = llvm::sys::findProgramByName("cat");
   if (!ocamlFormat || !bat) {
     llvm::errs() << "NOTE: Failed to find ocamlformat or bat\n";
     module->decl(os) << '\n';
@@ -231,17 +232,34 @@ static void runOCamlFormat(ModuleOperator *module, llvm::raw_ostream &os) {
   fs.close();
 
   std::vector<std::string> args = {*ocamlFormat, "--enable-outside-detected-project", "--intf", tmpFileName, "-i"};
-  DBGS("Running ocamlformat with args:\n" << llvm::join(args, " ") << '\n');
-  auto formatProcess = subprocess::check_output(args);
+  auto formatCmd = llvm::join(args, " ");
+  auto ret_code = system(formatCmd.c_str());
+  if (ret_code != 0) {
+    llvm::errs() << "ocamlformat failed with code " << ret_code << ": "
+                 << ret_code << '\n';
+    module->decl(os) << '\n';
+    return;
+  }
 
+  // Then handle display based on color settings
   if (!llvm::sys::Process::StandardOutIsDisplayed() or !CL::Color) {
-    os << subprocess::check_output({"cat", tmpFileName});
+    std::stringstream ss;
+    ss << *cat << ' ' << tmpFileName;
+    auto rc = system(ss.str().c_str());
+    if (rc != 0) {
+      os << "Failed to read file: " << tmpFileName << '\n';
+      module->decl(os) << '\n';
+    }
     return;
   }
 
   std::vector<std::string> highlightArgs = {*bat, "-lml", "--plain", "--color", "always", tmpFileName};
-  DBGS("Running bat with args:\n" << llvm::join(highlightArgs, " ") << '\n');
-  os << subprocess::check_output(highlightArgs);
+  auto highlightCmd = llvm::join(highlightArgs, " ");
+  ret_code = system(highlightCmd.c_str());
+  if (ret_code != 0) {
+    llvm::errs() << "bat highlighting failed with code " << ret_code << ": " << ret_code << '\n';
+    module->decl(os) << '\n';
+  }
 }
 
 void Unifier::dumpTypes(llvm::raw_ostream &os, bool showStdlib) {

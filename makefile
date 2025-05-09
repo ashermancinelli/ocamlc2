@@ -57,6 +57,9 @@ i:
 test:
 	ctest --test-dir build -VV
 
+lit:
+	$(LIT) -svv test
+
 %:
 	$(NINJA) -C build $@
 

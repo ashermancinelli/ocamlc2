@@ -288,6 +288,8 @@ llvm::raw_ostream &SignatureOperator::showOneExport(
       functor->decl(os) << SignatureOperator::newline;
     } else if (auto *fo = llvm::dyn_cast<FunctionOperator>(exportedType)) {
       os << "val " << name << " : " << *fo << SignatureOperator::newline;
+    } else if (auto *sig = llvm::dyn_cast<SignatureOperator>(exportedType)) {
+      sig->decl(os) << SignatureOperator::newline;
     } else if (auto *to = llvm::dyn_cast<TypeOperator>(exportedType)) {
       os << "val " << name << " : ";
       if (!to->getArgs().empty()) {

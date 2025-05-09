@@ -2,31 +2,37 @@
 (*
 RUN: p3 -d -f %s | FileCheck %s.ref
 XFAIL: *
+I'm not actually sure this is a good test. Extrapolated from stdlib.
 *)
-(* First, define a module signature with the requirements *)
+
+module String = struct
+  type t = string
+  let compare (x : t) (y : t) : int = 0
+end
+
 module type OrderedType = sig
   type t
   val compare : t -> t -> int
 end
 
 (* The Map functor takes a module conforming to OrderedType *)
-module Make (Ord: OrderedType) : sig
+module Make (Ord: OrderedType) (Val: sig type t end) : sig
   type key = Ord.t
-  type 'a t
+  type t = (key * Val.t) array
   
-  val empty : 'a t
-  val add : key -> 'a -> 'a t -> 'a t
-  val find : key -> 'a t -> 'a
+  val empty : t
+  val add : key -> Val.t -> t -> t
+  val find : key -> t -> Val.t
 end
 
 (* Define a module for our key type with a compare function *)
 module StringKey = struct
   type t = string
-  let compare = String.compare
+  let compare = String.compare;;
 end
 
 (* Apply the functor to create a string-keyed map *)
-module StringMap = Map.Make(StringKey)
+module StringMap = Make(StringKey)(struct type t = int end)
 
 (* Use the generated map module *)
 let m = StringMap.empty

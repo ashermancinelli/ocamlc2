@@ -641,7 +641,10 @@ TypeExpr* Unifier::inferLetOperatorApplication(llvm::StringRef op, Node argument
 
 TypeExpr* Unifier::inferValuePath(Cursor ast) {
   auto node = ast.getCurrentNode();
-  assert(node.getType() == "value_path" or node.getType() == "module_path");
+  static constexpr std::string_view allowedTypes[] = {
+      "value_path", "module_path", "extended_module_path"};
+  assert(llvm::is_contained(allowedTypes, node.getType()) &&
+         "Expected value path, module path, or extended module path");
   auto pathParts = getPathParts(node);
   return getVariableType(pathParts);
 }
