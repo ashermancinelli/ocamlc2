@@ -1047,12 +1047,18 @@ SignatureOperator* Unifier::inferModuleTypeDefinition(Cursor ast) {
   auto *sig = [&] -> SignatureOperator* {
     detail::ModuleScope ms{*this, getText(name)};
     detail::ConcreteTypeVariableScope concreteScope(*this);
-    for (auto child : getNamedChildren(body)) {
-      DBGS("Inferring module type definition child: " << child.getType() << '\n');
-      ORNULL(infer(child));
+    if (body.getType() == "signature") {
+      for (auto child : getNamedChildren(body)) {
+        DBGS("Inferring module type definition child: " << child.getType() << '\n');
+        ORNULL(infer(child));
+      }
+      // TODO: should create a new sig and unify it with the existing
+      return create<SignatureOperator>(*moduleStack.back());
+    } else if (body.getType() == "module_type_constraint") {
+      return inferModuleTypeConstraint(body.getCursor());
+    } else {
+      assert(false && "what module type def is this?");
     }
-    // TODO: should create a new sig and unify it with the existing
-    return create<SignatureOperator>(*moduleStack.back());
   }();
   sig->setModuleType();
   declareVariable(name, sig);
@@ -1226,16 +1232,28 @@ TypeExpr* Unifier::inferModuleBinding(Cursor ast) {
         TRACE();
         return inferModuleBindingFunctorDefinition(nameText, moduleParameters,
                                                    signature, structure);
-      } else {
+      } else if (not structure.isNull()) {
         TRACE();
         return inferModuleBindingModuleDefinition(nameText, signature,
                                                   structure);
+      } else {
+        TRACE();
+        return inferModuleDeclaration(nameText, signature);
       }
     }();
   }
   ORNULL(mod);
   declareVariable(nameText, mod);
   return mod;
+}
+
+TypeExpr* Unifier::inferModuleDeclaration(llvm::StringRef name, Node signature) {
+  TRACE();
+  auto *sig = inferModuleSignature(signature.getCursor());
+  ORNULL(sig);
+  auto *returnModule = create<ModuleOperator>(name);
+  UNIFY_OR_RNULL(returnModule, sig);
+  return returnModule;
 }
 
 LogicalResult Unifier::constrainModuleTypeSignature(TypeExpr *originalType, Cursor constraintNode) {
@@ -1884,6 +1902,8 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferModuleApplication(std::move(ast));
   } else if (type == "value_definition") {
     return inferValueDefinition(std::move(ast));
+  } else if (type == "constrain_module") {
+    return inferModuleTypeConstraint(std::move(ast));
   }
   const auto message = SSWRAP("Unknown node type: " << node.getType());
   llvm::errs() << message << '\n';

@@ -242,6 +242,7 @@ private:
   TypeExpr *inferModuleBinding(Cursor ast);
   TypeExpr *inferModuleBindingFunctorDefinition(llvm::StringRef name, SmallVector<Node> moduleParameters, Node signature, Node structure);
   TypeExpr *inferModuleBindingModuleDefinition(llvm::StringRef name, Node signature, Node structure);
+  TypeExpr *inferModuleDeclaration(llvm::StringRef name, Node signature);
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleApplication(Cursor ast);
   SignatureOperator *inferModuleSignature(Cursor ast);
