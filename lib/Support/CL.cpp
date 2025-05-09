@@ -17,6 +17,7 @@ bool Debug = false;
 bool RunGDB = false;
 bool Color = true; // llvm::WithColor::defaultAutoDetectFunction()(llvm::outs());
 bool DumpTypes = false;
+bool DumpStdlib = false;
 bool Freestanding = false;
 bool StdlibOnly = false;
 bool DParseTree = false;
@@ -86,6 +87,10 @@ static cl::opt<bool, true> debug("L", cl::desc("Enable debug mode"),
 
 static cl::opt<bool, true> dumpTypes("dtypes", cl::desc("Dump types"),
                                      cl::location(DumpTypes),
+                                     cl::cat(OcamlOptions));
+
+static cl::opt<bool, true> dumpStdlib("dstdlib", cl::desc("Dump stdlib"),
+                                     cl::location(DumpStdlib),
                                      cl::cat(OcamlOptions));
 
 static cl::alias DdumpTypes("d", cl::desc("Dump types"),

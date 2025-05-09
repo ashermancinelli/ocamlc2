@@ -46,8 +46,14 @@ int main(int argc, char* argv[]) {
   DBGS("Source:\n" << source << "\n");
   
   ocamlc2::Unifier unifier;
-  unifier.loadStdlibInterfaces(exe);
-  unifier.loadSourceFile(filepath);
+  if (failed(unifier.loadStdlibInterfaces(exe))) {
+    llvm::errs() << "Failed to load stdlib interfaces\n";
+    return 1;
+  }
+  if (failed(unifier.loadSourceFile(filepath))) {
+    llvm::errs() << "Failed to load source file\n";
+    return 1;
+  }
   auto root = unifier.sources.back().tree.getRootNode();
   DBG(
     llvm::errs() << "AST:\n";

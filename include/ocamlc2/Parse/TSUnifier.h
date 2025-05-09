@@ -6,6 +6,7 @@
 #include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Support/Utils.h"
 #include <llvm/ADT/StringRef.h>
+#include <llvm/Support/LogicalResult.h>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -58,19 +59,19 @@ struct Unifier {
 
   // Load a source file. The extension will be checked to determine if it is
   // an interface or implementation.
-  void loadSourceFile(fs::path filepath);
+  LogicalResult loadSourceFile(fs::path filepath);
 
   // Load a string directly as if it were a source file.
-  void loadSource(llvm::StringRef source);
+  LogicalResult loadSource(llvm::StringRef source);
 
   // Load an implementation (.ml) file.
-  void loadImplementationFile(fs::path filepath);
+  LogicalResult loadImplementationFile(fs::path filepath);
 
   // Load an interface (.mli) file.
-  void loadInterfaceFile(fs::path filepath);
+  LogicalResult loadInterfaceFile(fs::path filepath);
 
   // Load the standard library interfaces.
-  void loadStdlibInterfaces(fs::path exe);
+  LogicalResult loadStdlibInterfaces(fs::path exe);
 
   // Show recorded function definitions, declarations, and variable let bindings,
   // for debugging and testing.
@@ -98,6 +99,7 @@ struct Unifier {
   using ConcreteTypes = llvm::DenseSet<TypeVariable *>;
   TypeExpr *infer(Cursor ast);
   TypeExpr *infer(ts::Node const &ast);
+  LogicalResult checkForSyntaxErrors(ts::Node const &ast);
   inline auto *getInferredType(ts::Node const &ast) {
     return nodeToType.lookup(ast.getID());
   }
@@ -234,14 +236,16 @@ private:
   TypeExpr *inferLetBindingValue(Node name, Node body);
   TypeExpr *inferLetExpression(Cursor ast);
   TypeExpr *inferListExpression(Cursor ast);
-  TypeExpr *inferMatchCase(TypeExpr *matcheeType, ts::Node node);
+  TypeExpr *inferMatchCase(TypeExpr **matcheeType, ts::Node node);
   TypeExpr *inferMatchExpression(Cursor ast);
+  TypeExpr *inferMatchFunctionExpression(Cursor ast);
   TypeExpr *inferModuleBinding(Cursor ast);
-  TypeExpr *inferModuleBindingFunctorDefinition(llvm::StringRef name, SmallVector<Node> moduleParameters, SignatureOperator *returnSignature, Node structure);
-  TypeExpr *inferModuleBindingModuleDefinition(llvm::StringRef name, SignatureOperator *returnSignature, Node structure);
+  TypeExpr *inferModuleBindingFunctorDefinition(llvm::StringRef name, SmallVector<Node> moduleParameters, Node signature, Node structure);
+  TypeExpr *inferModuleBindingModuleDefinition(llvm::StringRef name, Node signature, Node structure);
   TypeExpr *inferModuleDefinition(Cursor ast);
   TypeExpr *inferModuleApplication(Cursor ast);
   SignatureOperator *inferModuleSignature(Cursor ast);
+  SignatureOperator *inferModuleTypeConstraint(Cursor ast);
   ModuleOperator *inferModuleStructure(Cursor ast, SmallVector<std::pair<llvm::StringRef, SignatureOperator*>> functorTypeParams={});
   SignatureOperator *inferModuleTypeDefinition(Cursor ast);
   TypeExpr *inferModuleTypePath(Cursor ast);
@@ -272,7 +276,7 @@ private:
   RecordOperator *inferRecordDeclaration(Cursor ast);
   RecordOperator *inferRecordDeclaration(llvm::StringRef recordName, SmallVector<TypeExpr*> typeVars, Cursor ast);
   LogicalResult specializeConstructedType(TypeExpr *type, ArrayRef<TypeExpr *> typeArgs);
-  // LogicalResult specializeConstructedType(TypeExpr *type, ArrayRef<TypeExpr *> typeArgs, llvm::DenseMap<TypeExpr*, TypeExpr*> &mapping);
+  LogicalResult constrainModuleTypeSignature(TypeExpr *originalType, Cursor constraintNode);
 
   std::optional<detail::UserDefinedLetOperator>
   isUserDefinedLetOperator(Node node);
@@ -438,7 +442,7 @@ private:
   bool isLoadingStdlib = false;
 
   // The maximum number of errors that can be reported.
-  int maxErrors = 5;
+  int maxErrors = 1;
 
   SmallVector<Diagnostic> diagnostics;
   nullptr_t error(std::string message, ts::Node node, const char *filename,

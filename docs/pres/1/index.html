@@ -33,7 +33,8 @@
       <div class="slides">
         <section>
           <h3>Type Inference Process</h3>
-          <p>Watch the typechecker examine each component</p>
+          <p class="fragment">Follow up on the typechecker we talked about last time</p>
+          <p class="fragment">What it's missing, how it compares to AlgoW and SystemF</p>
         </section>
 
         <section>
@@ -142,7 +143,7 @@
               let x f y = f y;;
               (*               ^ *)
               (* Generalized type: *)
-              (* val x : 'a -> ('b -> 'c) -> 'b -> 'c *)
+              (* val x : ('c -> 'd) -> 'c -> 'd *)
             </code></pre>
           </section>
         </section>
@@ -228,7 +229,7 @@
               (* Function analysis: *)
               (* x takes parameters: f: 'c → 'd, y: 'c *)
               (* x returns: 'd *)
-              (* x's type: 'a → ('c → 'd) → 'c → 'd *)
+              (* x's type: ('c → 'd) → 'c → 'd *)
             </code></pre>
           </section>
           
@@ -236,8 +237,8 @@
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
               
-              (* FINAL TYPE (α-renamed): *)
-              (* val x : 'a → ('b → 'c) → 'b → 'c *)
+              (* FINAL TYPE *)
+              (* val x : ('c → 'd) → 'c → 'd *)
               
               (* A polymorphic higher-order function! *)
             </code></pre>
@@ -278,13 +279,19 @@
                   = f y: 'd;;
             </code></pre>
           </section>
+          <section>
+            <pre><code data-trim data-line-numbers>
+              p3 -r
+              let x f y = f y;;
+            </code></pre>
+          </section>
         </section>
 
         <!-- Option Type Inference Demo -->
         <section>
           <section data-auto-animate>
             <h3 data-auto-animate-id="type-operators-title">Type Operators</h3>
-            <p>Let's examine how OCaml infers types with the option type</p>
+            <p>How OCaml infers types with the option type</p>
           </section>
 
           <section data-auto-animate>
@@ -328,6 +335,7 @@
           <section data-auto-animate>
             <pre data-id="find-index"><code data-trim data-line-numbers>
               let find_index item arr =
+              (*  ^  *)
                 let rec aux i =
                   if i >= Array.length arr then None
                   else if arr.(i) = item then Some i
@@ -348,7 +356,7 @@
             <pre data-id="find-index"><code data-trim data-line-numbers>
               let find_index item arr =
                 let rec aux i =
-                (*             ^ *)
+                (*      ^ *)
                   if i >= Array.length arr then None
                   else if arr.(i) = item then Some i
                   else aux (i + 1)
@@ -371,7 +379,7 @@
               let find_index item arr =
                 let rec aux i =
                   if i >= Array.length arr then None
-                  (*               ^ *)
+                  (*                 ^ *)
                   else if arr.(i) = item then Some i
                   else aux (i + 1)
                 in
@@ -382,6 +390,24 @@
               <br><span class="typevar">Array.length</span>: <span class="typevar">'d array -> int</span>
               <br>Therefore, <span class="typevar">arr</span> must be an array: <span class="typevar">'d array</span>
               <br>And expression <span class="typevar">i >= Array.length arr</span> has type <span class="typevar">bool</span>
+              <br>And <span class="typevar">i</span> must also have type <span class="typevar">int</span> to match <span class="typevar">Array.length</span>
+            </p>
+          </section>
+
+          <section data-auto-animate>
+            <pre data-id="find-index"><code data-trim data-line-numbers>
+              let find_index item arr =
+                let rec aux i =
+                  if i >= Array.length arr then None
+                  (*                            ^ *)
+                  else if arr.(i) = item then Some i
+                  else aux (i + 1)
+                in
+                aux 0
+            </code></pre>
+            <p class="type-comment">
+              Just processed None
+              <br><span class="typevar">None</span> has type <span class="typevar">'e option</span> for some type <span class="typevar">'e</span>
             </p>
           </section>
 
@@ -398,7 +424,7 @@
                 aux 0
             </code></pre>
             <p class="type-comment">
-              Just processed array access
+              Other else-if branch: just processed array access
               <br><span class="typevar">arr.(i)</span>: Array access requires <span class="typevar">i</span> to be <span class="typevar">int</span>
               <br>Element accessed has type <span class="typevar">'d</span> (element type of array)
             </p>
@@ -518,6 +544,12 @@
             </code></pre>
             <p>Pattern matching ensures we handle both possible outcomes</p>
           </section>
+
+          <section>
+            <pre><code data-trim data-line-numbers>
+              p3 -d test/typecheck/find_index.ml
+            </code></pre>
+          </section>
           
           <!-- Option type in the standard library -->
           <section>
@@ -629,12 +661,9 @@
         <section>
           <section>
             <h3>How does this compare to Algorithm W?</h3>
-            <p class="fragment">Mostly row-polymorphism.</p>
-          </section>
-          <section>
-            <ul>
-              <li><a href="https://ocaml.org/manual/5.3/polyvariant.html">Polymorphic Variants in OCaml</a></li>
-            </ul>
+            <p class="fragment">It's missing row-polymorphism.</p>
+            <h3 class="fragment">How does this compare to System F?</h3>
+            <p class="fragment">It's missing better representations of functors (eg, a thing is <span class="typevar">M : 'T -> 'T</span>, or a mapping from a type to a type).</p>
           </section>
           
           <section>
@@ -695,6 +724,12 @@
             <p class="type-comment">
               Row polymorphism extends Hindley-Milner with constraint-based inference for variant types
             </p>
+          </section>
+
+          <section>
+            <ul>
+              <li><a href="https://ocaml.org/manual/5.3/polyvariant.html">Polymorphic Variants in OCaml</a></li>
+            </ul>
           </section>
         </section>
       </div>

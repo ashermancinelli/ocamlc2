@@ -70,14 +70,21 @@ Unifier::Unifier(std::string filepath) {
     llvm::errs() << "Failed to initialize environment\n";
     exit(1);
   }
-  loadSourceFile(filepath);
+  if (failed(loadSourceFile(filepath))) {
+    llvm::errs() << "Failed to load source file\n";
+    exit(1);
+  }
 }
 
-void Unifier::loadSource(llvm::StringRef source) {
+LogicalResult Unifier::loadSource(llvm::StringRef source) {
   DBGS("Source:\n" << source << "\n");
   ::ts::Language language = getOCamlLanguage();
   ::ts::Parser parser{language};
   auto tree = parser.parseString(source);
+  if (failed(checkForSyntaxErrors(tree.getRootNode()))) {
+    llvm::errs() << "Syntax errors found in source\n";
+    return failure();
+  }
   static const std::string replName = "repl.ml";
   sources.emplace_back(replName, source.str(), std::move(tree));
 
@@ -86,15 +93,16 @@ void Unifier::loadSource(llvm::StringRef source) {
   pushModuleSearchPath(moduleName);
 
   (void)infer(sources.back().tree.getRootNode().getCursor());
+  return success();
 }
 
-void Unifier::loadSourceFile(fs::path filepath) {
+LogicalResult Unifier::loadSourceFile(fs::path filepath) {
   TRACE();
   if (CL::PreprocessWithCPPO) {
     auto preprocessed = preprocessWithCPPO(filepath);
     if (failed(preprocessed)) {
       llvm::errs() << "Failed to preprocess file: " << filepath << '\n';
-      return;
+      return failure();
     }
     filepath = preprocessed.value();
   }
@@ -102,46 +110,66 @@ void Unifier::loadSourceFile(fs::path filepath) {
     auto source = slurpStdin();
     if (failed(source)) {
       llvm::errs() << "Failed to read from stdin\n";
-      return;
+      return failure();
     }
-    loadSource(source.value());
+    if (failed(loadSource(source.value()))) {
+      llvm::errs() << "Failed to load source from stdin\n";
+      return failure();
+    }
   } else if (filepath.extension() == ".ml") {
-    loadImplementationFile(filepath);
+    if (failed(loadImplementationFile(filepath))) {
+      llvm::errs() << "Failed to load implementation file\n";
+      return failure();
+    }
   } else if (filepath.extension() == ".mli") {
-    loadInterfaceFile(filepath);
+    if (failed(loadInterfaceFile(filepath))) {
+      llvm::errs() << "Failed to load interface file\n";
+      return failure();
+    }
   } else {
     llvm::errs() << "Unknown file extension: " << filepath << '\n';
     assert(false && "Unknown file extension");
   }
   (void)infer(sources.back().tree.getRootNode().getCursor());
+  return success(not anyFatalErrors());
 }
 
-void Unifier::loadImplementationFile(fs::path filepath) {
+LogicalResult Unifier::loadImplementationFile(fs::path filepath) {
   DBGS("Loading implementation file: " << filepath << "\n");
   std::string source = must(slurpFile(filepath));
   if (source.empty()) {
     DBGS("Source is empty\n");
-    return;
+    return failure();
   }
   DBGS("Source:\n" << source << "\n");
   ::ts::Language language = getOCamlLanguage();
   ::ts::Parser parser{language};
   auto tree = parser.parseString(source);
+  if (failed(checkForSyntaxErrors(tree.getRootNode()))) {
+    llvm::errs() << "Syntax errors found in source\n";
+    return failure();
+  }
   sources.emplace_back(filepath, source, std::move(tree));
+  return success(not anyFatalErrors());
 }
 
-void Unifier::loadInterfaceFile(fs::path filepath) {
+LogicalResult Unifier::loadInterfaceFile(fs::path filepath) {
   DBGS("Loading interface file: " << filepath << "\n");
   std::string source = must(slurpFile(filepath));
   if (source.empty()) {
     DBGS("Source is empty\n");
-    return;
+    return failure();
   }
   DBGS("Source:\n" << source << "\n");
   ::ts::Language language = getOCamlInterfaceLanguage();
   ::ts::Parser parser{language};
   auto tree = parser.parseString(source);
+  if (failed(checkForSyntaxErrors(tree.getRootNode()))) {
+    llvm::errs() << "Syntax errors found in source\n";
+    return failure();
+  }
   sources.emplace_back(filepath, source, std::move(tree));
+  return success(not anyFatalErrors());
 }
 
 llvm::StringRef Unifier::getTextSaved(Node node) {
@@ -154,18 +182,22 @@ void Unifier::setMaxErrors(int maxErrors) {
   this->maxErrors = maxErrors < 0 ? 100 : maxErrors;
 }
 
-void Unifier::loadStdlibInterfaces(fs::path exe) {
+LogicalResult Unifier::loadStdlibInterfaces(fs::path exe) {
   DBGS("Disabling debug while loading stdlib interfaces\n");
   isLoadingStdlib = true;
   bool savedDebug = CL::Debug;
-  CL::Debug = false;
+  CL::Debug = CL::DumpStdlib;
   for (auto filepath : getStdlibOCamlInterfaceFiles(exe)) {
     DBGS("Loading stdlib interface file: " << filepath << "\n");
-    loadSourceFile(filepath);
+    if (failed(loadSourceFile(filepath))) {
+      llvm::errs() << "Failed to load stdlib interface file\n";
+      return failure();
+    }
   }
   isLoadingStdlib = false;
   CL::Debug = savedDebug;
   DBGS("Done loading stdlib interfaces\n");
+  return success(not anyFatalErrors());
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream &os, subprocess::Buffer const& buf) {

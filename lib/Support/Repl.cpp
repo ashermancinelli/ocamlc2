@@ -306,8 +306,7 @@ struct DumpStdlibTypesCommand : public Command {
       }
       continue;
     }
-    unifier.loadSource(source);
-    if (failed(unifier)) {
+    if (failed(unifier.loadSource(source))) {
       unifier.showErrors();
       sourceSoFar = "";
     }

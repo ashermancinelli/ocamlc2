@@ -1,18 +1,19 @@
 set(INTERFACES
     array.mli
-    string.mli
     bool.mli
+    float.mli
     int.mli
     list.mli
     map.mli
     option.mli
-    float.mli
     stdlib.mli
+    string.mli
 )
+list(JOIN INTERFACES " " INTERFACES_STRING)
 add_custom_target(stdlib-interfaces ALL
-    COMMENT "Copying interfaces to distribution directory"
+    COMMENT "Copying interfaces to distribution directory: ${INTERFACES_STRING}"
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/include/stdlib
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${INTERFACES} ${CMAKE_BINARY_DIR}/include/stdlib
+    COMMAND bash -c "install -m 644 ${INTERFACES_STRING} ${CMAKE_BINARY_DIR}/include/stdlib"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

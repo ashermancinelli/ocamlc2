@@ -37,7 +37,10 @@ int main(int argc, char* argv[]) {
   TRACE();
   ocamlc2::Unifier unifier;
   TRACE();
-  unifier.loadStdlibInterfaces(exe);
+  if (failed(unifier.loadStdlibInterfaces(exe))) {
+    llvm::errs() << "Failed to load stdlib interfaces\n";
+    return 1;
+  }
   TRACE();
   auto set = std::set<std::string>(inputFilenames.begin(), inputFilenames.end());
   if (set.size() != inputFilenames.size()) {
@@ -46,8 +49,7 @@ int main(int argc, char* argv[]) {
   }
   for (auto &filepath : inputFilenames) {
     DBGS("Loading file: " << filepath << '\n');
-    unifier.loadSourceFile(filepath);
-    if (failed(unifier)) {
+    if (failed(unifier.loadSourceFile(filepath))) {
       unifier.showErrors();
       return 1;
     }

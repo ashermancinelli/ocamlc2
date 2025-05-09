@@ -356,7 +356,13 @@ llvm::raw_ostream &FunctorOperator::decl(llvm::raw_ostream &os) const {
       os << " (" << *argExpr << ")";
     }
   }
-  os << " -> " << *resultSignature;
+  os << " -> ";
+  if (auto *sig = llvm::dyn_cast<SignatureOperator>(resultSignature);
+      sig && !sig->isAnonymous()) {
+    os << sig->getName();
+  } else {
+    os << *resultSignature;
+  }
   return os;
 }
 
