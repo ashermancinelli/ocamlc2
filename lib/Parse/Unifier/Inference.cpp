@@ -1259,19 +1259,38 @@ TypeExpr* Unifier::inferModuleDeclaration(llvm::StringRef name, Node signature) 
 LogicalResult Unifier::constrainModuleTypeSignature(TypeExpr *originalType, Cursor constraintNode) {
   DBGS("Constraining module type signature: " << *originalType << '\n');
   auto node = constraintNode.getCurrentNode();
-  assert(node.getType() == "constrain_type" && "Expected constraint type");
-  assert(node.getNumNamedChildren() == 2 && "Expected constraint type to have two children");
-  auto lhsNode = node.getNamedChild(0);
-  assert(!lhsNode.isNull() && lhsNode.getType() == "type_constructor_path" && "Expected lhs to be a module type path");
-  auto rhsNode = node.getChildByFieldName("equation");
-  assert(!rhsNode.isNull() && rhsNode.getType() == "type_constructor_path" && "Expected equation to be a module type path");
-  auto lhsName = getTextSaved(lhsNode);
-  auto *rhs = infer(rhsNode);
-  FAIL_IF(rhs == nullptr, "Failed to infer rhs");
-  auto *sig = create<SignatureOperator>("");
-  sig->exportType(lhsName, rhs);
-  DBGS("Constrained module type signature: " << *sig << '\n');
-  return unify(originalType, sig);
+  if (node.getType() == "constrain_type") {
+    assert(node.getNumNamedChildren() == 2 &&
+           "Expected constraint type to have two children");
+    auto lhsNode = node.getNamedChild(0);
+    assert(!lhsNode.isNull() && lhsNode.getType() == "type_constructor_path" &&
+           "Expected lhs to be a module type path");
+    auto rhsNode = node.getChildByFieldName("equation");
+    assert(!rhsNode.isNull() && rhsNode.getType() == "type_constructor_path" &&
+           "Expected equation to be a module type path");
+    auto lhsName = getTextSaved(lhsNode);
+    auto *rhs = infer(rhsNode);
+    FAIL_IF(rhs == nullptr, "Failed to infer rhs");
+    auto *sig = create<SignatureOperator>("");
+    sig->exportType(lhsName, rhs);
+    DBGS("Constrained module type signature: " << *sig << '\n');
+    return unify(originalType, sig);
+  } else if (node.getType() == "constrain_module") {
+    auto lhsNode = node.getNamedChild(0);
+    auto lhsText = getTextSaved(lhsNode);
+    auto rhsNode = node.getChildByFieldName("constraint");
+    auto *rhs = infer(rhsNode);
+    FAIL_IF(rhs == nullptr, "Failed to infer rhs");
+    auto *sig = create<SignatureOperator>("");
+    sig->exportVariable(lhsText, rhs);
+    auto unified = unify(originalType, sig);
+    if (failed(unified)) {
+      ERROR("Failed to unify module type signature");
+    }
+    return success();
+  } else {
+    assert(false && "NYI");
+  }
 }
 
 SignatureOperator* Unifier::inferModuleTypeConstraint(Cursor ast) {
@@ -1825,7 +1844,7 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferMatchExpression(std::move(ast));
   } else if (type == "function_expression") {
     return inferMatchFunctionExpression(std::move(ast));
-  } else if (type == "value_path" or type == "module_path") {
+  } else if (type == "value_path" or type == "module_path" or type == "extended_module_path") {
     return inferValuePath(std::move(ast));
   } else if (type == "for_expression") {
     return inferForExpression(std::move(ast));
