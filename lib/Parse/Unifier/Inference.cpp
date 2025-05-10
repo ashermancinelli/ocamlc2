@@ -1601,7 +1601,10 @@ TypeExpr* Unifier::inferVariantConstructor(VariantOperator* variantType, Cursor 
   auto name = node.getNamedChild(0);
   if (node.getNumNamedChildren() == 1) {
     variantType->addConstructor(getTextSaved(name));
-    return declareVariable(name, variantType);
+    // Create a NullaryCtorOperator for nullary constructors
+    auto *ctorType = create<NullaryCtorOperator>(variantType);
+    declareVariable(name, ctorType);
+    return ctorType;
   }
   auto parameters = [&] {
     SmallVector<TypeExpr*> types;
@@ -1613,10 +1616,10 @@ TypeExpr* Unifier::inferVariantConstructor(VariantOperator* variantType, Cursor 
   auto *functionType = [&] {
     if (parameters.size() == 1) {
       parameters.push_back(variantType);
-      return getFunctionType(parameters);
+      return getFunctionType<CtorOperator>(parameters);
     }
     auto *tupleType = getTupleType(parameters);
-    return getFunctionType({tupleType, variantType});
+    return getFunctionType<CtorOperator>({tupleType, variantType});
   }();
   declareVariable(name, functionType);
   variantType->addConstructor(getTextSaved(name), functionType);

@@ -58,12 +58,6 @@ LogicalResult Unifier::doUnify(TypeExpr* a, TypeExpr* b) {
   auto *wildcard = getWildcardType();
   a = prune(a);
   b = prune(b);
-  // if (auto *alias = llvm::dyn_cast<TypeAlias>(a)) {
-  //   return unify(alias->getType(), b);
-  // }
-  // if (auto *alias = llvm::dyn_cast<TypeAlias>(b)) {
-  //   return unify(a, alias->getType());
-  // }
   DBGS("Unifying:" << count++ << ": " << *a << " and " << *b << '\n');
   if (auto *tva = llvm::dyn_cast<TypeVariable>(a)) {
     if (auto *tvb = llvm::dyn_cast<TypeVariable>(b);
@@ -83,6 +77,17 @@ LogicalResult Unifier::doUnify(TypeExpr* a, TypeExpr* b) {
     if (llvm::isa<TypeVariable>(b)) {
       return unify(b, a);
     } else if (auto *tob = llvm::dyn_cast<TypeOperator>(b)) {
+      // Handle NullaryCtorOperator unification
+      if (auto *nca = llvm::dyn_cast<NullaryCtorOperator>(a)) {
+        if (auto *ncb = llvm::dyn_cast<NullaryCtorOperator>(b)) {
+          // Unify two nullary constructors by unifying their variant types
+          return unify(nca->getVariantType(), ncb->getVariantType());
+        }
+        return unify(nca->getVariantType(), b);
+      } else if (auto *ncb = llvm::dyn_cast<NullaryCtorOperator>(b)) {
+        return unify(a, ncb->getVariantType());
+      }
+      
       if (auto *ro = llvm::dyn_cast<RecordOperator>(toa)) {
         if (auto *ro2 = llvm::dyn_cast<RecordOperator>(tob)) {
           return unifyRecordTypes(ro, ro2);
@@ -298,9 +303,19 @@ TypeOperator *Unifier::cloneOperatorWithoutMutuallyRecursiveTypes(TypeOperator *
     for (auto [arg, mappedArg] : llvm::zip(func->getArgs(), mappedArgs  )) {
       DBGS("Cloning argument: " << *arg << " to " << *mappedArg << '\n');
     }
-    auto *newFunc = getFunctionType(mappedArgs, func->parameterDescriptors);
+    const bool isCtor = llvm::isa<CtorOperator>(func);
+    auto *newFunc =
+        isCtor ? getFunctionType<CtorOperator>(mappedArgs,
+                                               func->parameterDescriptors)
+               : getFunctionType(mappedArgs, func->parameterDescriptors);
     DBGS("Cloned function operator: " << *newFunc << '\n');
     return newFunc;
+  } else if (auto *nctor = llvm::dyn_cast<NullaryCtorOperator>(op)) {
+    DBGS("Cloning nullary constructor operator: " << *nctor << '\n');
+    assert(mappedArgs.size() == 1 && "NullaryCtorOperator should have exactly one argument");
+    auto *newNctor = create<NullaryCtorOperator>(mappedArgs[0]);
+    DBGS("Cloned nullary constructor operator: " << *newNctor << '\n');
+    return newNctor;
   } else if (auto *record = llvm::dyn_cast<RecordOperator>(op)) {
     DBGS("Cloning record operator: " << *record << '\n');
     auto fieldNames = record->getFieldNames();
@@ -404,6 +419,13 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
   return type;
 }
 #undef DBGSCLONE
+
+TypeExpr* Unifier::pruneAliases(TypeExpr* type) {
+  if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
+    return pruneAliases(alias->getType());
+  }
+  return type;
+}
 
 TypeExpr* Unifier::pruneTypeVariables(TypeExpr* type) {
   if (auto *tv = llvm::dyn_cast<TypeVariable>(type); tv && tv->instantiated()) {

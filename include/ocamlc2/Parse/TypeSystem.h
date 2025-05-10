@@ -53,6 +53,8 @@ struct TypeExpr {
     Functor    = 0b0000'0100'0000'0001,
     ModuleType = 0b0000'1000'0000'0001,
     Alias      = 0b0001'0000'0000'0000,
+    Ctor       = 0b0010'0000'0000'1001,
+    NullaryCtor = 0b0100'0000'0000'0001,
   };
   // clang-format on
   TypeExpr(Kind kind) : kind(kind) {}
@@ -248,6 +250,29 @@ struct FunctionOperator : public TypeOperator {
   }
 };
 
+struct CtorOperator : public FunctionOperator {
+  CtorOperator(
+      llvm::ArrayRef<TypeExpr *> args,
+      llvm::ArrayRef<ParameterDescriptor> descs = {})
+      : FunctionOperator(args, descs) {
+    this->kind = Kind::Ctor;
+  }
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Ctor; }
+};
+
+struct NullaryCtorOperator : public TypeOperator {
+  NullaryCtorOperator(TypeExpr *variantType)
+      : TypeOperator(Kind::NullaryCtor, "nullary_ctor", {variantType}) {
+    assert(llvm::isa<VariantOperator>(variantType) &&
+           "NullaryCtorOperator must be constructed with a VariantOperator");
+  }
+
+  // Get the variant type this constructor constructs
+  VariantOperator *getVariantType() const { return llvm::cast<VariantOperator>(getArgs()[0]); }
+  
+  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::NullaryCtor; }
+};
+
 struct TupleOperator : public TypeOperator {
   TupleOperator(llvm::ArrayRef<TypeExpr*> args) : TypeOperator(Kind::Tuple, "*", args) {}
   static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Tuple; }
@@ -310,7 +335,7 @@ struct SignatureOperator : public TypeOperator {
     return expr->getKind() == Kind::Signature || expr->getKind() == Kind::Module;
   }
   llvm::raw_ostream &showSignature(llvm::raw_ostream &os) const;
-  llvm::raw_ostream &showOneExport(llvm::raw_ostream &os, const Export &e, llvm::SmallVector<llvm::StringRef> &namesToSkip, bool isMemberOfMutuallyRecursiveGroup) const;
+  llvm::raw_ostream &showOneExport(llvm::raw_ostream &os, const Export &e, bool isMemberOfMutuallyRecursiveGroup = false) const;
   llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
   inline bool isAnonymous() const { return getName() == getAnonymousSignatureName(); }
   inline Env &getTypeEnv() { return typeEnv; }
@@ -496,5 +521,15 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeOperator &op);
 llvm::raw_ostream &decl(llvm::raw_ostream &os, const TypeExpr &type);
 
 llvm::SmallVector<TypeVariable *> collectFreeTypeVariables(TypeOperator *to);
+
+// Helper functions for export display
+llvm::raw_ostream &showTypeExport(
+    llvm::raw_ostream &os,
+    const SignatureOperator::Export &e,
+    bool isMemberOfMutuallyRecursiveGroup = false);
+
+llvm::raw_ostream &showVariableExport(
+    llvm::raw_ostream &os, 
+    const SignatureOperator::Export &e);
 
 } // namespace ocamlc2

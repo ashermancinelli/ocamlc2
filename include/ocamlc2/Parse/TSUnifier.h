@@ -141,11 +141,14 @@ public:
   TypeExpr *getStringType();
   TypeExpr *getWildcardType();
   TypeExpr *getVarargsType();
+
+  template <typename T = FunctionOperator>
   inline auto *getFunctionType(
       llvm::ArrayRef<TypeExpr *> args,
       llvm::ArrayRef<ParameterDescriptor> parameterDescriptors = {}) {
-    return create<FunctionOperator>(args, parameterDescriptors);
+    return create<T>(args, parameterDescriptors);
   }
+
   FunctionOperator *getFunctionTypeForPartialApplication(FunctionOperator *func, unsigned arity);
 
   std::pair<FunctionOperator *, TypeExpr *> normalizeFunctionType(TypeExpr *declaredType, SmallVector<Node> arguments);
@@ -203,6 +206,7 @@ public:
   // instantiated variables.
   static TypeExpr *prune(TypeExpr *type);
   static TypeExpr *pruneTypeVariables(TypeExpr *type);
+  static TypeExpr *pruneAliases(TypeExpr *type);
 
 private:
   LogicalResult initializeEnvironment();
