@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+# Script to strip OCaml comments from input
+# Usage: strip-ocaml-comments [file]
+# If no file is provided, reads from stdin
+
+perl -e ' $/=undef; $_ = <>; while (s/\(\*.*?\*\)//s) {} print;' "$@" \
+| perl -ne 'print unless /^\s*$/' \
+| ocamlformat --intf - \
+| bat -locaml -p
+

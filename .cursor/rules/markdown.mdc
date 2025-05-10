@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Format every response in markdown. If you use code, wrap them in appropriate code blocks.

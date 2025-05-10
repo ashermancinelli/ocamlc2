@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+ninja -C build p3 && ./build/bin/p3 $@
