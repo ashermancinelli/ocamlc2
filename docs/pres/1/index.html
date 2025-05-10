@@ -33,7 +33,6 @@
       <div class="slides">
         <section data-auto-animate>
           <h3>Hindley-Milner Type Inference</h3>
-          <p class="fragment">Follow up on the typechecker we talked about last time</p>
           <p class="fragment">What it's missing, how it compares to AlgoW and SystemF</p>
         </section>
 
@@ -50,7 +49,20 @@
           <section data-auto-animate>
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
-                   ^
+            </code></pre>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+              ^
+              
+              (* Environment: (empty) *)
+            </code></pre>
+          </section>
+          <section data-auto-animate>
+            <pre data-id="flow-diagram"><code data-trim data-line-numbers>
+              let x f y = f y;;
+                  ^
               
               (* Environment: *)
               (* x: 'a (fresh) *)
@@ -60,7 +72,7 @@
           <section data-auto-animate>
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
-                     ^
+                    ^
               
               (* Environment: *)
               (* x: 'a (fresh) *)
@@ -71,7 +83,7 @@
           <section data-auto-animate>
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
-                       ^
+                      ^
               
               (* Environment: *)
               (* x: 'a (fresh) *)
@@ -83,11 +95,11 @@
           <section data-auto-animate>
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
-                             ^
+                          ^
               
               (* Environment: *)
               (* x: 'a (fresh) *)
-              (* f: 'b (fresh) → must be a function! *)
+              (* f: 'b must be a function! *)
               (* y: 'c (fresh) *)
             </code></pre>
           </section>
@@ -95,11 +107,11 @@
           <section data-auto-animate>
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
-                               ^
+                              ^
               
               (* Environment: *)
               (* x: 'a (fresh) *)
-              (* f: 'c → 'd    (refined) *)
+              (* f: 'c → 'd (refined) *)
               (* y: 'c (fresh) *)
               (* Constraint: 'b = 'c → 'd *)
             </code></pre>
@@ -108,7 +120,7 @@
           <section data-auto-animate>
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
-                           ^^^^^
+                          ^^^
               
               (* Environment: *)
               (* x: 'a (fresh) *)
@@ -121,7 +133,7 @@
           <section data-auto-animate>
             <pre data-id="flow-diagram"><code data-trim data-line-numbers>
               let x f y = f y;;
-                ^^^^^^^^^^^^^
+                  ^
               
               (* Function analysis: *)
               (* x takes parameters: f: 'c → 'd, y: 'c *)
@@ -136,7 +148,6 @@
               
               (* FINAL TYPE *)
               (* val x : ('c → 'd) → 'c → 'd *)
-              
               (* A polymorphic higher-order function! *)
             </code></pre>
           </section>
