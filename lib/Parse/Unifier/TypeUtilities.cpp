@@ -124,26 +124,28 @@ TypeExpr *Unifier::declareType(Node node, TypeExpr* type) {
 
 TypeExpr *Unifier::maybeGetDeclaredType(ArrayRef<llvm::StringRef> path) {
   DBGS("maybeGetDeclaredType: " << llvm::join(path, ".") << '\n');
-  DBGS("Locals: " << moduleStack.back()->getLocals().size() << '\n');
   const auto sz = path.size();
 
   // first: look in current module's environment
-  if (auto *type = mod().lookupType(path.front())) {
-    DBGS("found in current module's environment: " << *type << '\n');
-    if (sz == 1) {
-      DBGS("returning type from current module's environment: " << *type << '\n');
-      return clone(type);
+  if (!moduleStack.empty()) {
+    if (auto *type = mod().lookupType(path.front())) {
+      DBGS("found in current module's environment: " << *type << '\n');
+      if (sz == 1) {
+        DBGS("returning type from current module's environment: " << *type
+                                                                  << '\n');
+        return clone(type);
+      }
+      assert(false && "hmm");
     }
-    assert(false && "hmm");
-  }
-  if (path.size() > 1) {
-    if (auto *var = mod().lookupVariable(path.front())) {
-      if (auto *sig = llvm::dyn_cast<SignatureOperator>(var)) {
-        DBGS("looking up type in current module: " << *sig << '\n');
-        auto *needle = sig->lookupType(path.drop_front());
-        // ORNULL(needle);
-        DBGS("returning type from current module: " << *needle << '\n');
-        return clone(needle);
+    if (path.size() > 1) {
+      if (auto *var = mod().lookupVariable(path.front())) {
+        if (auto *sig = llvm::dyn_cast<SignatureOperator>(var)) {
+          DBGS("looking up type in current module: " << *sig << '\n');
+          auto *needle = sig->lookupType(path.drop_front());
+          // ORNULL(needle);
+          DBGS("returning type from current module: " << *needle << '\n');
+          return clone(needle);
+        }
       }
     }
   }
