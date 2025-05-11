@@ -14,13 +14,11 @@ RUN: g3 %s
 
 (*
  * CHECK-LABEL:   func.func private @B(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
-
  * CHECK-LABEL:   func.func private @A() -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {ocaml.variant_ctor} {
  * CHECK:           %[[VAL_0:.*]] = arith.constant 0 : i64
  * CHECK:           %[[VAL_1:.*]] = ocaml.builtin "variant_ctor_empty"(%[[VAL_0]]) : i64 -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:           return %[[VAL_1]] : !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:         }
-
  * CHECK-LABEL:   func.func private @main() -> i32 {
  * CHECK:           %[[VAL_0:.*]] = call @A() : () -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:           %[[VAL_1:.*]] = arith.constant 5 : i64

@@ -617,6 +617,61 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genApplicationExpression(const Node node)
   return callOp;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genIfExpression(const Node node) {
+  TRACE();
+  InsertionGuard guard(builder);
+  auto maybeType = mlirType(node);
+  if (failed(maybeType)) {
+    return failure();
+  }
+  std::optional<mlir::Type> type = *maybeType;
+  auto conditionNode = node.getChildByFieldName("condition");
+  auto thenNodes = getNamedChildren(node, {"then_clause"});
+  assert(thenNodes.size() == 1);
+  auto thenNode = thenNodes[0];
+  auto elseNodes = getNamedChildren(node, {"else_clause"});
+  auto elseNode = elseNodes.empty() ? std::nullopt : std::optional<Node>(elseNodes[0]);
+  assert(elseNodes.size() <= 1);
+  if (elseNodes.empty()) {
+    assert(llvm::isa<mlir::ocaml::UnitType>(*type));
+  }
+  if (llvm::isa<mlir::ocaml::UnitType>(*type)) {
+    type = std::nullopt;
+  }
+  auto maybeConditionValue = gen(conditionNode);
+  if (failed(maybeConditionValue)) {
+    return failure();
+  }
+  auto conditionValue = builder.createConvert(loc(conditionNode), builder.getI1Type(), *maybeConditionValue);
+  SmallVector<mlir::Type> resultType;
+  if (type) {
+    resultType.push_back(*type);
+  }
+
+  auto ifOp = builder.create<mlir::scf::IfOp>(loc(node), resultType, conditionValue, true, elseNode.has_value());
+
+  builder.setInsertionPointToStart(&ifOp.getThenRegion().front());
+  auto thenValue = gen(thenNode);
+  if (failed(thenValue)) {
+    return failure();
+  }
+
+  if (!resultType.empty()) {
+    builder.create<mlir::scf::YieldOp>(loc(node), mlir::ValueRange{*thenValue});
+  }
+  
+  if (elseNode) {
+    builder.setInsertionPointToStart(&ifOp.getElseRegion().front());
+    auto elseValue = gen(elseNode.value());
+    if (failed(elseValue)) {
+      return failure();
+    }
+    builder.create<mlir::scf::YieldOp>(loc(node), mlir::ValueRange{*elseValue});
+  }
+
+  return {resultType.empty() ? builder.createUnit(loc(node)) : ifOp.getResult(0)};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genString(const Node node) {
   TRACE();
   auto str = getText(node);
@@ -782,6 +837,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genSequenceExpression(node);
   } else if (type == "string") {
     return genString(node);
+  } else if (type == "if_expression") {
+    return genIfExpression(node);
   }
   return error(node) << "NYI: " << type << " (" << __LINE__ << ')';
 }

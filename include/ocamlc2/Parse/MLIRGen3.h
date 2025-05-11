@@ -62,6 +62,7 @@ private:
   mlir::FailureOr<mlir::Value> genValuePattern(const Node node);
   mlir::FailureOr<mlir::Value> genSequenceExpression(const Node node);
   mlir::FailureOr<mlir::Value> genString(const Node node);
+  mlir::FailureOr<mlir::Value> genIfExpression(const Node node);
   mlir::FailureOr<std::variant<mlir::Value, mlir::func::FuncOp>> genConstructorPath(const Node node);
 
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::TypeExpr *type, mlir::Location loc);
