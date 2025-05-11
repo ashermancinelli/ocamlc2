@@ -34,6 +34,18 @@ def Ocaml_TupleType : Ocaml_Type<"Tuple", "tuple"> {
   ];
 }
 
+def Ocaml_ArrayType : Ocaml_Type<"Array", "array"> {
+  let summary = "OCaml array";
+  let description = "OCaml array";
+  let parameters = (ins AnyType:$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "::mlir::Type":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>,
+  ];
+}
+
 def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
   let summary = "OCaml variant";
   let description = "OCaml variant";

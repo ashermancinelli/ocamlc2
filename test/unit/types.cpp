@@ -22,6 +22,9 @@ int main() {
                                         {unit, i64, tuple});
   llvm::outs() << variant << "\n";
 
+  auto array = builder.getArrayType(i64);
+  llvm::outs() << array << "\n";
+
   return 0;
 }
 

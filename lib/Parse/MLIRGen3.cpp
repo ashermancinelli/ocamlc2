@@ -240,6 +240,14 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
       }
       return mlirType;
     }
+    auto name = to->getName();
+    if (name == "array") {
+      auto elementType = mlirType(args.front(), loc);
+      if (failed(elementType)) {
+        return failure();
+      }
+      return builder.getArrayType(*elementType);
+    }
     return error(loc) << "Unknown type operator: " << SSWRAP(*type);
   } else if (const auto *tv = llvm::dyn_cast<ocamlc2::TypeVariable>(type)) {
     TRACE();
