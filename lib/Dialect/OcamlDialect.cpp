@@ -64,6 +64,10 @@ static mlir::StringRef ocamlAttributePrefix() {
   return "ocaml.";
 }
 
+llvm::StringRef mlir::ocaml::getVariantCtorAttrName() {
+  return "ocaml.variant_ctor";
+}
+
 mlir::NamedAttribute mlir::ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
   auto name = ocamlAttributePrefix() + "match_case";
   return mlir::NamedAttribute(mlir::StringAttr::get(context, name),
@@ -126,6 +130,16 @@ void VariantType::print(mlir::AsmPrinter &printer) const {
     }
   }
   printer << ">";
+}
+
+mlir::FailureOr<std::pair<unsigned, mlir::Type>> mlir::ocaml::VariantType::typeForConstructor(llvm::StringRef name, VariantType type) {
+  for (auto iter : llvm::enumerate(llvm::zip(type.getConstructors(), type.getTypes()))) {
+    auto [ctor, type] = iter.value();
+    if (ctor == name) {
+      return {std::make_pair(iter.index(), type)};
+    }
+  }
+  return mlir::failure();
 }
 
 mlir::OpFoldResult mlir::ocaml::ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {

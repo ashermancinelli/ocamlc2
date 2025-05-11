@@ -830,14 +830,18 @@ TypeExpr* Unifier::inferConstructorPath(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "constructor_path");
   auto pathParts = getPathParts(node);
-  return getVariableType(pathParts);
+  auto *type = getVariableType(pathParts);
+  setType(node, type);
+  return type;
 }
 
 TypeExpr* Unifier::inferModuleTypePath(Cursor ast) {
   auto node = ast.getCurrentNode();
   assert(node.getType() == "module_type_path");
   auto pathParts = getPathParts(node);
-  return getVariableType(pathParts);
+  auto *type = getVariableType(pathParts);
+  setType(node, type);
+  return type;
 }
 
 TypeExpr* Unifier::inferArrayExpression(Cursor ast) {

@@ -207,6 +207,7 @@ public:
   static TypeExpr *prune(TypeExpr *type);
   static TypeExpr *pruneTypeVariables(TypeExpr *type);
   static TypeExpr *pruneAliases(TypeExpr *type);
+  static TypeExpr *pruneEverything(TypeExpr *type);
 
 private:
   LogicalResult initializeEnvironment();

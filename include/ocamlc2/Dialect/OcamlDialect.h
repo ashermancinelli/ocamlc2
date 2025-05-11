@@ -5,7 +5,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
-
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "ocamlc2/Dialect/OcamlDialect.h.inc"
 #include <mlir/IR/Attributes.h>
 #include <mlir/Pass/PassManager.h>
@@ -26,7 +26,7 @@ namespace mlir::ocaml {
 inline bool isa_box_type(mlir::Type type) {
   return isa<BoxType, OpaqueBoxType, StringType, UnitType>(type);
 }
-
+llvm::StringRef getVariantCtorAttrName();
 void setupRegistry(mlir::DialectRegistry &registry);
 void setupContext(mlir::MLIRContext &context);
 void setupDefaultPipeline(mlir::PassManager &pm);

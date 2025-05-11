@@ -4,6 +4,7 @@
 #include "mlir/IR/Builders.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
 #include <llvm/ADT/SmallVectorExtras.h>
+#include <llvm/ADT/StringRef.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/Attributes.h>
@@ -15,7 +16,26 @@ class OcamlOpBuilder : public mlir::OpBuilder {
   using OpBuilder::OpBuilder;
 
 public:
+  mlir::Value createPatternVariable(mlir::Location loc, mlir::Type type) {
+    return create<mlir::ocaml::PatternVariableOp>(loc, type);
+  }
+
+  mlir::Value createPatternMatch(mlir::Location loc, mlir::Value scrutinee, mlir::Value pattern) {
+    return create<mlir::ocaml::PatternMatchOp>(loc, getI1Type(), scrutinee, pattern);
+  }
+
+  mlir::Value createString(mlir::Location loc, llvm::StringRef str) {
+    return create<mlir::ocaml::EmboxStringOp>(
+        loc, StringType::get(getContext()), StringAttr::get(getContext(), str));
+  }
+
   mlir::Value createConvert(mlir::Location loc, mlir::Value input, mlir::Type resultType) {
+    if (resultType == input.getType()) {
+      return input;
+    }
+    return create<mlir::ocaml::ConvertOp>(loc, resultType, input);
+  }
+  mlir::Value createConvert(mlir::Location loc, mlir::Type resultType, mlir::Value input) {
     if (resultType == input.getType()) {
       return input;
     }
@@ -71,6 +91,10 @@ public:
     return mlir::ocaml::UnitType::get(getContext());
   }
 
+  inline mlir::Type getStringType() {
+    return mlir::ocaml::StringType::get(getContext());
+  }
+
   mlir::Type getVariantType(llvm::StringRef name, llvm::ArrayRef<llvm::StringRef> constructors, llvm::ArrayRef<mlir::Type> types);
   mlir::Type getTupleType(llvm::ArrayRef<mlir::Type> types);
 
@@ -79,6 +103,7 @@ public:
   }
 
   llvm::SmallVector<mlir::StringAttr> createStringAttrVector(llvm::ArrayRef<llvm::StringRef> strings);
+  mlir::NamedAttribute createVariantCtorAttr();
 };
 
 mlir::FailureOr<mlir::Type> resolveTypes(mlir::Type lhs, mlir::Type rhs, mlir::Location loc);

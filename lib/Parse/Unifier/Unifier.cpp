@@ -420,6 +420,19 @@ TypeExpr *Unifier::clone(TypeExpr *type, llvm::DenseMap<TypeExpr *, TypeExpr *> 
 }
 #undef DBGSCLONE
 
+TypeExpr* Unifier::pruneEverything(TypeExpr* type) {
+  if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
+    return pruneEverything(alias->getType());
+  }
+  if (auto *op = llvm::dyn_cast<NullaryCtorOperator>(type)) {
+    return pruneEverything(op->getVariantType());
+  }
+  if (auto *op = llvm::dyn_cast<TypeVariable>(type)) {
+    return pruneEverything(op->instance);
+  }
+  return type;
+}
+
 TypeExpr* Unifier::pruneAliases(TypeExpr* type) {
   if (auto *alias = llvm::dyn_cast<TypeAlias>(type)) {
     return pruneAliases(alias->getType());

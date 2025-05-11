@@ -94,6 +94,10 @@ public:
 
 ### 3.2 Unification for Polymorphic Variants
 
+**Note on Tag Runtime ID**
+
+When downward-passing a polymorphic variant constructor to the backend we need to encode the chosen tag as a small integer.  Because polymorphic variants are *open* there is no stable notion of "the nth constructor of this variant" – the only property that is guaranteed to be unique is the *name* of the tag itself.  Therefore the integer ID that we store in the runtime representation will be a hash of that name (stripped of the leading back-tick).  A fast, non-cryptographic 32-bit hash such as FNV-1a is sufficient and guarantees that the same tag produces the same ID everywhere in the program, while different tags almost certainly produce distinct IDs.  Any accidental collision can be detected at compile-time and reported as an error.
+
 ```cpp
 LogicalResult Unifier::unifyPolymorphicVariants(
     PolymorphicVariantOperator *a, 

@@ -58,6 +58,7 @@ def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
     std::string getNameString() const {
       return name.str();
     }
+    static mlir::FailureOr<std::pair<unsigned, mlir::Type>> typeForConstructor(llvm::StringRef name, VariantType type);
   }];
 }
 
@@ -96,8 +97,39 @@ def Ocaml_UnitType : Ocaml_Type<"Unit", "unit"> {
 
 def AnyBoxType : TypeConstraint<CPred<"::mlir::isa<::mlir::ocaml::BoxType, ::mlir::ocaml::OpaqueBoxType, ::mlir::ocaml::UnitType>($_self)">>;
 
+def AnyOCamlType : TypeConstraint<
+  CPred<"::mlir::isa<"
+        "::mlir::ocaml::BoxType, ::mlir::ocaml::OpaqueBoxType, "
+        "::mlir::ocaml::StringType, ::mlir::ocaml::UnitType, "
+        "::mlir::ocaml::TupleType, ::mlir::ocaml::VariantType>($_self)">,
+  "OCaml value">;
+
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
+
+def Ocaml_EmboxStringOp : Ocaml_Op<"embox_string"> {
+  let summary = "OCaml embox string";
+  let description = "OCaml embox string";
+  let arguments = (ins StrAttr:$input);
+  let results = (outs Ocaml_StringType:$result);
+  let assemblyFormat = "$input attr-dict";
+}
+
+def Ocaml_PatternVariableOp : Ocaml_Op<"pattern_variable"> {
+  let summary = "OCaml pattern variable";
+  let description = "OCaml pattern variable";
+  let arguments = (ins);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+def Ocaml_PatternMatchOp : Ocaml_Op<"match", [Pure, SameTypeOperands]> {
+  let summary = "OCaml pattern match";
+  let description = "OCaml pattern match";
+  let arguments = (ins AnyOCamlType:$scrutinee, AnyOCamlType:$pattern);
+  let results = (outs I1:$result);
+  let assemblyFormat = "$scrutinee `against` $pattern attr-dict `:` type($scrutinee)";
+}
 
 def Ocaml_TupleCtorOp : Ocaml_Op<"tuple_ctor"> {
   let summary = "OCaml tuple constructor";

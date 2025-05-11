@@ -5,6 +5,12 @@ using namespace std::string_literals;
 
 namespace mlir::ocaml {
 
+mlir::NamedAttribute OcamlOpBuilder::createVariantCtorAttr() {
+  return mlir::NamedAttribute(
+      mlir::StringAttr::get(getContext(), getVariantCtorAttrName()),
+      mlir::UnitAttr::get(getContext()));
+}
+
 FailureOr<mlir::Type> resolveTypes(mlir::Type lhs, mlir::Type rhs, mlir::Location loc) {
   if (lhs == rhs) {
     return lhs;

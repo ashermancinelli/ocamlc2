@@ -239,7 +239,7 @@ struct FunctionOperator : public TypeOperator {
   }
   llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
   llvm::SmallVector<ParameterDescriptor> parameterDescriptors;
-  static inline bool classof(const TypeExpr *expr) { return expr->getKind() == Kind::Function; }
+  static inline bool classof(const TypeExpr *expr) { return (expr->getKind() & Kind::Function) == Kind::Function; }
   inline bool isVarargs() const {
     for (auto *arg : getArgs()) {
       if (llvm::isa<VarargsOperator>(arg)) {
