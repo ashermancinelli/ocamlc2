@@ -21,6 +21,7 @@ public:
   }
 
   mlir::Value createPatternMatch(mlir::Location loc, mlir::Value scrutinee, mlir::Value pattern) {
+    pattern = createConvert(loc, scrutinee.getType(), pattern);
     return create<mlir::ocaml::PatternMatchOp>(loc, getI1Type(), scrutinee, pattern);
   }
 

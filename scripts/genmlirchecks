@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+echo '(*'
+generate-test-checks.py "$@" | perl -pe 's/^(.*)\/\// */'
+echo ' *)'

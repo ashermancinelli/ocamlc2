@@ -135,6 +135,8 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeFromBasicTypeOperator(llvm::String
     return builder.getUnitType();
   } else if (name == "string") {
     return builder.getStringType();
+  } else if (name == "_") {
+    return builder.getOBoxType();
   }
   return failure();
 }
@@ -216,6 +218,18 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
   } else if (auto *vo = llvm::dyn_cast<ocamlc2::VariantOperator>(type)) {
     TRACE();
     return mlirType(vo, loc);
+  } else if (auto *to = llvm::dyn_cast<ocamlc2::TupleOperator>(type)) {
+    TRACE();
+    auto args = to->getArgs();
+    llvm::SmallVector<mlir::Type> argTypes;
+    for (auto *arg : args) {
+      auto argType = mlirType(arg, loc);
+      if (failed(argType)) {
+        return failure();
+      }
+      argTypes.push_back(*argType);
+    }
+    return mlir::TupleType::get(builder.getContext(), argTypes);
   } else if (const auto *to = llvm::dyn_cast<ocamlc2::TypeOperator>(type)) {
     TRACE();
     const auto args = to->getArgs();
@@ -716,7 +730,7 @@ mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> MLIRGen3::gen() {
 
 mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
   TRACE();
-  unifier.show(node.getCursor());
+  DBG(unifier.show(node.getCursor()));
   auto type = node.getType();
   InsertionGuard guard(builder);
   static constexpr std::string_view passthroughTypes[] = {
