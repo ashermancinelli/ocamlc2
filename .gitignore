@@ -62,3 +62,6 @@ _deps/
 test/Output
 **/*.profraw
 test/.lit_test_times.txt
+
+docs/pres/2/media
+docs/pres/2/__pycache__
