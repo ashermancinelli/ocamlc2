@@ -57,6 +57,7 @@ private:
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(const Node node);
+  mlir::FailureOr<mlir::Value> genMatchExpression(const Node node);
 
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::VariantOperator *type, mlir::Location loc);

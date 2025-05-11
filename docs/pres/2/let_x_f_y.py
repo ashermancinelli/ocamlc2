@@ -76,7 +76,7 @@ class HindleyMilnerInference(Scene):
             return block
 
         steps: list[tuple[str, list[str]]] = [
-            ("let", ["(* Environment: (empty) *)"]),
+            ("let", ["(* Environment: *)"]),
             (
                 "x",
                 [

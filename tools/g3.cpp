@@ -31,7 +31,7 @@ static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::Required,
                                           cl::value_desc("filename"));
 
-static cl::opt<bool> dumpIR("dump-camlir", cl::desc("Dump OCaml IR"), cl::init(false));
+static cl::opt<bool> dumpIR("dump-camlir", cl::desc("Dump OCaml IR"), cl::init(true));
 
 int main(int argc, char* argv[]) {
   fs::path exe = llvm::sys::fs::getMainExecutable(argv[0], nullptr);

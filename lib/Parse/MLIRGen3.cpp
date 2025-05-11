@@ -17,6 +17,7 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/TypeRange.h>
 #include <mlir/IR/Verifier.h>
 #include <iostream>
 #include <memory>
@@ -24,6 +25,7 @@
 #include <utility>
 #include "ocamlc2/Parse/TypeSystem.h"
 #include "ocamlc2/Support/Utils.h"
+#include "ocamlc2/Support/MonadHelpers.h"
 #define DEBUG_TYPE "MLIRGen3.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
@@ -96,6 +98,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
     auto *bodyBlock = function.addEntryBlock();
     builder.setInsertionPointToEnd(bodyBlock);
     for (auto [blockArg, parameter] : llvm::zip(function.getArguments(), parameters)) {
+      parameter = parameter.getChildByFieldName("pattern");
       if (failed(declareVariable(parameter, blockArg, loc(parameter)))) {
         return failure();
       }
@@ -230,6 +233,56 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const Node node) {
   return convertedType;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genMatchExpression(const Node node) {
+  TRACE();
+  auto maybeType = mlirType(node);
+  if (failed(maybeType)) {
+    return failure();
+  }
+  auto returnType = *maybeType;
+  auto scrutineeNode = node.getChildByFieldName("expression");
+  auto maybeScrutineeValue = gen(scrutineeNode);
+  if (failed(maybeScrutineeValue)) {
+    return failure();
+  }
+  auto scrutineeValue = *maybeScrutineeValue;
+  auto caseNodes = getNamedChildren(node, {"match_case"});
+  return [&] -> mlir::FailureOr<mlir::Value> {
+    InsertionGuard guard(builder);
+    auto regionOp = builder.create<mlir::scf::ExecuteRegionOp>(loc(node), returnType);
+    auto &region = regionOp.getRegion();
+    auto &returnBlock = region.emplaceBlock();
+    returnBlock.addArgument(returnType, loc(node));
+    builder.setInsertionPointToEnd(&region.emplaceBlock());
+    builder.create<mlir::scf::YieldOp>(loc(node), mlir::ValueRange{returnBlock.getArgument(0)});
+    for (auto caseNode : caseNodes) {
+      builder.createBlock(&returnBlock);
+      auto patternNode = caseNode.getChildByFieldName("pattern");
+      auto bodyNode = caseNode.getChildByFieldName("body");
+      auto maybePatternValue = gen(patternNode);
+      if (failed(maybePatternValue)) {
+        return failure();
+      }
+      auto patternValue = *maybePatternValue;
+      auto matchedPattern = builder.createCallIntrinsic(
+          loc(caseNode), "ocamlrt.match_pattern",
+          mlir::ValueRange{patternValue, scrutineeValue});
+      LogicalResult ifBodySucceeded = mlir::failure();
+      builder.create<mlir::scf::IfOp>(loc(caseNode), matchedPattern, [&] (mlir::OpBuilder &builder, mlir::Location loc) {
+        auto bodyValue = gen(bodyNode);
+        if (failed(bodyValue)) {
+          return;
+        }
+        builder.create<mlir::cf::BranchOp>(loc, &returnBlock, mlir::ValueRange{*bodyValue});
+        ifBodySucceeded = mlir::success();
+      });
+      if (failed(ifBodySucceeded)) {
+        return error(caseNode) << "Failed to generate body for match case";
+      }
+    }
+    return mlir::failure();
+  }();
+}
 
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(const Node node) {
   auto str = getText(node);
@@ -462,6 +515,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genLetExpression(node);
   } else if (type == "value_name") {
     return getVariable(node);
+  } else if (type == "match_expression") {
+    return genMatchExpression(node);
   }
   return error(node) << "NYI: " << type;
 }
@@ -472,6 +527,11 @@ llvm::StringRef MLIRGen3::getText(const Node node) {
 
 mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(Node node, mlir::Value value, mlir::Location loc) {
   auto str = getText(node);
+  if (node.getType() == "typed_pattern") {
+    node = node.getChildByFieldName("pattern");
+    str = getText(node);
+  }
+  DBGS("declaring variable: " << str << ' ' << node.getType() << "\n");
   return declareVariable(str, value, loc);
 }
 

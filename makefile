@@ -34,7 +34,7 @@ GREEN  = "\e[32m"
 CLR    = "\e[0m"
 
 .DEFAULT_GOAL := build
-.PHONY: all config build install clean init clean check test coverage p3
+.PHONY: all config build install clean init clean check test coverage
 
 clean:
 	rm -rf build/* install/*||:

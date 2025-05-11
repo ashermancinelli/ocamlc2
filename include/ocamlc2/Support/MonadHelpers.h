@@ -1,19 +1,16 @@
 #pragma once
 
 #include <functional>
+#include <mlir/Support/LogicalResult.h>
+
 namespace ocamlc2 {
 
-template <typename T>
-T* bind(T *v, std::function<T*(T*)> f) {
-  if (!v) {
-    return nullptr;
+template <typename T, typename F, typename U = typename std::invoke_result_t<F, T>>
+U bind(mlir::FailureOr<T> v, F &&f) {
+  if (mlir::failed(v)) {
+    return mlir::failure();
   }
-  return f(v);
-}
-
-template <typename T, typename... Ts>
-T *lift(Ts... args, std::function<T*(Ts...)> f) {
-  return f(args...);
+  return f(*v);
 }
 
 } // namespace ocamlc2
