@@ -428,7 +428,7 @@ TypeExpr* Unifier::pruneEverything(TypeExpr* type) {
     return pruneEverything(op->getVariantType());
   }
   if (auto *op = llvm::dyn_cast<TypeVariable>(type)) {
-    return pruneEverything(op->instance);
+    return op->instantiated() ? pruneEverything(op->instance) : op;
   }
   return type;
 }

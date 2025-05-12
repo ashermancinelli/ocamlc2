@@ -67,10 +67,12 @@ Unifier::Unifier() {
 Unifier::Unifier(std::string filepath) {
   TRACE();
   if (failed(initializeEnvironment())) {
+    showErrors();
     llvm::errs() << "Failed to initialize environment\n";
     exit(1);
   }
   if (failed(loadSourceFile(filepath))) {
+    showErrors();
     llvm::errs() << "Failed to load source file\n";
     exit(1);
   }

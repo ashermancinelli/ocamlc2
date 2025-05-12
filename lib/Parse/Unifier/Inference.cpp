@@ -1812,6 +1812,7 @@ TypeExpr* Unifier::inferExternal(Cursor ast) {
   auto type = infer(typeNode);
   return declareVariable(name, type);
 }
+
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
   static constexpr std::string_view passthroughTypes[] = {

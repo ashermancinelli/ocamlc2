@@ -52,17 +52,19 @@ private:
   mlir::FailureOr<mlir::Value> genInfixExpression(const Node node);
   mlir::FailureOr<mlir::Value> genLetExpression(const Node node);
   mlir::FailureOr<mlir::Value> genLetBindingValueDefinition(const Node patternNode, const Node bodyNode);
-
-  mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
-  mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
-  mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
-  mlir::FailureOr<mlir::Value> getVariable(const Node node);
   mlir::FailureOr<mlir::Value> genMatchExpression(const Node node);
   mlir::FailureOr<mlir::Value> genConstructorPattern(const Node node);
   mlir::FailureOr<mlir::Value> genValuePattern(const Node node);
   mlir::FailureOr<mlir::Value> genSequenceExpression(const Node node);
   mlir::FailureOr<mlir::Value> genString(const Node node);
   mlir::FailureOr<mlir::Value> genIfExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genArrayGetExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genArrayExpression(const Node node);
+
+  mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> getVariable(const Node node);
   mlir::FailureOr<std::variant<mlir::Value, mlir::func::FuncOp>> genConstructorPath(const Node node);
 
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::TypeExpr *type, mlir::Location loc);

@@ -16,6 +16,24 @@ class OcamlOpBuilder : public mlir::OpBuilder {
   using OpBuilder::OpBuilder;
 
 public:
+  mlir::Value createArrayFromElements(mlir::Location loc, mlir::Type arrayType, mlir::ValueRange elements) {
+    return create<mlir::ocaml::ArrayFromElementsOp>(loc, arrayType, elements);
+  }
+
+  mlir::Value createArrayFromElements(mlir::Location loc, mlir::ValueRange elements) {
+    return create<mlir::ocaml::ArrayFromElementsOp>(loc, elements);
+  }
+
+  mlir::Value createArrayGet(mlir::Location loc, mlir::Value array, mlir::Value index) {
+    auto arrayType = llvm::cast<mlir::ocaml::ArrayType>(array.getType());
+    auto indexType = index.getType();
+    if (indexType != getI64Type()) {
+      index = createConvert(loc, index, getI64Type());
+    }
+    auto elementType = arrayType.getElementType();
+    return create<mlir::ocaml::ArrayGetOp>(loc, elementType, array, index);
+  }
+
   mlir::Value createPatternVariable(mlir::Location loc, mlir::Type type) {
     return create<mlir::ocaml::PatternVariableOp>(loc, type);
   }

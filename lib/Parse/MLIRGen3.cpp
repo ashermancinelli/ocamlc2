@@ -84,7 +84,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
     return gen(bodyNode);
   }
   if (isRecursive) {
-    return nyi(node);
+    DBGS("recursive\n");
   }
   auto parameters = getNamedChildren(node, {"parameter"});
   if (parameters.empty()) {
@@ -103,6 +103,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   {
     DBGS("Generating function: " << nameString << "\n");
     InsertionGuard guard(builder);
+    VariableScope scope(variables);
     builder.setInsertionPointToStart(module->getBody());
     function =
         builder.create<mlir::func::FuncOp>(loc(node), nameString, functionType);
@@ -254,7 +255,7 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
     if (tv->instantiated()) {
       return mlirType(tv->instance, loc);
     }
-    return error(loc) << "Uninstantiated type variable: " << SSWRAP(*type);
+    return builder.getOBoxType();
   }
   return error(loc) << "Unknown type: " << SSWRAP(*type);
 }
@@ -625,6 +626,45 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genApplicationExpression(const Node node)
   return callOp;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
+  TRACE();
+  auto arrayType = mlirType(node);
+  if (failed(arrayType)) {
+    return failure();
+  }
+  auto elementNodes = getNamedChildren(node);
+  auto maybeElementTypes = llvm::to_vector(llvm::map_range(
+      elementNodes, [this](const Node &arg) { return mlirType(arg); }));
+  if (llvm::any_of(maybeElementTypes, failed)) {
+    return error(node) << "Failed to generate element types";
+  }
+  auto elements = llvm::map_to_vector(
+      elementNodes, [this](const Node &arg) { return gen(arg); });
+  if (llvm::any_of(elements, failed)) {
+    return error(node) << "Failed to generate elements";
+  }
+  auto elementValues = llvm::map_to_vector(elements, [](auto value) { return *value; });
+  DBGS("array of type " << *arrayType << " with " << elementValues.size() << " elements\n");
+  auto array = builder.createArrayFromElements(loc(node), *arrayType, elementValues);
+  assert(array.getType() == *arrayType);
+  return array;
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genArrayGetExpression(const Node node) {
+  TRACE();
+  auto arrayNode = node.getChildByFieldName("array");
+  auto indexNode = node.getChildByFieldName("index");
+  auto arrayValue = gen(arrayNode);
+  if (failed(arrayValue)) {
+    return error(node) << "Failed to generate array";
+  }
+  auto indexValue = gen(indexNode);
+  if (failed(indexValue)) {
+    return error(node) << "Failed to generate index";
+  }
+  return builder.createArrayGet(loc(node), *arrayValue, *indexValue);
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genIfExpression(const Node node) {
   TRACE();
   InsertionGuard guard(builder);
@@ -772,25 +812,6 @@ mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(llvm::StringRef name, mli
   return value;
 }
 
-mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> MLIRGen3::gen() {
-  TRACE();
-  module = builder.create<mlir::ModuleOp>(loc(root), "ocamlc2");
-  builder.setInsertionPointToStart(module->getBody());
-  auto res = gen(root);
-  if (mlir::failed(res)) {
-    DBGS("Failed to generate MLIR for compilation unit\n");
-    return mlir::failure();
-  }
-
-  if (mlir::failed(module->verify())) {
-    DBGS("Failed to verify MLIR for compilation unit\n");
-    llvm::errs() << *module << "\n";
-    return mlir::failure();
-  }
-
-  return std::move(module);
-}
-
 mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
   TRACE();
   DBG(unifier.show(node.getCursor()));
@@ -845,8 +866,32 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genSequenceExpression(node);
   } else if (type == "string") {
     return genString(node);
+  } else if (type == "array_expression") {
+    return genArrayExpression(node);
   } else if (type == "if_expression") {
     return genIfExpression(node);
+  } else if (type == "array_get_expression") {
+    return genArrayGetExpression(node);
   }
   return error(node) << "NYI: " << type << " (" << __LINE__ << ')';
+}
+
+mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> MLIRGen3::gen() {
+  TRACE();
+  module = builder.create<mlir::ModuleOp>(loc(root), "ocamlc2");
+  builder.setInsertionPointToStart(module->getBody());
+  auto res = gen(root);
+  if (mlir::failed(res)) {
+    DBGS("Failed to generate MLIR for compilation unit\n");
+    llvm::errs() << *module << "\n";
+    return mlir::failure();
+  }
+
+  if (mlir::failed(module->verify())) {
+    DBGS("Failed to verify MLIR for compilation unit\n");
+    llvm::errs() << *module << "\n";
+    return mlir::failure();
+  }
+
+  return std::move(module);
 }

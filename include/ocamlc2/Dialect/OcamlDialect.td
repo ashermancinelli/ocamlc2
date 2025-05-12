@@ -25,7 +25,6 @@ def Ocaml_TupleType : Ocaml_Type<"Tuple", "tuple"> {
   let summary = "OCaml tuple";
   let description = "OCaml tuple";
   let parameters = (ins ArrayRefParameter<"::mlir::Type">:$types);
-  // let hasCustomAssemblyFormat = 1;
   let assemblyFormat = "`<` $types `>`";
   let builders = [
     TypeBuilderWithInferredContext<(ins "llvm::ArrayRef<::mlir::Type>":$types), [{
@@ -107,13 +106,19 @@ def Ocaml_UnitType : Ocaml_Type<"Unit", "unit"> {
   let assemblyFormat = "";
 }
 
-def AnyBoxType : TypeConstraint<CPred<"::mlir::isa<::mlir::ocaml::BoxType, ::mlir::ocaml::OpaqueBoxType, ::mlir::ocaml::UnitType>($_self)">>;
+def AnyBoxType : TypeConstraint<
+  CPred<"::mlir::isa<"
+        "::mlir::ocaml::BoxType, "
+        "::mlir::ocaml::OpaqueBoxType, "
+        "::mlir::ocaml::UnitType>($_self)">,
+  "OCaml box">;
 
 def AnyOCamlType : TypeConstraint<
   CPred<"::mlir::isa<"
         "::mlir::ocaml::BoxType, ::mlir::ocaml::OpaqueBoxType, "
         "::mlir::ocaml::StringType, ::mlir::ocaml::UnitType, "
-        "::mlir::ocaml::TupleType, ::mlir::ocaml::VariantType>($_self)">,
+        "::mlir::ocaml::TupleType, ::mlir::ocaml::VariantType, "
+        "::mlir::ocaml::ArrayType>($_self)">,
   "OCaml value">;
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
@@ -157,6 +162,38 @@ def Ocaml_TupleGetOp : Ocaml_Op<"tuple_get"> {
   let arguments = (ins Ocaml_TupleType:$tuple, I64:$index);
   let results = (outs AnyType:$result);
   let assemblyFormat = "$tuple `[` $index `]` attr-dict `:` type($tuple) `,` type($index) `->` type($result)";
+}
+
+def Ocaml_ArrayMakeOp : Ocaml_Op<"array.make"> {
+  let summary = "OCaml array make";
+  let description = "OCaml array make";
+  let arguments = (ins AnyOCamlType:$elementType);
+  let results = (outs Ocaml_ArrayType:$result);
+  let assemblyFormat = "$elementType attr-dict `:` type($elementType) `->` type($result)";
+}
+
+def Ocaml_ArrayGetOp : Ocaml_Op<"array.get"> {
+  let summary = "OCaml array get";
+  let description = "OCaml array get";
+  let arguments = (ins Ocaml_ArrayType:$array, I64:$index);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$array `[` $index `]` attr-dict `:` type($array) `,` type($index) `->` type($result)";
+}
+
+def Ocaml_ArrayFromElementsOp : Ocaml_Op<"array.from_elements"> {
+  let summary = "OCaml array from elements";
+  let description = "OCaml array from elements";
+  let arguments = (ins Variadic<AnyType>:$elements);
+  let results = (outs Ocaml_ArrayType:$result);
+  let hasVerifier = 1;
+  let builders = [
+    OpBuilder<(ins "::mlir::ValueRange":$elements), [{
+      mlir::Type elementType = elements.front().getType();
+      mlir::Type arrayType = mlir::ocaml::ArrayType::get(elementType.getContext(), elementType);
+      return build($_builder, $_state, arrayType, elements);
+    }]>,
+  ];
+  let assemblyFormat = "`[` $elements `]` attr-dict `:` type($elements) `->` type($result)";
 }
 
 def Ocaml_UnitOp : Ocaml_Op<"unit"> {
@@ -208,4 +245,62 @@ def Ocaml_ObjReprOp : Ocaml_Op<"repr"> {
     let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
 }
 
-#endif
+//===----------------------------------------------------------------------===//
+// Globals – used for closure captures
+//===----------------------------------------------------------------------===//
+
+// A module-level symbol that holds a captured value.  It has no operands or
+// results; its type is encoded in a dedicated `type` attribute so that it can
+// be referenced without creating a value in the IR.  The op lives at the
+// top-level (inside builtin.module) and can be looked-up via symbol tables.
+
+def Ocaml_GlobalOp : Ocaml_Op<"global", [Symbol]> {
+  let summary = "OCaml global variable (closure capture slot)";
+  let description = [{
+    Represents a single module-level global value that is used to materialise
+    closure captures.  The op only declares the storage; actual reads/writes are
+    performed with `ocaml.global_load` / `ocaml.global_store`.
+  }];
+
+  let arguments = (ins
+    StrAttr:$sym_name,
+    SymbolRefAttr:$symref,
+    TypeAttr:$type
+  );
+  let skipDefaultBuilders = 1;
+  let hasCustomAssemblyFormat = 1;
+  let builders = [
+    OpBuilder<(ins "::mlir::StringRef":$name, "mlir::Type":$type,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
+  ];
+  let extraClassDeclaration = [{
+    mlir::Type resultType();
+    mlir::FlatSymbolRefAttr getSymbol() {
+      return mlir::FlatSymbolRefAttr::get(getContext(),
+          (*this)->getAttrOfType<mlir::StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName()).getValue());
+    }
+  }];
+}
+
+def OcamlGlobalOp : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::GlobalOp>($_self)">,
+  "OCaml global">;
+
+def Ocaml_GlobalLoadOp : Ocaml_Op<"global_load", [Pure]> {
+  let summary = "Read from an ocaml.global";
+  let description = "Returns the value stored in the given global symbol";
+  let arguments = (ins SymbolRefAttr:$global);
+  let results   = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$global attr-dict `:` type($result)";
+}
+
+def Ocaml_GlobalStoreOp : Ocaml_Op<"global_store", []> {
+  let summary = "Write to an ocaml.global";
+  let description = "Stores the operand into the given global symbol";
+  let arguments = (ins AnyOCamlType:$value, SymbolRefAttr:$global);
+  let results   = (outs);
+  let assemblyFormat = "$value `to` $global attr-dict `:` type($value)";
+}
+
+#endif // OCAML_C2_DIALECT_TD

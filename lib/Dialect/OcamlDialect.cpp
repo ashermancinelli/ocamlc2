@@ -18,6 +18,7 @@
 #include <llvm/Support/Debug.h>
 #include <optional>
 
+
 #define DEBUG_TYPE "ocaml-dialect"
 #include "ocamlc2/Support/Debug.h.inc"
 
@@ -36,29 +37,21 @@ namespace mlir::ocaml::detail {
 
 }
 
-#if 0
-void mlir::ocaml::TupleType::print(mlir::AsmPrinter &printer) const {
-  printer << "<";
-  for (auto type : llvm::enumerate(getTypes())) {
-    printer << type.value();
-    if (type.index() < getTypes().size() - 1) {
-      printer << ", ";
-    }
-  }
-  printer << ">";
+mlir::ParseResult mlir::ocaml::GlobalOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+  mlir::StringAttr name;
+  mlir::Type type;
+  if (parser.parseSymbolName(name, mlir::SymbolTable::getSymbolAttrName(),
+                             result.attributes))
+    return mlir::failure();
+  if (parser.parseColonType(type))
+    return mlir::failure();
+  result.addAttribute(getTypeAttrName(result.name), mlir::TypeAttr::get(type));
+  return mlir::success();
 }
 
-mlir::Type mlir::ocaml::TupleType::parse(mlir::AsmParser &parser) {
-  mlir::SmallVector<mlir::Type> elements;
-  if (parser.parseLess())
-    return {};
-  if (parser.parseTypeList(elements))
-    return {};
-  if (parser.parseGreater())
-    return {};
-  return parser.getChecked<TupleType>(parser.getContext(), elements);
+void mlir::ocaml::GlobalOp::print(mlir::OpAsmPrinter &p) {
+  p << "global " << getSymName() << " : " << getType();
 }
-#endif
 
 static mlir::StringRef ocamlAttributePrefix() {
   return "ocaml.";
@@ -66,6 +59,10 @@ static mlir::StringRef ocamlAttributePrefix() {
 
 llvm::StringRef mlir::ocaml::getVariantCtorAttrName() {
   return "ocaml.variant_ctor";
+}
+
+mlir::LogicalResult mlir::ocaml::ArrayFromElementsOp::verify() {
+  return mlir::success();
 }
 
 mlir::NamedAttribute mlir::ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
@@ -200,3 +197,7 @@ void OcamlDialect::initialize() {
   >();
   addInterfaces<OcamlInlinerInterface>();
 }
+
+namespace mlir::ocaml {
+
+} // namespace mlir::ocaml

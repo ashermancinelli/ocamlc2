@@ -10,6 +10,12 @@
 #include <mlir/IR/Attributes.h>
 #include <mlir/Pass/PassManager.h>
 
+// copy from flang
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/OpDefinition.h"
+
 namespace mlir::ocaml {
 namespace detail {
 struct VariantTypeStorage;

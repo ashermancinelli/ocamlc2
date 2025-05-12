@@ -16,7 +16,7 @@
 #include <sstream>
 #include <llvm/Support/FileSystem.h>
 
-#define DEBUG_TYPE "environment"
+#define DEBUG_TYPE "Environment.cpp"
 #include "ocamlc2/Support/Debug.h.inc"
 
 #include "UnifierDebug.h"
