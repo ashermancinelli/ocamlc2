@@ -18,6 +18,7 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/TypeRange.h>
+#include <mlir/IR/Value.h>
 #include <mlir/IR/ValueRange.h>
 #include <mlir/IR/Verifier.h>
 #include <iostream>
@@ -76,6 +77,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBindingValueDefinition(const Node p
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   TRACE();
+  pushCaptureID(node.getID());
   const bool isRecursive = isLetBindingRecursive(node.getCursor());
   auto patternNode = node.getChildByFieldName("pattern");
   const auto patternType = unifierType(patternNode);
@@ -122,6 +124,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
     }
     builder.create<mlir::func::ReturnOp>(loc(node), *body);
   }
+  popCaptureID();
   return {builder.createUnit(loc(node))};
 }
 
@@ -440,8 +443,50 @@ mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(const Node node) {
   return getVariable(str, loc(node));
 }
 
+FailureOr<bool> MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
+  TRACE();
+  auto func = [&] -> mlir::func::FuncOp {
+    auto *op = value.getDefiningOp();
+    if (op) {
+      DBGS("Op\n");
+      return op->getParentOfType<mlir::func::FuncOp>();
+    }
+    auto arg = mlir::dyn_cast<mlir::BlockArgument>(value);
+    if (arg) {
+      DBGS("Arg\n");
+      auto parent = arg.getOwner()->getParent()->getParentOfType<mlir::func::FuncOp>();
+      if (parent) {
+        DBGS("Func: " << parent << "\n");
+        return parent;
+      }
+      return nullptr;
+    }
+    DBGS("No func\n");
+    return nullptr;
+  }();
+  if (!func) {
+    DBGS("No func\n");
+    return failure();
+  }
+  auto *currentBlock = builder.getInsertionBlock();
+  auto currentFunc = currentBlock->getParent()->getParentOfType<mlir::func::FuncOp>();
+  if (currentFunc == func) {
+    DBGS("Current region\n");
+    return false;
+  }
+  DBGS("Not current region\n");
+  return true;
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
   if (auto value = variables.lookup(name)) {
+    auto isFree = valueIsFreeInCurrentContext(value);
+    if (failed(isFree)) {
+      return failure();
+    }
+    if (*isFree) {
+      return error(loc) << "Variable " << name << " is free in current context";
+    }
     return value;
   }
   return failure();

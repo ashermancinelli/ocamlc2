@@ -1,4 +1,5 @@
 #pragma once
+#include "cpp-tree-sitter.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -73,10 +74,21 @@ private:
   mlir::FailureOr<mlir::Type> mlirFunctionType(ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirFunctionType(const Node node);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
+
   llvm::StringRef getText(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);
   }
+
+  void pushCaptureID(ts::NodeID id) {
+    captureIDs.push_back(id);
+  }
+  void popCaptureID() {
+    captureIDs.pop_back();
+  }
+  mlir::FailureOr<bool> valueIsFreeInCurrentContext(mlir::Value value);
+
+  llvm::SmallVector<ts::NodeID> captureIDs;
   llvm::DenseMap<TypeExpr *, mlir::Type> typeExprToMlirType;
   llvm::ScopedHashTable<llvm::StringRef, mlir::Value> variables;
   mlir::MLIRContext &context;
