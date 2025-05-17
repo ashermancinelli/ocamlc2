@@ -2,6 +2,7 @@
 #include "ocamlc2/Dialect/OcamlDialect.h"
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/TSUtil.h"
+#include "ocamlc2/Support/LLVMCommon.h"
 #include "ocamlc2/Support/VisitorHelper.h"
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/STLForwardCompat.h>
@@ -487,11 +488,7 @@ FailureOr<bool> MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genGlobalForFreeVariable(mlir::Value value, llvm::StringRef name, mlir::Location loc) {
   TRACE();
-  static unsigned odometer = 0;
-  auto globalName = llvm::Twine(name)
-                        .concat("_global_")
-                        .concat(llvm::Twine(odometer++))
-                        .str();
+  auto globalName = getUniqueName(("g$" + name).str());
   auto globalOp = [&] -> mlir::ocaml::GlobalOp {
     InsertionGuard guard(builder);
     builder.setInsertionPointToStart(module->getBody());

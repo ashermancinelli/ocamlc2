@@ -13,11 +13,11 @@ y ();;
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   ocaml.global x_global_0 : !ocaml.box<i64>
+ * CHECK-LABEL:   ocaml.global g$x$0 : !ocaml.box<i64>
 
  * CHECK-LABEL:   func.func private @y(
  * CHECK-SAME:                         %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.unit) -> !ocaml.box<i64> {
- * CHECK:           %[[VAL_1:.*]] = ocaml.address_of @x_global_0 : !ocaml.ref<!ocaml.box<i64>>
+ * CHECK:           %[[VAL_1:.*]] = ocaml.address_of @g$x$0 : !ocaml.ref<!ocaml.box<i64>>
  * CHECK:           %[[VAL_2:.*]] = ocaml.load %[[VAL_1]] : !ocaml.ref<!ocaml.box<i64>> -> !ocaml.box<i64>
  * CHECK:           return %[[VAL_2]] : !ocaml.box<i64>
  * CHECK:         }
@@ -26,7 +26,7 @@ y ();;
  * CHECK:           %[[VAL_0:.*]] = scf.execute_region -> !ocaml.box<i64> {
  * CHECK:             %[[VAL_1:.*]] = arith.constant 5 : i64
  * CHECK:             %[[VAL_2:.*]] = ocaml.convert %[[VAL_1]] from i64 to !ocaml.box<i64>
- * CHECK:             %[[VAL_3:.*]] = ocaml.address_of @x_global_0 : !ocaml.ref<!ocaml.box<i64>>
+ * CHECK:             %[[VAL_3:.*]] = ocaml.address_of @g$x$0 : !ocaml.ref<!ocaml.box<i64>>
  * CHECK:             ocaml.store %[[VAL_2]] to %[[VAL_3]] : !ocaml.box<i64> to !ocaml.ref<!ocaml.box<i64>>
  * CHECK:             %[[VAL_4:.*]] = scf.execute_region -> !ocaml.box<i64> {
  * CHECK:               %[[VAL_5:.*]] = ocaml.unit

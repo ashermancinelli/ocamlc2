@@ -3,6 +3,6 @@
 
 std::string getUniqueName(StringRef prefix) {
   static unsigned counter = 0;
-  std::string name = prefix.str() + "oc2" + std::to_string(counter++);
+  std::string name = prefix.str() + "$" + std::to_string(counter++);
   return name;
 }
