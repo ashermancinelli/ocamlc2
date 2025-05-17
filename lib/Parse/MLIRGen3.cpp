@@ -24,6 +24,7 @@
 #include <mlir/IR/Verifier.h>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <utility>
 #include "ocamlc2/Parse/TypeSystem.h"
@@ -83,9 +84,33 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBindingValueDefinition(const Node p
   return declareVariable(patternNode, bodyValue, loc(patternNode));
 }
 
+mlir::FailureOr<Callee> MLIRGen3::genFunctionBody(llvm::StringRef name, mlir::FunctionType funType, mlir::Location location, llvm::ArrayRef<Node> parameters, Node bodyNode) {
+  DBGS("Generating function: " << name << "\n");
+  InsertionGuard guard(builder);
+  VariableScope scope(variables);
+  builder.setInsertionPointToStart(module->getBody());
+  auto function =
+      builder.create<mlir::func::FuncOp>(location, name, funType);
+  function.setPrivate();
+  auto *bodyBlock = function.addEntryBlock();
+  builder.setInsertionPointToEnd(bodyBlock);
+  for (auto [blockArg, parameter] :
+       llvm::zip(function.getArguments(), parameters)) {
+    auto parameterNode = parameter.getChildByFieldName("pattern");
+    if (failed(declareVariable(parameterNode, blockArg, loc(parameterNode)))) {
+      return failure();
+    }
+  }
+  auto body = gen(bodyNode);
+  if (failed(body)) {
+    return failure();
+  }
+  builder.create<mlir::func::ReturnOp>(location, *body);
+  return Callee{function};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   TRACE();
-  pushCaptureID(node.getID());
   const bool isRecursive = isLetBindingRecursive(node.getCursor());
   auto patternNode = node.getChildByFieldName("pattern");
   const auto patternType = unifierType(patternNode);
@@ -109,31 +134,11 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
     return error(node) << "Expected function type for let binding";
   }
   auto nameString = getText(patternNode);
-  mlir::func::FuncOp function;
-  {
-    DBGS("Generating function: " << nameString << "\n");
-    InsertionGuard guard(builder);
-    VariableScope scope(variables);
-    builder.setInsertionPointToStart(module->getBody());
-    function =
-        builder.create<mlir::func::FuncOp>(loc(node), nameString, functionType);
-    function.setPrivate();
-    auto *bodyBlock = function.addEntryBlock();
-    builder.setInsertionPointToEnd(bodyBlock);
-    for (auto [blockArg, parameter] : llvm::zip(function.getArguments(), parameters)) {
-      parameter = parameter.getChildByFieldName("pattern");
-      if (failed(declareVariable(parameter, blockArg, loc(parameter)))) {
-        return failure();
-      }
-    }
-    auto body = gen(bodyNode);
-    if (failed(body)) {
-      return failure();
-    }
-    builder.create<mlir::func::ReturnOp>(loc(node), *body);
-  }
-  popCaptureID();
-  return {builder.createUnit(loc(node))};
+  return genFunctionBody(nameString, functionType, loc(node), parameters,
+                         bodyNode) |
+             and_then([&](auto funcOp) -> mlir::FailureOr<mlir::Value> {
+               return builder.createUnit(loc(node));
+             });
 }
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeFromBasicTypeOperator(llvm::StringRef name) {
@@ -287,7 +292,7 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const Node node) {
   return convertedType;
 }
 
-mlir::FailureOr<std::variant<mlir::Value, mlir::func::FuncOp>> MLIRGen3::genConstructorPath(const Node node) {
+mlir::FailureOr<Callee> MLIRGen3::genConstructorPath(const Node node) {
   TRACE();
   InsertionGuard guard(builder);
   auto constructorName = getText(node);
@@ -609,26 +614,37 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genNumber(const Node node) {
   return error(node) << "Failed to parse number: " << str;
 }
 
-mlir::FailureOr<mlir::func::FuncOp> MLIRGen3::genCallee(const Node node) {
+mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
   TRACE();
   auto str = unifier.getTextSaved(node);
-  auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
-  if (!callee) {
-    auto type = mlirType(node);
-    if (failed(type)) {
-      return failure();
+  auto value = getVariable(str, loc(node));
+  return value | and_then([&](mlir::Value value) -> mlir::FailureOr<mlir::func::FuncOp> {
+    if (auto box = llvm::dyn_cast<mlir::ocaml::BoxType>(value.getType())) {
+      auto eleType = box.getElementType();
+      if (auto funcType = llvm::dyn_cast<mlir::FunctionType>(eleType)) {
+
+      }
     }
-    auto functionType = mlir::dyn_cast<mlir::FunctionType>(*type);
-    if (not functionType) {
-      return error(node) << "Failed to get callee: " << str;
+    return error(node) << "Expected function for callee: " << str;
+  }) | or_else([&]() -> mlir::FailureOr<mlir::func::FuncOp> {
+    auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
+    if (!callee) {
+      auto type = mlirType(node);
+      if (failed(type)) {
+        return failure();
+      }
+      auto functionType = mlir::dyn_cast<mlir::FunctionType>(*type);
+      if (not functionType) {
+        return error(node) << "Failed to get callee: " << str;
+      }
+      InsertionGuard guard(builder);
+      builder.setInsertionPointToStart(module->getBody());
+      auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
+      callee.setPrivate();
+      return callee;
     }
-    InsertionGuard guard(builder);
-    builder.setInsertionPointToStart(module->getBody());
-    auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
-    callee.setPrivate();
     return callee;
-  }
-  return callee;
+  });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetExpression(const Node node) {
@@ -671,36 +687,50 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genInfixExpression(const Node node) {
   const auto lhs = children[0];
   const auto rhs = children[2];
   const auto op = children[1];
-  auto callee = genCallee(op);
-  if (failed(callee)) {
-    return error(node) << "Failed to get callee: " << op.getType();
-  }
-  auto lhsValue = gen(lhs);
-  auto rhsValue = gen(rhs);
-  if (failed(lhsValue) || failed(rhsValue)) {
-    return error(node) << "Failed to generate lhs or rhs";
-  }
-  // llvm::dbgs() << *callee << "\n" << *lhsValue << "\n" << *rhsValue << "\n";
-  return builder.createCall(loc(node), *callee, mlir::ValueRange{*lhsValue, *rhsValue});
+  return genCallee(op) |
+         and_then([&](auto callee)
+                      -> mlir::FailureOr<std::tuple<Callee, mlir::Value, mlir::Value>> {
+           return gen(lhs) |
+                  and_then([&](auto lhsValue) -> mlir::FailureOr<std::tuple<Callee, mlir::Value, mlir::Value>> {
+                    return gen(rhs) |
+                           and_then([&](auto rhsValue) {
+                             return success(std::make_tuple(callee, lhsValue, rhsValue));
+                           });
+                  });
+         }) |
+         and_then([&](auto call) -> mlir::FailureOr<mlir::Value> {
+           auto [callee, lhsValue, rhsValue] = call;
+           return genApplication(loc(node), callee, {lhsValue, rhsValue});
+         });
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genApplication(mlir::Location loc, Callee callee, llvm::ArrayRef<mlir::Value> args) {
+  return std::visit(Overload{
+    [&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
+      return builder.createCall(loc, funcOp, args);
+    },
+    [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
+      return nyi(loc, "application of value");
+    }
+  }, callee);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genApplicationExpression(const Node node) {
   TRACE();
   const auto children = getNamedChildren(node);
   const auto callee = children[0];
-  auto calleeFunc = genCallee(callee);
-  if (mlir::failed(calleeFunc)) {
-    return error(node) << "Failed to generate callee";
-  }
   auto args = llvm::drop_begin(children);
-  const auto maybeArgs = llvm::to_vector(llvm::map_range(
-      args, [this](const Node &arg) { return gen(arg); }));
-  if (llvm::any_of(maybeArgs, failed)) {
-    return error(node) << "Failed to generate arguments";
-  }
-  auto argValues = llvm::map_to_vector(maybeArgs, [](auto value) { return *value; });
-  auto callOp = builder.createCall(loc(node), *calleeFunc, argValues);
-  return callOp;
+  return genCallee(callee) |
+         and_then([&](auto callee) -> mlir::FailureOr<mlir::Value> {
+           const auto maybeArgs = llvm::to_vector(llvm::map_range(
+               args, [this](const Node &arg) { return gen(arg); }));
+           if (llvm::any_of(maybeArgs, failed)) {
+             return error(node) << "Failed to generate arguments";
+           }
+           auto argValues = llvm::map_to_vector(
+               maybeArgs, [](auto value) { return *value; });
+           return genApplication(loc(node), callee, argValues);
+         });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
@@ -725,6 +755,43 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
   auto array = builder.createArrayFromElements(loc(node), *arrayType, elementValues);
   assert(array.getType() == *arrayType);
   return array;
+}
+
+// mlir::FailureOr<mlir::func::FuncOp> MLIRGen3::genFunctionBody(llvm::StringRef
+// name, mlir::FunctionType funType, mlir::Location location,
+// llvm::ArrayRef<Node> parameters, Node bodyNode) {
+mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
+  TRACE();
+  auto parameters = getNamedChildren(node, {"parameter"});
+  UU auto body = node.getChildByFieldName("body");
+  return mlirFunctionType(node) |
+         and_then([&](auto funType) -> mlir::FailureOr<mlir::FunctionType> {
+           if (auto ft = mlir::dyn_cast<mlir::FunctionType>(funType)) {
+             return ft;
+           }
+           return error(node)
+                  << "Expected function type for fun expression: " << funType;
+         }) |
+         and_then([&](auto funType) {
+           auto anonName = getUniqueName("funexpr");
+           return genFunctionBody(anonName, funType, loc(node), parameters,
+                                  body);
+         }) |
+         and_then(
+             [&](Callee callee) -> mlir::FailureOr<mlir::Value> {
+               return std::visit(Overload{
+                 [&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
+                   auto constantFuncOp = builder.create<mlir::func::ConstantOp>(
+                       loc(node), funcOp.getFunctionType(), funcOp.getSymName());
+                   auto boxedType = builder.emboxType(constantFuncOp.getType());
+                   return builder.createConvert(loc(node), boxedType,
+                                                constantFuncOp);
+                 },
+                 [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
+                   return nyi(loc(node), "application of value");
+                 }
+               }, callee);
+             });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genArrayGetExpression(const Node node) {
@@ -934,7 +1001,21 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
   } else if (type == "match_expression") {
     return genMatchExpression(node);
   } else if (type == "constructor_path") {
-    return mustBe<mlir::Value>(genConstructorPath(node));
+    return genConstructorPath(node) |
+           and_then([&](auto callee) -> mlir::FailureOr<mlir::Value> {
+             return std::visit(
+                 Overload{
+                     [&](mlir::func::FuncOp funcOp)
+                         -> mlir::FailureOr<mlir::Value> {
+                       return {builder.create<mlir::func::ConstantOp>(
+                           loc(node), funcOp.getFunctionType(),
+                           funcOp.getSymName())};
+                     },
+                     [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
+                       return value;
+                     }},
+                 callee);
+           });
   } else if (type == "constructor_pattern") {
     return genConstructorPattern(node);
   } else if (type == "value_pattern") {
@@ -949,6 +1030,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genIfExpression(node);
   } else if (type == "array_get_expression") {
     return genArrayGetExpression(node);
+  } else if (type == "fun_expression") {
+    return genFunExpression(node);
   }
   return error(node) << "NYI: " << type << " (" << __LINE__ << ')';
 }

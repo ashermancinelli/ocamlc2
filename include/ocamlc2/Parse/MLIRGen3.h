@@ -14,6 +14,7 @@ namespace ocamlc2 {
 struct MLIRGen3;
 using VariableScope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::Value>;
 using VariantDeclarations = std::vector<std::pair<std::string, std::optional<mlir::Type>>>;
+using Callee = std::variant<mlir::func::FuncOp, mlir::Value>;
 
 struct Scope;
 
@@ -37,6 +38,10 @@ struct MLIRGen3 {
     unifier.show(node.getCursor(), false);
     return error(loc(node));
   }
+  template<typename... Args>
+  inline auto nyi(const mlir::Location loc, Args&&... args) const {
+    return error(loc) << "NYI: " << llvm::join(llvm::ArrayRef{args...}, ", ");
+  }
   inline auto nyi(const Node node) const {
     unifier.show(node.getCursor(), false);
     return error(node) << "NYI: " << node.getType();
@@ -51,7 +56,8 @@ private:
   mlir::FailureOr<mlir::Value> genCompilationUnit(const Node node);
   mlir::FailureOr<mlir::Value> genNumber(const Node node);
   mlir::FailureOr<mlir::Value> genApplicationExpression(const Node node);
-  mlir::FailureOr<mlir::func::FuncOp> genCallee(const Node node);
+  mlir::FailureOr<mlir::Value> genApplication(mlir::Location, Callee callee, llvm::ArrayRef<mlir::Value> args);
+  mlir::FailureOr<Callee> genCallee(const Node node);
   mlir::FailureOr<mlir::Value> genInfixExpression(const Node node);
   mlir::FailureOr<mlir::Value> genLetExpression(const Node node);
   mlir::FailureOr<mlir::Value> genLetBindingValueDefinition(const Node patternNode, const Node bodyNode);
@@ -61,6 +67,11 @@ private:
   mlir::FailureOr<mlir::Value> genSequenceExpression(const Node node);
   mlir::FailureOr<mlir::Value> genString(const Node node);
   mlir::FailureOr<mlir::Value> genIfExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genFunExpression(const Node node);
+  mlir::FailureOr<Callee>
+  genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
+                  mlir::Location loc, llvm::ArrayRef<Node> parameters,
+                  Node bodyNode);
   mlir::FailureOr<mlir::Value> genArrayGetExpression(const Node node);
   mlir::FailureOr<mlir::Value> genArrayExpression(const Node node);
   mlir::FailureOr<mlir::Value> genGlobalForFreeVariable(mlir::Value value, llvm::StringRef name, mlir::Location loc);
@@ -69,7 +80,7 @@ private:
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(const Node node);
-  mlir::FailureOr<std::variant<mlir::Value, mlir::func::FuncOp>> genConstructorPath(const Node node);
+  mlir::FailureOr<Callee> genConstructorPath(const Node node);
 
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::VariantOperator *type, mlir::Location loc);
