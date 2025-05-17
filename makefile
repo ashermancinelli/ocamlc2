@@ -60,8 +60,11 @@ test:
 lit:
 	$(LIT) -svv test
 
-%:
-	$(NINJA) -C build $@
+p3:
+	$(NINJA) -C build p3
+
+g3:
+	$(NINJA) -C build g3
 
 repl: p3
 	./build/bin/p3

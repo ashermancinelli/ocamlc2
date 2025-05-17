@@ -1,2 +1,4 @@
 #!/usr/bin/env bash
-ninja -C build p3 && ./build/bin/p3 $@
+tool=$1
+shift
+ninja -C build $tool && ./build/bin/$tool $@

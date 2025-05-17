@@ -234,3 +234,5 @@ ocaml.make_closure @g_impl(%x_capture) : (!ocaml.box<i64>) -> !ocaml.closure<( !
 This would allocate an environment object and return an SSA value that carries both the code pointer and the captures, allowing inlining, DCE and better alias analysis.
 
 Until then the current global-table scheme remains acceptable for single-threaded experiments, but we should treat it as **technical debt**.
+
+***TODO:*** Will this work for currying? Create a thunk with 1 fewer arguments and load the first argument from the global table?

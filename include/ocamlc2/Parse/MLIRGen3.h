@@ -15,6 +15,8 @@ struct MLIRGen3;
 using VariableScope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::Value>;
 using VariantDeclarations = std::vector<std::pair<std::string, std::optional<mlir::Type>>>;
 
+struct Scope;
+
 struct MLIRGen3 {
   MLIRGen3(mlir::MLIRContext &context, Unifier &unifier, ts::Node root) 
     : context(context), builder(&context), unifier(unifier), root(root) {}
@@ -61,6 +63,7 @@ private:
   mlir::FailureOr<mlir::Value> genIfExpression(const Node node);
   mlir::FailureOr<mlir::Value> genArrayGetExpression(const Node node);
   mlir::FailureOr<mlir::Value> genArrayExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genGlobalForFreeVariable(mlir::Value value, llvm::StringRef name, mlir::Location loc);
 
   mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
@@ -96,5 +99,7 @@ private:
   Unifier &unifier;
   mlir::OwningOpRef<mlir::ModuleOp> module;
   ts::Node root;
+  friend struct Scope;
 };
+
 } // namespace ocamlc2

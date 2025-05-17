@@ -33,6 +33,18 @@ def Ocaml_TupleType : Ocaml_Type<"Tuple", "tuple"> {
   ];
 }
 
+def Ocaml_ReferenceType : Ocaml_Type<"Reference", "ref"> {
+  let summary = "OCaml reference";
+  let description = "OCaml reference";
+  let parameters = (ins AnyType:$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "::mlir::Type":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>,
+  ];
+}
+
 def Ocaml_ArrayType : Ocaml_Type<"Array", "array"> {
   let summary = "OCaml array";
   let description = "OCaml array";
@@ -121,8 +133,36 @@ def AnyOCamlType : TypeConstraint<
         "::mlir::ocaml::ArrayType>($_self)">,
   "OCaml value">;
 
+def AnyOcamlReferenceType : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::ReferenceType>($_self)">,
+  "OCaml reference">;
+
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
+
+def Ocaml_LoadOp : Ocaml_Op<"load"> {
+  let summary = "OCaml load";
+  let description = "OCaml load";
+  let arguments = (ins AnyOcamlReferenceType:$input);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
+}
+
+def Ocaml_StoreOp : Ocaml_Op<"store"> {
+  let summary = "OCaml store";
+  let description = "OCaml store";
+  let arguments = (ins AnyOCamlType:$value, AnyOcamlReferenceType:$input);
+  let results = (outs);
+  let assemblyFormat = "$value `to` $input attr-dict `:` type($value) `to` type($input)";
+}
+
+def Ocaml_AddressOfOp : Ocaml_Op<"address_of"> {
+  let summary = "OCaml address of";
+  let description = "OCaml address of";
+  let arguments = (ins SymbolRefAttr:$symbol);
+  let results = (outs AnyOcamlReferenceType:$result);
+  let assemblyFormat = "$symbol attr-dict `:` type($result)";
+}
 
 def Ocaml_EmboxStringOp : Ocaml_Op<"embox_string"> {
   let summary = "OCaml embox string";
@@ -244,15 +284,6 @@ def Ocaml_ObjReprOp : Ocaml_Op<"repr"> {
     let results = (outs I32:$result);
     let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
 }
-
-//===----------------------------------------------------------------------===//
-// Globals – used for closure captures
-//===----------------------------------------------------------------------===//
-
-// A module-level symbol that holds a captured value.  It has no operands or
-// results; its type is encoded in a dedicated `type` attribute so that it can
-// be referenced without creating a value in the IR.  The op lives at the
-// top-level (inside builtin.module) and can be looked-up via symbol tables.
 
 def Ocaml_GlobalOp : Ocaml_Op<"global", [Symbol]> {
   let summary = "OCaml global variable (closure capture slot)";

@@ -50,7 +50,18 @@ mlir::ParseResult mlir::ocaml::GlobalOp::parse(mlir::OpAsmParser &parser, mlir::
 }
 
 void mlir::ocaml::GlobalOp::print(mlir::OpAsmPrinter &p) {
-  p << "global " << getSymName() << " : " << getType();
+  p << ' ' << getSymName() << " : " << getType();
+}
+
+void mlir::ocaml::GlobalOp::build(mlir::OpBuilder &builder,
+                                  mlir::OperationState &result, llvm::StringRef name,
+                                  mlir::Type type,
+                                  llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+  result.addAttribute(getTypeAttrName(result.name), mlir::TypeAttr::get(type));
+  result.addAttribute(mlir::SymbolTable::getSymbolAttrName(),
+                      builder.getStringAttr(name));
+  result.addAttribute(getSymrefAttrName(result.name),
+                      mlir::SymbolRefAttr::get(builder.getContext(), name));
 }
 
 static mlir::StringRef ocamlAttributePrefix() {

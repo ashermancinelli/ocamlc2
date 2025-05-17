@@ -34,6 +34,13 @@
 using namespace ocamlc2;
 using InsertionGuard = mlir::ocaml::OcamlOpBuilder::InsertionGuard;
 
+struct ocamlc2::Scope {
+  Scope(MLIRGen3 &gen) : gen(gen), variableScope(gen.variables) {}
+  MLIRGen3 &gen;
+  VariableScope variableScope;
+
+};
+
 using mlir::failed;
 using mlir::failure;
 using mlir::success;
@@ -478,6 +485,34 @@ FailureOr<bool> MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
   return true;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genGlobalForFreeVariable(mlir::Value value, llvm::StringRef name, mlir::Location loc) {
+  TRACE();
+  static unsigned odometer = 0;
+  auto globalName = llvm::Twine(name)
+                        .concat("_global_")
+                        .concat(llvm::Twine(odometer++))
+                        .str();
+  auto globalOp = [&] -> mlir::ocaml::GlobalOp {
+    InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(module->getBody());
+    return builder.create<mlir::ocaml::GlobalOp>(loc, globalName, value.getType());
+  }();
+  auto addressOf = [&] () -> mlir::Value {
+    auto symbol = globalOp.getSymbol();
+    return builder.create<mlir::ocaml::AddressOfOp>(
+        loc, mlir::ocaml::ReferenceType::get(globalOp.getType()), symbol);
+  };
+  {
+    InsertionGuard guard(builder);
+    builder.setInsertionPointAfterValue(value);
+    auto addressOp = addressOf();
+    builder.create<mlir::ocaml::StoreOp>(loc, value, addressOp);
+  }
+  auto load = builder.create<mlir::ocaml::LoadOp>(
+      loc, value.getType(), addressOf());
+  return {load};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
   if (auto value = variables.lookup(name)) {
     auto isFree = valueIsFreeInCurrentContext(value);
@@ -485,7 +520,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::L
       return failure();
     }
     if (*isFree) {
-      return error(loc) << "Variable " << name << " is free in current context";
+      return genGlobalForFreeVariable(value, name, loc);
     }
     return value;
   }
