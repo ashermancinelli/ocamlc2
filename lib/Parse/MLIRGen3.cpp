@@ -1,5 +1,6 @@
 #include "ocamlc2/Parse/MLIRGen3.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include "ocamlc2/Dialect/OcamlTypeUtils.h"
 #include "ocamlc2/Parse/AST.h"
 #include "ocamlc2/Parse/TSUtil.h"
 #include "ocamlc2/Support/LLVMCommon.h"
@@ -8,6 +9,7 @@
 #include <llvm/ADT/STLForwardCompat.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
+#include <llvm/ADT/iterator_range.h>
 #include <llvm/Support/LogicalResult.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -84,29 +86,36 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBindingValueDefinition(const Node p
   return declareVariable(patternNode, bodyValue, loc(patternNode));
 }
 
-mlir::FailureOr<Callee> MLIRGen3::genFunctionBody(llvm::StringRef name, mlir::FunctionType funType, mlir::Location location, llvm::ArrayRef<Node> parameters, Node bodyNode) {
+mlir::FailureOr<Callee>
+MLIRGen3::genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
+                          mlir::Location location,
+                          llvm::ArrayRef<Node> parameters, Node bodyNode) {
   DBGS("Generating function: " << name << "\n");
   InsertionGuard guard(builder);
   VariableScope scope(variables);
+  mlir::ocaml::ClosureEnvValue env =
+      builder.createEnv(location, getUniqueName((name + "env").str()));
   builder.setInsertionPointToStart(module->getBody());
   auto function =
       builder.create<mlir::func::FuncOp>(location, name, funType);
   function.setPrivate();
+  function->setAttr("env", env.getFor());
   auto *bodyBlock = function.addEntryBlock();
   builder.setInsertionPointToEnd(bodyBlock);
-  for (auto [blockArg, parameter] :
-       llvm::zip(function.getArguments(), parameters)) {
+  auto it = function.getArguments().begin();
+  // skip env argument (if it exists) when declaring variables
+  it += llvm::isa<mlir::ocaml::EnvType>(it->getType());
+  auto argRange = llvm::make_range(it, function.getArguments().end());
+  for (auto [blockArg, parameter] : llvm::zip(argRange, parameters)) {
     auto parameterNode = parameter.getChildByFieldName("pattern");
     if (failed(declareVariable(parameterNode, blockArg, loc(parameterNode)))) {
       return failure();
     }
   }
-  auto body = gen(bodyNode);
-  if (failed(body)) {
-    return failure();
-  }
-  builder.create<mlir::func::ReturnOp>(location, *body);
-  return Callee{function};
+  return gen(bodyNode) | and_then([&](auto body) -> FailureOr<Callee> {
+    builder.create<mlir::func::ReturnOp>(location, body);
+    return {function};
+  });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
@@ -176,7 +185,10 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(ocamlc2::TypeExpr *type, 
     if (llvm::any_of(argTypes, failed)) {
       return failure();
     }
-    auto successfulArgTypes = llvm::map_to_vector(argTypes, [](auto t) { return *t; });
+    auto successfulArgTypes = SmallVector<mlir::Type>{
+        mlir::ocaml::EnvType::get(builder.getContext())};
+    auto mappedTypes = llvm::map_to_vector(argTypes, [](auto t) { return *t; });
+    llvm::append_range(successfulArgTypes, mappedTypes);
     auto returnType = *mlirType(typeOperatorArgs.back(), loc);
     return mlir::FunctionType::get(builder.getContext(), successfulArgTypes, {returnType});
   }
@@ -456,7 +468,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(const Node node) {
   return getVariable(str, loc(node));
 }
 
-FailureOr<bool> MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
+FailureOr<std::tuple<bool, mlir::func::FuncOp, mlir::func::FuncOp>>
+MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
   TRACE();
   auto func = [&] -> mlir::func::FuncOp {
     auto *op = value.getDefiningOp();
@@ -485,34 +498,32 @@ FailureOr<bool> MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
   auto currentFunc = currentBlock->getParent()->getParentOfType<mlir::func::FuncOp>();
   if (currentFunc == func) {
     DBGS("Current region\n");
-    return false;
+    return {{false, currentFunc, func}};
   }
   DBGS("Not current region\n");
-  return true;
+  return {{true, currentFunc, func}};
 }
 
-mlir::FailureOr<mlir::Value> MLIRGen3::genGlobalForFreeVariable(mlir::Value value, llvm::StringRef name, mlir::Location loc) {
-  TRACE();
-  auto globalName = getUniqueName(("g$" + name).str());
-  auto globalOp = [&] -> mlir::ocaml::GlobalOp {
-    InsertionGuard guard(builder);
-    builder.setInsertionPointToStart(module->getBody());
-    return builder.create<mlir::ocaml::GlobalOp>(loc, globalName, value.getType());
-  }();
-  auto addressOf = [&] () -> mlir::Value {
-    auto symbol = globalOp.getSymbol();
-    return builder.create<mlir::ocaml::AddressOfOp>(
-        loc, mlir::ocaml::ReferenceType::get(globalOp.getType()), symbol);
-  };
-  {
-    InsertionGuard guard(builder);
-    builder.setInsertionPointAfterValue(value);
-    auto addressOp = addressOf();
-    builder.create<mlir::ocaml::StoreOp>(loc, value, addressOp);
-  }
-  auto load = builder.create<mlir::ocaml::LoadOp>(
-      loc, value.getType(), addressOf());
-  return {load};
+mlir::FailureOr<mlir::Value> MLIRGen3::genGlobalForFreeVariable(
+    mlir::Value value, llvm::StringRef name, mlir::func::FuncOp currentFunc,
+    mlir::func::FuncOp definingFunc, mlir::Location loc) {
+  DBGS(name << " is used in " << currentFunc.getSymName() << " captured from "
+            << definingFunc.getSymName() << "\n");
+  return findEnvForFunction(currentFunc) |
+         and_then([&](mlir::Value env) -> mlir::LogicalResult {
+           InsertionGuard guard(builder);
+           builder.setInsertionPointAfterValue(env);
+           builder.createEnvCapture(loc, env, name, value);
+           return success();
+         }) | and_then([&]() -> mlir::FailureOr<mlir::Value> {
+           InsertionGuard guard(builder);
+           auto envArg = currentFunc.getArgument(0);
+           builder.setInsertionPointAfterValue(envArg);
+           auto loadCapturedArg = builder.createEnvGet(loc, value.getType(), envArg, name);
+           return {loadCapturedArg};
+         }) | and_then([&] (mlir::Value loadedValue) -> FailureOr<mlir::Value> {
+           return declareVariable(name, loadedValue, loc);
+         });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
@@ -521,8 +532,9 @@ mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::L
     if (failed(isFree)) {
       return failure();
     }
-    if (*isFree) {
-      return genGlobalForFreeVariable(value, name, loc);
+    auto [isFreeV, currentFunc, definingFunc] = *isFree;
+    if (isFreeV) {
+      return genGlobalForFreeVariable(value, name, currentFunc, definingFunc, loc);
     }
     return value;
   }
@@ -618,33 +630,40 @@ mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
   TRACE();
   auto str = unifier.getTextSaved(node);
   auto value = getVariable(str, loc(node));
-  return value | and_then([&](mlir::Value value) -> mlir::FailureOr<mlir::func::FuncOp> {
-    if (auto box = llvm::dyn_cast<mlir::ocaml::BoxType>(value.getType())) {
-      auto eleType = box.getElementType();
-      if (auto funcType = llvm::dyn_cast<mlir::FunctionType>(eleType)) {
-
-      }
-    }
-    return error(node) << "Expected function for callee: " << str;
-  }) | or_else([&]() -> mlir::FailureOr<mlir::func::FuncOp> {
-    auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
-    if (!callee) {
-      auto type = mlirType(node);
-      if (failed(type)) {
-        return failure();
-      }
-      auto functionType = mlir::dyn_cast<mlir::FunctionType>(*type);
-      if (not functionType) {
-        return error(node) << "Failed to get callee: " << str;
-      }
-      InsertionGuard guard(builder);
-      builder.setInsertionPointToStart(module->getBody());
-      auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
-      callee.setPrivate();
-      return callee;
-    }
-    return callee;
-  });
+  return value | and_then([&](mlir::Value value) -> mlir::FailureOr<Callee> {
+           if (mlir::ocaml::Closure{value}) {
+             return Callee{value};
+           }
+           return error(node) << "Expected function for callee: " << str;
+         }) |
+         or_else([&]() -> mlir::FailureOr<Callee> {
+           auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
+           if (callee) {
+             return Callee{callee};
+           }
+           return failure();
+         }) |
+         or_else([&]() -> mlir::FailureOr<Callee> {
+           auto type = mlirType(node);
+           if (failed(type)) {
+             return failure();
+           }
+           auto functionType = mlir::dyn_cast<mlir::FunctionType>(*type);
+           if (not functionType) {
+             return error(node) << "Failed to get callee: " << str;
+           }
+           if (!llvm::isa<mlir::ocaml::EnvType>(functionType.getInput(0))) {
+             auto et = builder.getEnvType();
+             SmallVector<mlir::Type> inputs{et};
+             llvm::append_range(inputs, functionType.getInputs());
+             functionType = mlir::FunctionType::get(builder.getContext(), inputs, functionType.getResults());
+           }
+           InsertionGuard guard(builder);
+           builder.setInsertionPointToStart(module->getBody());
+           auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
+           callee.setPrivate();
+           return Callee{callee};
+         });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetExpression(const Node node) {
@@ -687,26 +706,49 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genInfixExpression(const Node node) {
   const auto lhs = children[0];
   const auto rhs = children[2];
   const auto op = children[1];
+  auto l = loc(node);
   return genCallee(op) |
-         and_then([&](auto callee)
-                      -> mlir::FailureOr<std::tuple<Callee, mlir::Value, mlir::Value>> {
+         and_then([&](auto callee) -> mlir::FailureOr<mlir::Value> {
            return gen(lhs) |
-                  and_then([&](auto lhsValue) -> mlir::FailureOr<std::tuple<Callee, mlir::Value, mlir::Value>> {
+                  and_then([&](auto lhsValue) -> mlir::FailureOr<mlir::Value> {
                     return gen(rhs) |
                            and_then([&](auto rhsValue) {
-                             return success(std::make_tuple(callee, lhsValue, rhsValue));
+                             // Let genApplication add the env operand automatically
+                             return genApplication(l, callee, {lhsValue, rhsValue});
                            });
                   });
-         }) |
-         and_then([&](auto call) -> mlir::FailureOr<mlir::Value> {
-           auto [callee, lhsValue, rhsValue] = call;
-           return genApplication(loc(node), callee, {lhsValue, rhsValue});
          });
+}
+
+mlir::FailureOr<mlir::ocaml::ClosureEnvValue> MLIRGen3::findEnvForFunction(mlir::func::FuncOp funcOp) {
+  auto envAttr = funcOp->getAttr("env");
+  if (not envAttr) {
+    return failure();
+  }
+  FailureOr<mlir::ocaml::ClosureEnvValue> env=failure();
+  getModule().walk([&](mlir::ocaml::EnvOp envOp) {
+    if (mlir::ocaml::ClosureEnvValue{envOp}.getFor() == envAttr) {
+      env = success(envOp.getResult());
+    }
+  });
+  return env;
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genApplication(mlir::Location loc, Callee callee, llvm::ArrayRef<mlir::Value> args) {
   return std::visit(Overload{
     [&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
+      if (not mlir::isa<mlir::ocaml::EnvType>(args.front().getType())) {
+        return findEnvForFunction(funcOp) |
+                   or_else([&]() -> FailureOr<mlir::ocaml::ClosureEnvValue> {
+                     return {builder.createEnv(
+                         loc, getUniqueName(funcOp.getSymName()))};
+                   }) |
+                   and_then([&](mlir::ocaml::ClosureEnvValue env) -> FailureOr<mlir::Value> {
+                     SmallVector<mlir::Value> newArgs{env};
+                     llvm::append_range(newArgs, args);
+                     return builder.createCall(loc, funcOp, newArgs);
+                   });
+      }
       return builder.createCall(loc, funcOp, args);
     },
     [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
@@ -757,9 +799,6 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
   return array;
 }
 
-// mlir::FailureOr<mlir::func::FuncOp> MLIRGen3::genFunctionBody(llvm::StringRef
-// name, mlir::FunctionType funType, mlir::Location location,
-// llvm::ArrayRef<Node> parameters, Node bodyNode) {
 mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
   TRACE();
   auto parameters = getNamedChildren(node, {"parameter"});
@@ -948,10 +987,10 @@ mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(Node node, mlir::Value va
 mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc) {
   auto savedName = stringArena.save(name);
   DBGS("declaring '" << savedName << "' of type " << value.getType() << "\n");
-  if (variables.count(savedName)) {
-    return mlir::emitError(loc)
-        << "Variable '" << name << "' already declared";
-  }
+  // if (variables.count(savedName)) {
+  //   return mlir::emitError(loc)
+  //       << "Variable '" << name << "' already declared";
+  // }
   variables.insert(savedName, value);
   return value;
 }

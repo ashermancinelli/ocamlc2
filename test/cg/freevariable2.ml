@@ -2,8 +2,9 @@
  * RUN: g3 %s | FileCheck %s
  *)
 let x = 5 in
-let y () = x in
-y ();;
+let y = 7 in
+let z () = x + y in
+z ();;
 (*
  * CHECK-LABEL:   ocaml.global g$x$0 : !ocaml.box<i64>
 

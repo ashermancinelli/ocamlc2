@@ -3,8 +3,8 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/DialectBase.td"
-include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/CastInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -118,6 +118,20 @@ def Ocaml_UnitType : Ocaml_Type<"Unit", "unit"> {
   let assemblyFormat = "";
 }
 
+def Ocaml_EnvType : Ocaml_Type<"Env", "env"> {
+  let summary = "OCaml environment";
+  let description = "OCaml environment for closures and captured values";
+  let parameters = (ins);
+  let assemblyFormat = "";
+}
+
+def Ocaml_ClosureType : Ocaml_Type<"Closure", "closure"> {
+  let summary = "OCaml closure";
+  let description = "OCaml closure";
+  let parameters = (ins FunctionType:$functionType);
+  let assemblyFormat = "`<` $functionType `>`";
+}
+
 def AnyBoxType : TypeConstraint<
   CPred<"::mlir::isa<"
         "::mlir::ocaml::BoxType, "
@@ -139,6 +153,63 @@ def AnyOcamlReferenceType : TypeConstraint<
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
+
+def Ocaml_EnvOp : Ocaml_Op<"closure.env.new", [Pure]> {
+  let summary = "OCaml environment";
+  let description = "OCaml environment for closures and captured values";
+  let arguments = (ins);
+  let results = (outs Ocaml_EnvType:$result);
+  let assemblyFormat = "attr-dict";
+}
+
+def Ocaml_EnvCaptureOp : Ocaml_Op<"closure.env.capture"> {
+  let summary = "OCaml environment capture";
+  let description = "OCaml environment capture";
+  let arguments = (ins Ocaml_EnvType:$env, StrAttr:$id, AnyOCamlType:$value);
+  let results = (outs);
+  let assemblyFormat = "$env `[` $id `]` `=` $value attr-dict `:` type($value)";
+}
+
+def Ocaml_EnvGetOp : Ocaml_Op<"closure.env.get", [MemoryEffectsOpInterface]> {
+  let summary = "OCaml environment get";
+  let description = "OCaml environment get";
+  let arguments = (ins Arg<Ocaml_EnvType, "environment being read from", [MemRead]>:$env, StrAttr:$id);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$env `[` $id `]` attr-dict `->` type($result)";
+}
+
+def Ocaml_ClosureOp : Ocaml_Op<"closure.new", [Pure]> {
+  let summary = "OCaml closure";
+  let description = "OCaml closure";
+  let arguments = (ins FlatSymbolRefAttr:$symbol, Ocaml_EnvType:$env);
+  let results = (outs Ocaml_BoxType:$result);
+  let assemblyFormat = "$symbol `capturing` $env attr-dict `:` type($result)";
+}
+
+def Ocaml_InvokeOp : Ocaml_Op<"closure.invoke", [
+    CallOpInterface]> {
+  let summary = "OCaml invoke";
+  let description = "OCaml invoke";
+  let arguments = (ins 
+    Ocaml_BoxType:$closure,
+    Variadic<AnyType>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs
+  );
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$closure `(` $args `)` attr-dict `:` `(` type($closure) `)` `->` type($args) `->` type($result)";
+  let extraClassDeclaration = [{
+    FunctionType getCalleeType() {
+      return getClosure().getType().getElementType().cast<FunctionType>();
+    }
+    MutableOperandRange getArgOperandsMutable() { return getArgsMutable(); }
+    operand_iterator arg_operand_begin() { return operand_begin() + 1; }
+    operand_iterator arg_operand_end() { return operand_end(); }
+    operand_range getArgOperands() { return {arg_operand_begin(), arg_operand_end()}; }
+    CallInterfaceCallable getCallableForCallee() { return getClosure(); }
+    void setCalleeFromCallable(CallInterfaceCallable callee) { return setOperand(0, cast<Value>(callee)); }
+  }];
+}
 
 def Ocaml_LoadOp : Ocaml_Op<"load"> {
   let summary = "OCaml load";

@@ -24,6 +24,26 @@ public:
     return create<mlir::ocaml::ArrayFromElementsOp>(loc, elements);
   }
 
+  mlir::Value createNullEnv(mlir::Location loc) {
+    auto env = create<mlir::ocaml::EnvOp>(loc, getEnvType());
+    env->setAttr("for", getStringAttr("<empty>"));
+    return env;
+  }
+
+  mlir::Value createEnv(mlir::Location loc, llvm::StringRef name) {
+    auto env = create<mlir::ocaml::EnvOp>(loc, EnvType::get(getContext()));
+    env->setAttr("for", getStringAttr(name));
+    return env;
+  }
+
+  void createEnvCapture(mlir::Location loc, mlir::Value env, llvm::StringRef name, mlir::Value value) {
+    create<mlir::ocaml::EnvCaptureOp>(loc, env, name, value);
+  }
+
+  mlir::Value createEnvGet(mlir::Location loc, mlir::Type resultType, mlir::Value env, llvm::StringRef name) {
+    return create<mlir::ocaml::EnvGetOp>(loc, resultType, env, getStringAttr(name));
+  }
+
   mlir::Value createArrayGet(mlir::Location loc, mlir::Value array, mlir::Value index) {
     auto arrayType = llvm::cast<mlir::ocaml::ArrayType>(array.getType());
     auto indexType = index.getType();
@@ -96,6 +116,10 @@ public:
 
   mlir::Value createCallIntrinsic(mlir::Location loc, StringRef callee, mlir::ValueRange args, mlir::Type resultType) {
     return create<mlir::ocaml::IntrinsicOp>(loc, resultType, getStringAttr(callee), args);
+  }
+
+  inline mlir::Type getEnvType() {
+    return mlir::ocaml::EnvType::get(getContext());
   }
 
   inline mlir::Type emboxType(mlir::Type elementType) {

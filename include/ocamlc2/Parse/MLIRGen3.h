@@ -4,7 +4,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "ocamlc2/Dialect/OcamlOpBuilder.h"
+#include "ocamlc2/Dialect/OcamlTypeUtils.h"
 #include "ocamlc2/Support/LLVMCommon.h"
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <ocamlc2/Parse/ScopedHashTable.h>
 #include <llvm/Support/LogicalResult.h>
 #include <mlir/IR/Location.h>
@@ -74,7 +76,11 @@ private:
                   Node bodyNode);
   mlir::FailureOr<mlir::Value> genArrayGetExpression(const Node node);
   mlir::FailureOr<mlir::Value> genArrayExpression(const Node node);
-  mlir::FailureOr<mlir::Value> genGlobalForFreeVariable(mlir::Value value, llvm::StringRef name, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> genGlobalForFreeVariable(mlir::Value value,
+                                                        llvm::StringRef name,
+                                                        mlir::func::FuncOp currentFunc,
+                                                        mlir::func::FuncOp definingFunc,
+                                                        mlir::Location loc);
 
   mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
   mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
@@ -89,6 +95,7 @@ private:
   mlir::FailureOr<mlir::Type> mlirFunctionType(const Node node);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
+  mlir::FailureOr<mlir::ocaml::ClosureEnvValue> findEnvForFunction(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);
@@ -100,7 +107,8 @@ private:
   void popCaptureID() {
     captureIDs.pop_back();
   }
-  mlir::FailureOr<bool> valueIsFreeInCurrentContext(mlir::Value value);
+  mlir::FailureOr<std::tuple<bool, mlir::func::FuncOp, mlir::func::FuncOp>>
+  valueIsFreeInCurrentContext(mlir::Value value);
 
   llvm::SmallVector<ts::NodeID> captureIDs;
   llvm::DenseMap<TypeExpr *, mlir::Type> typeExprToMlirType;

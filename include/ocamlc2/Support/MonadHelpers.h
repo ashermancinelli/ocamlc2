@@ -42,9 +42,6 @@ struct OrElseWrapper {
   F func;
 };
 
-// Factory helpers that create the wrappers.  These are the *functions* users
-// will write:  `value | and_then(lambda)` or `value | or_else(lambda)`.
-
 template <typename F>
 auto and_then(F &&f) -> AndThenWrapper<std::decay_t<F>> {
   return {std::forward<F>(f)};
@@ -55,8 +52,6 @@ auto or_else(F &&f) -> OrElseWrapper<std::decay_t<F>> {
   return {std::forward<F>(f)};
 }
 
-// Apply `and_then`: run the continuation only if the FailureOr succeeded.
-
 template <typename T, typename F,
           typename R = decltype(std::declval<F &&>()(*std::declval<mlir::FailureOr<T>>() ))>
 auto operator|(mlir::FailureOr<T> value, AndThenWrapper<F> wrapper) -> R {
@@ -65,8 +60,6 @@ auto operator|(mlir::FailureOr<T> value, AndThenWrapper<F> wrapper) -> R {
   }
   return wrapper.func(*value);
 }
-
-// Apply `or_else`: run the alternative only if the FailureOr failed.
 
 template <typename T, typename F,
           typename R = typename std::invoke_result_t<F>>
@@ -77,6 +70,20 @@ auto operator|(mlir::FailureOr<T> value, OrElseWrapper<F> wrapper) -> R {
   return wrapper.func();
 }
 
-// --- End new function-style monadic helpers ----------------------------------
+// ---------------------------------------------------------------------
+// LogicalResult support
+// ---------------------------------------------------------------------
+
+// Enable chaining when the left‐hand side is only a success/failure flag
+// (i.e. `mlir::LogicalResult`). In that case, the continuation `func` does
+// not receive a value.
+
+template <typename F,
+          typename R = std::invoke_result_t<F>>
+auto operator|(mlir::LogicalResult lr, AndThenWrapper<F> wrapper) -> R {
+  if (mlir::failed(lr))
+    return mlir::failure();
+  return wrapper.func();
+}
 
 } // namespace ocamlc2
