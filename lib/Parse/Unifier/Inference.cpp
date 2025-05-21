@@ -1000,13 +1000,31 @@ TypeExpr* Unifier::inferLetExpression(Cursor ast) {
   return infer(body);
 }
 
+TypeExpr* Unifier::inferConsExpression(Cursor ast) {
+  TRACE();
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "cons_expression");
+  auto left = node.getChildByFieldName("left");
+  auto right = node.getChildByFieldName("right");
+  auto *leftType = infer(left);
+  auto *rightType = infer(right);
+  auto *listType = getListType();
+  UNIFY_OR_RNULL(rightType, listType);
+  UNIFY_OR_RNULL(leftType, listType->back());
+  return listType;
+}
+
 TypeExpr* Unifier::inferListExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
   assert(node.getType() == "list_expression");
+  auto children = getNamedChildren(node);
+  if (children.empty()) {
+    return getListType();
+  }
   SmallVector<TypeExpr*> args;
-  for (unsigned i = 0; i < node.getNumNamedChildren(); ++i) {
-    auto *type = infer(node.getNamedChild(i));
+  for (auto child : children) {
+    auto *type = infer(child);
     RNULL_IF((not args.empty() && failed(unify(type, args.back()))),
              "Failed to unify list element type with previous element type");
     args.push_back(type);
@@ -1813,6 +1831,20 @@ TypeExpr* Unifier::inferExternal(Cursor ast) {
   return declareVariable(name, type);
 }
 
+TypeExpr* Unifier::inferPrefixExpression(Cursor ast) {
+  auto node = ast.getCurrentNode();
+  assert(node.getType() == "prefix_expression");
+  auto op = node.getChildByFieldName("operator");
+  auto expr = node.getChildByFieldName("expression");
+  if (op.getType() != "prefix_operator") {
+    RNULL("Expected prefix operator", op);
+  }
+  auto *tv = createTypeVariable();
+  auto *refType = getRefOfType(tv);
+  UNIFY_OR_RNULL(infer(expr), refType);
+  return tv;
+}
+
 TypeExpr* Unifier::inferType(Cursor ast) {
   auto node = ast.getCurrentNode();
   static constexpr std::string_view passthroughTypes[] = {
@@ -1934,6 +1966,10 @@ TypeExpr* Unifier::inferType(Cursor ast) {
     return inferValueDefinition(std::move(ast));
   } else if (type == "constrain_module") {
     return inferModuleTypeConstraint(std::move(ast));
+  } else if (type == "prefix_expression") {
+    return inferPrefixExpression(std::move(ast));
+  } else if (type == "cons_expression") {
+    return inferConsExpression(std::move(ast));
   }
   const auto message = SSWRAP("Unknown node type: " << node.getType());
   llvm::errs() << message << '\n';

@@ -240,7 +240,7 @@ def Ocaml_StoreOp : Ocaml_Op<"store"> {
   let assemblyFormat = "$value `to` $input attr-dict `:` type($value) `to` type($input)";
 }
 
-def Ocaml_AddressOfOp : Ocaml_Op<"address_of"> {
+def Ocaml_AddressOfOp : Ocaml_Op<"addressof"> {
   let summary = "OCaml address of";
   let description = "OCaml address of";
   let arguments = (ins SymbolRefAttr:$symbol);

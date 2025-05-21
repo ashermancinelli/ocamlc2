@@ -86,49 +86,15 @@ LogicalResult Unifier::initializeEnvironment() {
   }
   declareType("list", createTypeOperator("list", createTypeVariable()));
   declareType("array", createTypeOperator("array", createTypeVariable()));
+
+  // ref behaves both as a type and a regular function in the tree sitter ast
+  auto *refType = createTypeOperator("ref", createTypeVariable());
+  declareType("ref", refType);
+  declareVariable("ref", getFunctionType({refType->back(), refType}));
+  declareVariable(":=", getFunctionType({refType, refType->back(), getUnitType()}));
+
   openModules.push_back(moduleStack.back());
   popModule();
-  return success();
-
-  // auto *varargs = create<VarargsOperator>();
-  // declareType({varargs->getName()}, varargs);
-
-  auto *T_bool = getBoolType();
-  auto *T_float = getFloatType();
-  auto *T_int = getIntType();
-  auto *T_unit = getUnitType();
-  auto *T_string = getStringType();
-  auto *T1 = createTypeVariable(), *T2 = createTypeVariable();
-
-  {
-    for (auto arithmetic : {"+", "-", "*", "/", "%"}) {
-      declareVariable(arithmetic, getFunctionType({T_int, T_int, T_int}));
-      declareVariable(std::string(arithmetic) + ".",
-              getFunctionType({T_float, T_float, T_float}));
-    }
-    for (auto comparison : {"=", "!=", "<", "<=", ">", ">="}) {
-      declareVariable(comparison, getFunctionType({T1, T1, T_bool}));
-    }
-  }
-  {
-    auto *concatLHS = getFunctionType({T1, T2});
-    auto *concatType = getFunctionType({concatLHS, T1, T2});
-    declareVariable("@@", concatType);
-  }
-  popModule();
-
-  {
-    // Builtin constructors
-    detail::ModuleScope ms{*this, "Option"};
-    auto *Optional = getOptionalType();
-    declareVariable("None", Optional);
-    declareVariable("Some", getFunctionType({Optional->back(), Optional}));
-  }
-  {
-    detail::ModuleScope ms{*this, "Printf"};
-    declareVariable("printf", getFunctionType({T_string, getVarargsType(), T_unit}));
-  }
-
   return success();
 }
 

@@ -157,6 +157,10 @@ public:
   inline auto *getTupleType(llvm::ArrayRef<TypeExpr *> args) {
     return create<TupleOperator>(args);
   }
+  inline auto *getRefOfType(TypeExpr *pointee) {
+    return createTypeOperator(TypeOperator::getRefOperatorName(), {pointee});
+  }
+  inline auto *getRefType() { return getRefOfType(createTypeVariable()); }
   inline auto *getListTypeOf(TypeExpr *type) {
     return createTypeOperator(TypeOperator::getListOperatorName(), {type});
   }
@@ -241,6 +245,7 @@ private:
   TypeExpr *inferLetBindingValue(Node name, Node body);
   TypeExpr *inferLetExpression(Cursor ast);
   TypeExpr *inferListExpression(Cursor ast);
+  TypeExpr *inferConsExpression(Cursor ast);
   TypeExpr *inferMatchCase(TypeExpr **matcheeType, ts::Node node);
   TypeExpr *inferMatchExpression(Cursor ast);
   TypeExpr *inferMatchFunctionExpression(Cursor ast);
@@ -275,6 +280,7 @@ private:
   TypeExpr *inferValueDefinition(Cursor ast);
   TypeExpr *inferLetOperatorApplication(llvm::StringRef op, Node argument);
   TypeExpr *inferUserDefinedLetExpression(detail::UserDefinedLetOperator letOperator);
+  TypeExpr *inferPrefixExpression(Cursor ast);
 
   TypeExpr *findMatchingRecordType(TypeExpr *type);
   FailureOr<std::pair<llvm::StringRef, TypeExpr*>> inferFieldPattern(Node node);

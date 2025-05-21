@@ -106,6 +106,7 @@ struct TypeOperator : public TypeExpr {
   consteval static llvm::StringRef getBoolOperatorName() { return "bool"; }
   consteval static llvm::StringRef getOptionalOperatorName() { return "option"; }
   consteval static llvm::StringRef getFunctorOperatorName() { return "functor"; }
+  consteval static llvm::StringRef getRefOperatorName() { return "ref"; }
 
 protected:
   llvm::SmallVector<TypeExpr*> args;
