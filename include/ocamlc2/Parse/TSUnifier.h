@@ -119,6 +119,7 @@ struct Unifier {
     return ocamlc2::getText(node, sources.back().source);
   }
   llvm::StringRef getTextSaved(ts::Node node);
+  llvm::StringRef getLastModule() const { return lastModule; }
 
 private:
   inline auto *createTypeVariable() { return create<TypeVariable>(); }
@@ -406,6 +407,7 @@ private:
   inline ModuleOperator &mod() { return *moduleStack.back(); }
   TypeVarEnv typeVarEnv;
   llvm::SmallVector<ModuleOperator *> moduleStack;
+  llvm::StringRef lastModule;
   llvm::SmallVector<ModuleOperator *> openModules;
   llvm::DenseMap<llvm::StringRef, ModuleOperator *> moduleMap;
 
@@ -439,14 +441,6 @@ private:
   llvm::SmallVector<
       std::pair<llvm::StringRef, llvm::SmallVector<llvm::StringRef>>>
       seenRecordFields;
-
-  // Root scope for the unifier, created when the unifier is constructed.
-  // Sometimes we need to declare stdlib types before actually loading the
-  // stdlib, in which case we don't have a compilation unit to create a scope.
-  // std::unique_ptr<detail::Scope> rootScope;
-  // std::unique_ptr<EnvScope> rootTypeScope;
-
-  // llvm::SmallVector<std::unique_ptr<EnvScope>> typeScopeStack;
 
   // Whether we are loading the standard library. It's helpful to skip certain
   // debugging steps when loading the stdlib, as it becomes very noisy when

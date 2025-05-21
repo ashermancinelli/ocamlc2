@@ -600,6 +600,7 @@ TypeExpr* Unifier::inferCompilationUnit(Cursor ast) {
   } else {
     modulesToDump.push_back(moduleStack.back());
   }
+  lastModule = moduleStack.back()->getName();
   return moduleStack.back();
 }
 

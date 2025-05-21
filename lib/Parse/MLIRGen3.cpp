@@ -1091,7 +1091,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
 
 mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> MLIRGen3::gen() {
   TRACE();
-  module = builder.create<mlir::ModuleOp>(loc(root), "ocamlc2");
+  module = builder.create<mlir::ModuleOp>(loc(root), unifier.getLastModule());
   builder.setInsertionPointToStart(module->getBody());
   auto res = gen(root);
   if (mlir::failed(res)) {
