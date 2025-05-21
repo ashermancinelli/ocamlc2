@@ -71,7 +71,7 @@ private:
   mlir::FailureOr<mlir::Value> genString(const Node node);
   mlir::FailureOr<mlir::Value> genIfExpression(const Node node);
   mlir::FailureOr<mlir::Value> genFunExpression(const Node node);
-  mlir::FailureOr<Callee>
+  mlir::FailureOr<mlir::func::FuncOp>
   genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
                   mlir::Location loc, llvm::ArrayRef<Node> parameters,
                   Node bodyNode);

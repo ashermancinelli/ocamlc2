@@ -803,7 +803,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
 mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
   TRACE();
   auto parameters = getNamedChildren(node, {"parameter"});
-  UU auto body = node.getChildByFieldName("body");
+  auto body = node.getChildByFieldName("body");
   return mlirFunctionType(node) |
          and_then([&](auto funType) -> mlir::FailureOr<mlir::FunctionType> {
            if (auto ft = mlir::dyn_cast<mlir::FunctionType>(funType)) {
@@ -834,6 +834,12 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
                           return nyi(loc(node), "application of value");
                         }},
                callee);
+         }) |
+         and_then([&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
+           return nyi(loc(node), "application of value");
+          //  auto symbol = 
+          //  auto closureObject = builder.create<mlir::ocaml::ClosureOp>(loc(node), symbol, environment);
+          //  return closureObject;
          });
 }
 
