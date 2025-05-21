@@ -1020,7 +1020,10 @@ TypeExpr* Unifier::inferListExpression(Cursor ast) {
   assert(node.getType() == "list_expression");
   auto children = getNamedChildren(node);
   if (children.empty()) {
-    return getListType();
+    auto *tv = createTypeVariable();
+    auto *listType = getListTypeOf(tv);
+    concreteTypes.insert(tv);
+    return listType;
   }
   SmallVector<TypeExpr*> args;
   for (auto child : children) {
@@ -1367,7 +1370,7 @@ SignatureOperator* Unifier::inferModuleSignature(Cursor ast) {
 
 ModuleOperator* Unifier::inferModuleStructure(Cursor ast, SmallVector<std::pair<llvm::StringRef, SignatureOperator*>> functorTypeParams) {
   TRACE();
-  detail::ConcreteTypeVariableScope concreteScope(*this);
+  detail::ConcreteTypeVariableScope concreteTypeVariableScope(*this);
   for (auto [paramName, paramType] : functorTypeParams) {
     DBGS("Declaring functor type parameter: " << paramName << " : " << *paramType << '\n');
     localVariable(paramName, paramType); // Declare the module parameter M : S
