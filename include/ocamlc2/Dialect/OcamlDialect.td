@@ -170,6 +170,19 @@ def Ocaml_EnvCaptureOp : Ocaml_Op<"closure.env.capture"> {
   let assemblyFormat = "$env `[` $id `]` `=` $value attr-dict `:` type($value)";
 }
 
+def Ocaml_EnvGetCurrentOp : Ocaml_Op<"closure.env.get_current"> {
+  let summary = "";
+  let description = "";
+  let arguments = (ins);
+  let results = (outs Ocaml_EnvType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+  let builders = [
+    OpBuilder<(ins), [{
+      return build($_builder, $_state, mlir::ocaml::EnvType::get($_builder.getContext()));
+    }]>,
+  ];
+}
+
 def Ocaml_EnvGetOp : Ocaml_Op<"closure.env.get", [MemoryEffectsOpInterface]> {
   let summary = "OCaml environment get";
   let description = "OCaml environment get";

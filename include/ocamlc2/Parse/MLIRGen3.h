@@ -5,6 +5,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "ocamlc2/Dialect/OcamlOpBuilder.h"
 #include "ocamlc2/Dialect/OcamlTypeUtils.h"
+#include "ocamlc2/Parse/TypeSystem.h"
 #include "ocamlc2/Support/LLVMCommon.h"
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <ocamlc2/Parse/ScopedHashTable.h>
@@ -93,6 +94,7 @@ private:
   mlir::FailureOr<mlir::Type> mlirType(const Node node);
   mlir::FailureOr<mlir::Type> mlirFunctionType(ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirFunctionType(const Node node);
+  mlir::FailureOr<mlir::Type> mlirVariantCtorType(ocamlc2::CtorOperator *ctor, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
   mlir::FailureOr<mlir::ocaml::ClosureEnvValue> findEnvForFunction(mlir::func::FuncOp funcOp);
