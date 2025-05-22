@@ -37,6 +37,17 @@ namespace mlir::ocaml::detail {
 
 }
 
+void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &result, mlir::Value closure, mlir::ValueRange args) {
+  auto closureType = mlir::cast<mlir::ocaml::ClosureType>(closure.getType());
+  auto functionType = closureType.getFunctionType();
+  assert(args.size() == functionType.getNumInputs());
+  for (auto [arg, argType] : llvm::zip_equal(args, functionType.getInputs())) {
+    assert(arg.getType() == argType);
+  }
+  auto resultType = functionType.getResult(0);
+  build(builder, result, resultType, closure, args, {}, {});
+}
+
 mlir::ParseResult mlir::ocaml::GlobalOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
   mlir::StringAttr name;
   mlir::Type type;

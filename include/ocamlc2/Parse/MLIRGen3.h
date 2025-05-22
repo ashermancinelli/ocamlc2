@@ -24,7 +24,7 @@ struct Scope;
 struct MLIRGen3 {
   MLIRGen3(mlir::MLIRContext &context, Unifier &unifier, ts::Node root) 
     : context(context), builder(&context), unifier(unifier), root(root) {}
-  mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> gen();
+  mlir::FailureOr<mlir::OwningOpRef<mlir::ocaml::ModuleOp>> gen();
   mlir::FailureOr<mlir::Value> gen(const Node node);
   inline mlir::Location loc(const Node node) const {
     auto range = node.getPointRange();
@@ -49,7 +49,7 @@ struct MLIRGen3 {
     unifier.show(node.getCursor(), false);
     return error(node) << "NYI: " << node.getType();
   }
-  inline mlir::ModuleOp getModule() const {
+  inline mlir::ocaml::ModuleOp getModule() const {
     return module.get();
   }
 private:
@@ -118,7 +118,7 @@ private:
   mlir::MLIRContext &context;
   mlir::ocaml::OcamlOpBuilder builder;
   Unifier &unifier;
-  mlir::OwningOpRef<mlir::ModuleOp> module;
+  mlir::OwningOpRef<mlir::ocaml::ModuleOp> module;
   ts::Node root;
   friend struct Scope;
 };

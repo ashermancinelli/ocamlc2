@@ -1,5 +1,4 @@
 CMAKE            ?= cmake
-NINJA            ?= ninja
 LIT              ?= lit
 # LLVM             ?= /opt/homebrew/opt/llvm@19
 LLVM             ?= /usr/local
@@ -16,6 +15,8 @@ ARCH              = $(shell uname -s)
 ARGS             += -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(PREFIX)
 ARGS             += -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_C_COMPILER=$(CC)
 ARGS             += -DLLVM_DIR=$(LLVM)/lib/cmake/llvm -DMLIR_DIR=$(LLVM)/lib/cmake/mlir
+J                ?= $(shell nproc)
+NINJA            ?= ninja -j $(J)
 
 ifeq ($(ARCH),Darwin)
 #CXXFLAGS         += -mmacosx-version-min=$(shell xcrun --sdk macosx --show-sdk-version)

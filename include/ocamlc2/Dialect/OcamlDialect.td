@@ -97,6 +97,18 @@ def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
   let assemblyFormat = "`<` $elementType `>`";
 }
 
+def Ocaml_FunctionBoxType : Ocaml_Type<"FunctionBox", "fbox"> {
+  let summary = "OCaml function box";
+  let description = "OCaml function box";
+  let parameters = (ins FunctionType:$functionType);
+  let assemblyFormat = "`<` $functionType `>`";
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "::mlir::FunctionType":$functionType), [{
+      return $_get(functionType.getContext(), functionType);
+    }]>,
+  ];
+}
+
 def Ocaml_OpaqueBoxType : Ocaml_Type<"OpaqueBox", "obox"> {
   let summary = "OCaml opaque box";
   let description = "OCaml opaque box";
@@ -195,25 +207,125 @@ def Ocaml_ClosureOp : Ocaml_Op<"closure.new", [Pure]> {
   let summary = "OCaml closure";
   let description = "OCaml closure";
   let arguments = (ins FlatSymbolRefAttr:$symbol, Ocaml_EnvType:$env);
-  let results = (outs Ocaml_BoxType:$result);
+  let results = (outs Ocaml_ClosureType:$result);
   let assemblyFormat = "$symbol `capturing` $env attr-dict `:` type($result)";
 }
 
-def Ocaml_InvokeOp : Ocaml_Op<"closure.invoke", [
-    CallOpInterface]> {
-  let summary = "OCaml invoke";
-  let description = "OCaml invoke";
+def Ocaml_ModuleOp : Ocaml_Op<"module", [
+  Symbol,
+  SymbolTable,
+  SingleBlock,
+  NoTerminator,
+]> {
+  let summary = "OCaml module";
+  let description = "OCaml module";
+  let arguments = (ins
+    SymbolNameAttr:$sym_name
+  );
+  let regions = (region SizedRegion<1>:$body);
+  let results = (outs);
+  let assemblyFormat = "$sym_name attr-dict `:` $body";
+  let builders = [
+  ];
+  let extraClassDeclaration = [{
+    Block *getBodyBlock() { return &getBody().front(); }
+  }];
+}
+
+def Ocaml_LetOp : Ocaml_Op<"letv"> {
+  let summary = "OCaml let value-definition";
+  let description = "OCaml let value-definition";
+  let arguments = (ins
+    StrAttr:$sym_name
+  );
+  let results = (outs AnyOCamlType:$result);
+  let regions = (region AnyRegion:$body, AnyRegion:$in_scope);
+  let assemblyFormat = "$sym_name `:` type($result) `=` $body `in` $in_scope attr-dict";
+  let builders = [
+    OpBuilder<(ins "::mlir::StringRef":$name, "::mlir::Type":$type)>,
+  ];
+  let extraClassDeclaration = [{
+    Block *getBodyBlock() { return &getBody().front(); }
+  }];
+}
+
+def Ocaml_FuncOp : Ocaml_Op<"letf", [
+  AutomaticAllocationScope, FunctionOpInterface //, OpAsmOpInterface
+]> {
+  let summary = "OCaml let function-definition";
+  let description = "OCaml let function-definition";
+  let arguments = (ins
+    StrAttr:$sym_name,
+    TypeAttrOf<FunctionType>:$function_type,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs
+  );
+  let results = (outs AnyOCamlType:$result);
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat = "$sym_name `:` type($result) `=` $body attr-dict";
+  let builders = [
+    OpBuilder<(ins "::mlir::StringRef":$name, "::mlir::FunctionType":$type,
+      CArg<"ArrayRef<DictionaryAttr>", "{}">:$argAttrs,
+      CArg<"ArrayRef<DictionaryAttr>", "{}">:$resAttrs)>,
+  ];
+  let extraClassDeclaration = [{
+    Block *getBodyBlock() { return &getBody().front(); }
+    inline bool isExternal() { return false; }
+    static FuncOp create(Location location, StringRef name, FunctionType type,
+                         ArrayRef<NamedAttribute> attrs = {});
+    static FuncOp create(Location location, StringRef name, FunctionType type,
+                         Operation::dialect_attr_range attrs);
+    static FuncOp create(Location location, StringRef name, FunctionType type,
+                         ArrayRef<NamedAttribute> attrs,
+                         ArrayRef<DictionaryAttr> argAttrs);
+
+    //===------------------------------------------------------------------===//
+    // FunctionOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    /// Returns the region on the current operation that is callable. This may
+    /// return null in the case of an external callable object, e.g. an external
+    /// function.
+    ::mlir::Region *getCallableRegion() { return isExternal() ? nullptr : &getBody(); }
+
+    /// Returns the argument types of this function.
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
+
+    /// Returns the result types of this function.
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    //===------------------------------------------------------------------===//
+    // OpAsmOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    /// Allow the dialect prefix to be omitted.
+    static StringRef getDefaultDialect() { return "func"; }
+
+    //===------------------------------------------------------------------===//
+    // SymbolOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    bool isDeclaration() { return isExternal(); }
+  }];
+}
+
+def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
+  let summary = "OCaml call";
+  let description = "OCaml call";
   let arguments = (ins 
-    Ocaml_BoxType:$closure,
+    Ocaml_ClosureType:$closure,
     Variadic<AnyType>:$args,
     OptionalAttr<DictArrayAttr>:$arg_attrs,
     OptionalAttr<DictArrayAttr>:$res_attrs
   );
   let results = (outs AnyOCamlType:$result);
   let assemblyFormat = "$closure `(` $args `)` attr-dict `:` `(` type($closure) `)` `->` type($args) `->` type($result)";
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$closure, "::mlir::ValueRange":$args)>,
+  ];
   let extraClassDeclaration = [{
     FunctionType getCalleeType() {
-      return getClosure().getType().getElementType().cast<FunctionType>();
+      return getClosure().getType().getFunctionType();
     }
     MutableOperandRange getArgOperandsMutable() { return getArgsMutable(); }
     operand_iterator arg_operand_begin() { return operand_begin() + 1; }

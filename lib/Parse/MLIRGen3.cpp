@@ -86,7 +86,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBindingValueDefinition(const Node p
   return declareVariable(patternNode, bodyValue, loc(patternNode));
 }
 
-mlir::FailureOr<Callee>
+mlir::FailureOr<mlir::func::FuncOp>
 MLIRGen3::genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
                           mlir::Location location,
                           llvm::ArrayRef<Node> parameters, Node bodyNode) {
@@ -95,7 +95,7 @@ MLIRGen3::genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
   VariableScope scope(variables);
   mlir::ocaml::ClosureEnvValue env =
       builder.createEnv(location, getUniqueName((name + "env").str()));
-  builder.setInsertionPointToStart(module->getBody());
+  builder.setInsertionPointToStart(module->getBodyBlock());
   auto function =
       builder.create<mlir::func::FuncOp>(location, name, funType);
   function.setPrivate();
@@ -110,7 +110,7 @@ MLIRGen3::genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
       return failure();
     }
   }
-  return gen(bodyNode) | and_then([&](auto body) -> FailureOr<Callee> {
+  return gen(bodyNode) | and_then([&](auto body) -> mlir::FailureOr<mlir::func::FuncOp> {
     builder.create<mlir::func::ReturnOp>(location, body);
     return {function};
   });
@@ -143,9 +143,18 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   auto nameString = getText(patternNode);
   return genFunctionBody(nameString, functionType, loc(node), parameters,
                          bodyNode) |
-             and_then([&](auto funcOp) -> mlir::FailureOr<mlir::Value> {
-               return builder.createUnit(loc(node));
-             });
+         and_then([&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
+           return findEnvForFunction(funcOp) |
+                  and_then([&](mlir::ocaml::ClosureEnvValue env) -> mlir::FailureOr<mlir::Value> {
+                    auto symbol = funcOp.getSymName();
+                    auto closureType = mlir::ocaml::ClosureType::get(
+                        builder.getContext(), funcOp.getFunctionType());
+                    auto closureOp = builder.create<mlir::ocaml::ClosureOp>(
+                        loc(node), closureType, symbol, env);
+                    return declareVariable(patternNode, closureOp,
+                                           loc(patternNode));
+                  });
+         });
 }
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirTypeFromBasicTypeOperator(llvm::StringRef name) {
@@ -340,7 +349,7 @@ mlir::FailureOr<Callee> MLIRGen3::genConstructorPath(const Node node) {
 
     // Otherwise create the helper function.
     auto ip = builder.saveInsertionPoint();
-    builder.setInsertionPointToStart(module->getBody());
+    builder.setInsertionPointToStart(module->getBodyBlock());
     auto funcTypeZero = builder.getFunctionType({}, variantType);
     auto func = builder.create<mlir::func::FuncOp>(loc(node), constructorName, funcTypeZero);
     func.setPrivate();
@@ -380,7 +389,7 @@ mlir::FailureOr<Callee> MLIRGen3::genConstructorPath(const Node node) {
     return {sym};
   }
 
-  builder.setInsertionPointToStart(module->getBody());
+  builder.setInsertionPointToStart(module->getBodyBlock());
   auto func =
       builder.create<mlir::func::FuncOp>(loc(node), constructorName, funcType);
   func->setAttrs({builder.createVariantCtorAttr()});
@@ -597,7 +606,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genForExpression(const Node node) {
 mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const Node node) {
   TRACE();
   VariableScope scope(variables);
-  builder.setInsertionPointToStart(module->getBody());
+  builder.setInsertionPointToStart(module->getBodyBlock());
   auto mainFunc = builder.create<mlir::func::FuncOp>(
       loc(node), "main", builder.getFunctionType({}, builder.getI32Type()));
   mainFunc.setPrivate();
@@ -643,12 +652,7 @@ mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
   TRACE();
   auto str = unifier.getTextSaved(node);
   auto value = getVariable(str, loc(node));
-  return value | and_then([&](mlir::Value value) -> mlir::FailureOr<Callee> {
-           if (mlir::ocaml::Closure{value}) {
-             return Callee{value};
-           }
-           return error(node) << "Expected function for callee: " << str;
-         }) |
+  return value |
          or_else([&]() -> mlir::FailureOr<Callee> {
            auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
            if (callee) {
@@ -666,7 +670,7 @@ mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
              return error(node) << "Failed to get callee: " << str;
            }
            InsertionGuard guard(builder);
-           builder.setInsertionPointToStart(module->getBody());
+           builder.setInsertionPointToStart(module->getBodyBlock());
            auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
            callee.setPrivate();
            return Callee{callee};
@@ -748,7 +752,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genApplication(mlir::Location loc, Callee
             return builder.createCall(loc, funcOp, args);
           },
           [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
-            return nyi(loc, "application of value");
+            return {builder.create<mlir::ocaml::CallOp>(loc, value, args)};
           }},
       callee);
 }
@@ -827,19 +831,22 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
                                   funcOp.getSymName());
                           auto boxedType =
                               builder.emboxType(constantFuncOp.getType());
+                          assert(false && "repack as closure");
                           return builder.createConvert(loc(node), boxedType,
                                                        constantFuncOp);
                         },
                         [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
-                          return nyi(loc(node), "application of value");
+                          return {value};
                         }},
                callee);
          }) |
          and_then([&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
+           assert(false && "repack as closure");
            return nyi(loc(node), "application of value");
-          //  auto symbol = 
-          //  auto closureObject = builder.create<mlir::ocaml::ClosureOp>(loc(node), symbol, environment);
-          //  return closureObject;
+           //  auto symbol =
+           //  auto closureObject =
+           //  builder.create<mlir::ocaml::ClosureOp>(loc(node), symbol,
+           //  environment); return closureObject;
          });
 }
 
@@ -993,6 +1000,7 @@ llvm::StringRef MLIRGen3::getText(const Node node) {
 
 mlir::FailureOr<mlir::Value>
 MLIRGen3::declareVariable(Node node, mlir::Value value, mlir::Location loc) {
+  TRACE();
   auto str = getText(node);
   if (node.getType() == "typed_pattern") {
     node = node.getChildByFieldName("pattern");
@@ -1095,10 +1103,11 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
   return error(node) << "NYI: " << type << " (" << __LINE__ << ')';
 }
 
-mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>> MLIRGen3::gen() {
+mlir::FailureOr<mlir::OwningOpRef<mlir::ocaml::ModuleOp>> MLIRGen3::gen() {
   TRACE();
-  module = builder.create<mlir::ModuleOp>(loc(root), unifier.getLastModule());
-  builder.setInsertionPointToStart(module->getBody());
+  module = builder.create<mlir::ocaml::ModuleOp>(loc(root), unifier.getLastModule());
+  module->getBody().emplaceBlock();
+  builder.setInsertionPointToStart(module->getBodyBlock());
   auto res = gen(root);
   if (mlir::failed(res)) {
     DBGS("Failed to generate MLIR for compilation unit\n");
