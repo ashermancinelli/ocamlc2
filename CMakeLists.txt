@@ -31,7 +31,7 @@ enable_testing()
 
 # enable warnings
 set(CMAKE_CXX_FLAGS 
-  "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wunused-variable -Wunused-value -Wunused-function -Werror -Wno-covered-switch-default")
+  "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wunused-variable -Wunused-value -Wunused-function -Werror -Wno-covered-switch-default -Wno-deprecated-declarations")
 
 include(ExternalProject)
 include(OCamlLinkerFlags)
@@ -44,6 +44,22 @@ if (ENABLE_COVERAGE)
     include(CodeCoverage)
     enable_coverage()
 endif()
+
+if(NOT MLIR_DIR AND NOT LLVM_DIR)
+    set(MLIR_DIR "/usr/local/lib/cmake/mlir" CACHE PATH "Path to MLIR install")
+    set(LLVM_DIR "/usr/local/lib/cmake/llvm" CACHE PATH "Path to LLVM install")
+endif()
+
+# Find LLVM and MLIR
+find_package(LLVM REQUIRED CONFIG)
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
+# Add LLVM includes and definitions
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/tpl/cpp-tree-sitter/include)
+add_definitions(${LLVM_DEFINITIONS})
 
 if (NOT TREESITTER_OCAML_DIR)
     message(STATUS "Building Tree-sitter OCaml parser")
@@ -63,22 +79,6 @@ else()
     link_libraries(${TREESITTER_LIBRARY})
     message(STATUS "Tree-sitter OCaml libraries: ${TREESITTER_OCAML_LIBRARY} ${TREESITTER_OCAML_INTERFACE_LIBRARY} ${TREESITTER_LIBRARY}")
 endif()
-
-if(NOT MLIR_DIR AND NOT LLVM_DIR)
-    set(MLIR_DIR "/usr/local/lib/cmake/mlir" CACHE PATH "Path to MLIR install")
-    set(LLVM_DIR "/usr/local/lib/cmake/llvm" CACHE PATH "Path to LLVM install")
-endif()
-
-# Find LLVM and MLIR
-find_package(LLVM REQUIRED CONFIG)
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-
-# Add LLVM includes and definitions
-include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
-include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
-include_directories(${PROJECT_SOURCE_DIR}/tpl/cpp-tree-sitter/include)
-add_definitions(${LLVM_DEFINITIONS})
 
 find_program(LIT_COMMAND NAMES lit llvm-lit)
 if (NOT LIT_COMMAND)

@@ -4,6 +4,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectInterface.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include "ocamlc2/Dialect/OcamlTypeUtils.h"
 #include "ocamlc2/Dialect/TypeDetail.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -42,7 +43,8 @@ void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &
   auto functionType = closureType.getFunctionType();
   assert(args.size() == functionType.getNumInputs());
   for (auto [arg, argType] : llvm::zip_equal(args, functionType.getInputs())) {
-    assert(arg.getType() == argType);
+    DBGS(arg.getType() << " " << argType << "\n");
+    assert(areTypesCoercible(arg.getType(), argType));
   }
   auto resultType = functionType.getResult(0);
   build(builder, result, resultType, closure, args, {}, {});

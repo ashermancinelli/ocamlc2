@@ -8,6 +8,7 @@ function(add_ocamlc2_tool name)
         CamlParse
         Support
         MLIRIR
+        MLIRSCFToControlFlow
     )
     add_dependencies(${name} stdlib-interfaces)
     set_target_properties(${name} PROPERTIES

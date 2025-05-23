@@ -18,6 +18,8 @@ ARGS             += -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_C_COMPILER=$(CC)
 ARGS             += -DLLVM_DIR=$(LLVM)/lib/cmake/llvm -DMLIR_DIR=$(LLVM)/lib/cmake/mlir
 J                ?= $(shell nproc)
 NINJA            ?= ninja -j $(J)
+BUILD_DIR        ?= $(shell pwd)/build
+INSTALL_DIR      ?= $(shell pwd)/install
 
 ifeq ($(ARCH),Darwin)
 #CXXFLAGS         += -mmacosx-version-min=$(shell xcrun --sdk macosx --show-sdk-version)
@@ -28,6 +30,7 @@ endif
 ARGS             += -DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS)"
 ARGS             += -DCMAKE_CXX_FLAGS="$(CXXFLAGS)"
 ARGS             += -DENABLE_COVERAGE=ON
+ARGS             += -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
 
 RED    = "\e[41m"
 YELLOW = "\e[33m"
@@ -38,38 +41,35 @@ CLR    = "\e[0m"
 .DEFAULT_GOAL := build
 .PHONY: all config build install clean init clean check test coverage config
 
-config:
-	$(LLVM)/bin/clang --version
-
 clean:
-	rm -rf build/* install/*||:
+	rm -rf $(BUILD_DIR)/* $(INSTALL_DIR)/*||:
 
 init:
-	mkdir -p build install||:
+	mkdir -p $(BUILD_DIR) $(INSTALL_DIR)||:
 
 config:
-	rm build/CMakeCache.txt || :
-	$(CMAKE) -B build -S . -G Ninja $(ARGS)
+	rm $(BUILD_DIR)/CMakeCache.txt || :
+	$(CMAKE) -B $(BUILD_DIR) -S . -G Ninja $(ARGS)
 
 build:
-	$(NINJA) -C build
+	$(NINJA) -C $(BUILD_DIR)
 
 all: config build test
 
 i:
-	$(NINJA) -C build stdlib-interfaces
+	$(NINJA) -C $(BUILD_DIR) stdlib-interfaces
 
 test:
-	ctest --test-dir build -VV
+	ctest --test-dir $(BUILD_DIR) -VV
 
 lit:
 	$(LIT) -svv test
 
 p3:
-	$(NINJA) -C build p3
+	$(NINJA) -C $(BUILD_DIR) p3
 
 g3:
-	$(NINJA) -C build g3
+	$(NINJA) -C $(BUILD_DIR) g3
 
 repl: p3
-	./build/bin/p3
+	$(BUILD_DIR)/bin/p3

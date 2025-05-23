@@ -3,6 +3,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Builders.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include "ocamlc2/Dialect/OcamlTypeUtils.h"
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -99,6 +100,7 @@ public:
 
   SmallVector<mlir::Value> prepareArguments(mlir::Location loc, mlir::FunctionType functionType, mlir::ValueRange args) {
     return llvm::map_to_vector(llvm::enumerate(args), [this, loc, functionType](auto arg) {
+      assert(areTypesCoercible(arg.value().getType(), functionType.getInput(arg.index())));
       return createConvert(loc, arg.value(), functionType.getInput(arg.index()));
     });
   }

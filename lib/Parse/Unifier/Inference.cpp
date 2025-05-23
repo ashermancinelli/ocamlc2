@@ -492,9 +492,7 @@ TypeExpr* Unifier::inferLetBinding(Cursor ast) {
   auto name = node.getChildByFieldName("pattern");
   auto body = node.getChildByFieldName("body");
   assert(!name.isNull() && !body.isNull() && "Expected name and body");
-  const auto parameters = llvm::filter_to_vector(getNamedChildren(node), [](Node n) {
-    return n.getType() == "parameter";
-  });
+  auto parameters = getNamedChildren(node, {"parameter"});
   auto declaredReturnTypeNode = node.getChildByFieldName("type");
   TypeExpr *declaredReturnType =
       declaredReturnTypeNode.isNull() ? nullptr : infer(declaredReturnTypeNode);
@@ -1459,9 +1457,7 @@ TypeExpr* Unifier::inferRecordPattern(Cursor ast) {
 TypeExpr* Unifier::inferRecordExpression(Cursor ast) {
   TRACE();
   auto node = ast.getCurrentNode();
-  auto children = llvm::filter_to_vector(getNamedChildren(node), [](Node n) {
-    return n.getType() == "field_expression";
-  });
+  auto children = getNamedChildren(node, {"field_expression"});
   assert(node.getType() == "record_expression");
   auto fieldExpressions = llvm::map_to_vector(children, [&](Node n) -> TypeExpr* {
     auto *type = infer(n.getChildByFieldName("body"));

@@ -96,6 +96,7 @@ private:
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
   mlir::FailureOr<mlir::ocaml::ClosureEnvValue> findEnvForFunction(mlir::func::FuncOp funcOp);
+  mlir::FailureOr<mlir::ocaml::ClosureEnvValue> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);

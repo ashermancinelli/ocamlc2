@@ -2,6 +2,9 @@
 #include "OcamlDialect.h"
 
 namespace mlir::ocaml {
+
+bool areTypesCoercible(mlir::Type from, mlir::Type into);
+
 template<typename ISA>
 struct ConvertibleValue : public mlir::Value {
   inline operator bool() const {

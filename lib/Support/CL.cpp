@@ -2,7 +2,6 @@
 #include <unistd.h>
 #include "ocamlc2/OCamlC2Config.h"
 #include <llvm/Support/FileSystem.h>
-#include <llvm/Support/WithColor.h>
 #include <llvm/Support/raw_ostream.h>
 #include <filesystem>
 

@@ -745,6 +745,16 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genInfixExpression(const Node node) {
          });
 }
 
+mlir::FailureOr<mlir::ocaml::ClosureEnvValue> MLIRGen3::findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp) {
+  return findEnvForFunction(funcOp) |
+         or_else([&]() -> mlir::FailureOr<mlir::ocaml::ClosureEnvValue> {
+           auto env = builder.create<mlir::ocaml::EnvOp>(
+               mlir::UnknownLoc::get(builder.getContext()),
+               mlir::ocaml::EnvType::get(builder.getContext()));
+           return success(env);
+         });
+}
+
 mlir::FailureOr<mlir::ocaml::ClosureEnvValue> MLIRGen3::findEnvForFunction(mlir::func::FuncOp funcOp) {
   auto envAttr = funcOp->getAttr("env");
   if (not envAttr) {
@@ -839,28 +849,21 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
            return std::visit(
                Overload{[&](mlir::func::FuncOp funcOp)
                             -> mlir::FailureOr<mlir::Value> {
-                          auto constantFuncOp =
-                              builder.create<mlir::func::ConstantOp>(
-                                  loc(node), funcOp.getFunctionType(),
-                                  funcOp.getSymName());
-                          auto boxedType =
-                              builder.emboxType(constantFuncOp.getType());
-                          assert(false && "repack as closure");
-                          return builder.createConvert(loc(node), boxedType,
-                                                       constantFuncOp);
+                          auto env = findEnvForFunctionOrNullEnv(funcOp);
+                          if (failed(env)) {
+                            return failure();
+                          }
+                          auto closureType = mlir::ocaml::ClosureType::get(
+                              builder.getContext(), funcOp.getFunctionType());
+                          auto closure = builder.create<mlir::ocaml::ClosureOp>(
+                              loc(node), closureType, funcOp.getSymName(),
+                              *env);
+                          return {closure};
                         },
                         [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
                           return {value};
                         }},
                callee);
-         }) |
-         and_then([&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
-           assert(false && "repack as closure");
-           return nyi(loc(node), "application of value");
-           //  auto symbol =
-           //  auto closureObject =
-           //  builder.create<mlir::ocaml::ClosureOp>(loc(node), symbol,
-           //  environment); return closureObject;
          });
 }
 

@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
   {
     pm.addPass(mlir::ocaml::createConvertOCamlToLLVM());
     pm.addPass(mlir::createArithToLLVMConversionPass());
-    pm.addPass(mlir::createSCFToControlFlowPass());
+    pm.addPass(mlir::createConvertSCFToCFPass());
     pm.addPass(mlir::createConvertControlFlowToLLVMPass());
     pm.addPass(mlir::createConvertFuncToLLVMPass());
   }
