@@ -1,6 +1,7 @@
 CMAKE            ?= cmake
 LIT              ?= lit
 # LLVM             ?= /opt/homebrew/opt/llvm@19
+# LLVM             ?= /Users/ashermancinelli/workspace/spack/opt/spack/darwin-m1/llvm-main-jwslh4xaozl2pmkamzviwxogdq5yvv4q
 LLVM             ?= /usr/local
 CBIN             ?= $(LLVM)/bin
 CXX               = $(CBIN)/clang++
@@ -35,7 +36,10 @@ GREEN  = "\e[32m"
 CLR    = "\e[0m"
 
 .DEFAULT_GOAL := build
-.PHONY: all config build install clean init clean check test coverage
+.PHONY: all config build install clean init clean check test coverage config
+
+config:
+	$(LLVM)/bin/clang --version
 
 clean:
 	rm -rf build/* install/*||:

@@ -79,8 +79,6 @@ private:
   mlir::FailureOr<mlir::Value> genArrayExpression(const Node node);
   mlir::FailureOr<mlir::Value> genGlobalForFreeVariable(mlir::Value value,
                                                         llvm::StringRef name,
-                                                        mlir::func::FuncOp currentFunc,
-                                                        mlir::func::FuncOp definingFunc,
                                                         mlir::Location loc);
 
   mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
@@ -109,7 +107,7 @@ private:
   void popCaptureID() {
     captureIDs.pop_back();
   }
-  mlir::FailureOr<std::tuple<bool, mlir::func::FuncOp, mlir::func::FuncOp>>
+  mlir::FailureOr<std::tuple<bool, mlir::func::FuncOp>>
   valueIsFreeInCurrentContext(mlir::Value value);
 
   llvm::SmallVector<ts::NodeID> captureIDs;

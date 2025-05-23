@@ -85,6 +85,13 @@ def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
   }];
 }
 
+def Ocaml_ModuleType : Ocaml_Type<"Module", "module"> {
+  let summary = "OCaml module";
+  let description = "OCaml module";
+  let parameters = (ins);
+  let assemblyFormat = "";
+}
+
 def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
   let summary = "OCaml box";
   let description = "OCaml box";
@@ -165,6 +172,17 @@ def AnyOcamlReferenceType : TypeConstraint<
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
+
+def Ocaml_ProgramOp : Ocaml_Op<"program", [
+  NoTerminator,
+]> {
+  let summary = "OCaml program";
+  let description = "OCaml program";
+  let arguments = (ins);
+  let regions = (region AnyRegion:$body);
+  let results = (outs);
+  let assemblyFormat = "attr-dict `:` $body";
+}
 
 def Ocaml_EnvOp : Ocaml_Op<"closure.env.new", [Pure]> {
   let summary = "OCaml environment";

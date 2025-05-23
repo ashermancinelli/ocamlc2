@@ -489,14 +489,24 @@ mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(const Node node) {
   return getVariable(str, loc(node));
 }
 
-FailureOr<std::tuple<bool, mlir::func::FuncOp, mlir::func::FuncOp>>
+FailureOr<std::tuple<bool, mlir::func::FuncOp>>
 MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
   TRACE();
-  auto func = [&] -> mlir::func::FuncOp {
+  mlir::func::FuncOp func;
+  mlir::ocaml::ProgramOp program;
+  auto result = [&] -> LogicalResult {
     auto *op = value.getDefiningOp();
     if (op) {
       DBGS("Op\n");
-      return op->getParentOfType<mlir::func::FuncOp>();
+      if (auto f = op->getParentOfType<mlir::func::FuncOp>()) {
+        func = f;
+        return success();
+      }
+      if (auto p = op->getParentOfType<mlir::ocaml::ProgramOp>()) {
+        program = p;
+        return success();
+      }
+      return failure();
     }
     auto arg = mlir::dyn_cast<mlir::BlockArgument>(value);
     if (arg) {
@@ -504,14 +514,15 @@ MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
       auto parent = arg.getOwner()->getParent()->getParentOfType<mlir::func::FuncOp>();
       if (parent) {
         DBGS("Func: " << parent << "\n");
-        return parent;
+        func = parent;
+        return success();
       }
-      return nullptr;
+      return failure();
     }
     DBGS("No func\n");
-    return nullptr;
+    return failure();
   }();
-  if (!func) {
+  if (failed(result)) {
     DBGS("No func\n");
     return failure();
   }
@@ -519,33 +530,41 @@ MLIRGen3::valueIsFreeInCurrentContext(mlir::Value value) {
   auto currentFunc = currentBlock->getParent()->getParentOfType<mlir::func::FuncOp>();
   if (currentFunc == func) {
     DBGS("Current region\n");
-    return {{false, currentFunc, func}};
+    return {{false, currentFunc}};
   }
   DBGS("Not current region\n");
-  return {{true, currentFunc, func}};
+  return {{true, currentFunc}};
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genGlobalForFreeVariable(
-    mlir::Value value, llvm::StringRef name, mlir::func::FuncOp currentFunc,
-    mlir::func::FuncOp definingFunc, mlir::Location loc) {
-  DBGS(name << " is used in " << currentFunc.getSymName() << " captured from "
-            << definingFunc.getSymName() << "\n");
-  return findEnvForFunction(currentFunc) |
-         and_then([&](mlir::Value env) -> mlir::LogicalResult {
-           InsertionGuard guard(builder);
-           builder.setInsertionPointAfterValue(env);
-           builder.createEnvCapture(loc, env, name, value);
-           return success();
-         }) | and_then([&]() -> mlir::FailureOr<mlir::Value> {
-           InsertionGuard guard(builder);
-           builder.setInsertionPointToStart(&currentFunc.getFunctionBody().front());
-           auto envArg = builder.create<mlir::ocaml::EnvGetCurrentOp>(loc);
-           builder.setInsertionPointAfterValue(envArg);
-           auto loadCapturedArg = builder.createEnvGet(loc, value.getType(), envArg, name);
-           return {loadCapturedArg};
-         }) | and_then([&] (mlir::Value loadedValue) -> FailureOr<mlir::Value> {
-           return declareVariable(name, loadedValue, loc);
-         });
+    mlir::Value value, llvm::StringRef name, mlir::Location loc) {
+  TRACE();
+  return valueIsFreeInCurrentContext(value) | and_then([&](auto tup) -> mlir::FailureOr<mlir::Value> {
+    auto [isFree, currentFunc] = tup;
+    if (not isFree) {
+      return value;
+    }
+    return findEnvForFunction(currentFunc) |
+           and_then([&](mlir::Value env) -> mlir::LogicalResult {
+             InsertionGuard guard(builder);
+             builder.setInsertionPointAfterValue(env);
+             builder.createEnvCapture(loc, env, name, value);
+             return success();
+           }) |
+           and_then([&]() -> mlir::FailureOr<mlir::Value> {
+             InsertionGuard guard(builder);
+             builder.setInsertionPointToStart(
+                &currentFunc.getFunctionBody().front());
+             auto envArg = builder.create<mlir::ocaml::EnvGetCurrentOp>(loc);
+             builder.setInsertionPointAfterValue(envArg);
+             auto loadCapturedArg =
+                builder.createEnvGet(loc, value.getType(), envArg, name);
+             return {loadCapturedArg};
+           }) |
+           and_then([&](mlir::Value loadedValue) -> FailureOr<mlir::Value> {
+             return declareVariable(name, loadedValue, loc);
+           });
+  });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
@@ -554,9 +573,9 @@ mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::L
     if (failed(isFree)) {
       return failure();
     }
-    auto [isFreeV, currentFunc, definingFunc] = *isFree;
+    auto [isFreeV, currentFunc] = *isFree;
     if (isFreeV) {
-      return genGlobalForFreeVariable(value, name, currentFunc, definingFunc, loc);
+      return genGlobalForFreeVariable(value, name, loc);
     }
     return value;
   }
@@ -607,11 +626,9 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const Node node) {
   TRACE();
   VariableScope scope(variables);
   builder.setInsertionPointToStart(module->getBodyBlock());
-  auto mainFunc = builder.create<mlir::func::FuncOp>(
-      loc(node), "main", builder.getFunctionType({}, builder.getI32Type()));
-  mainFunc.setPrivate();
-  auto &body = mainFunc.getFunctionBody();
-  builder.setInsertionPointToEnd(&body.emplaceBlock());
+  auto programOp = builder.create<mlir::ocaml::ProgramOp>(loc(node));
+  auto &bodyBlock = programOp.getBody().emplaceBlock();
+  builder.setInsertionPointToEnd(&bodyBlock);
   {
     InsertionGuard guard(builder);
     for (auto child : getNamedChildren(node)) {
@@ -623,9 +640,6 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const Node node) {
       }
     }
   }
-  // TODO: figure out return value
-  auto zero = builder.createConstant(mainFunc.getLoc(), builder.getI32Type(), 0);
-  builder.create<mlir::func::ReturnOp>(mainFunc.getLoc(), zero);
   return mlir::Value();
 }
 
