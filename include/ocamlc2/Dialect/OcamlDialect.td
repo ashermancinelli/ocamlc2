@@ -8,6 +8,7 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/CastInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 
@@ -174,6 +175,26 @@ def AnyOcamlReferenceType : TypeConstraint<
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
 
+def Ocaml_YieldOp : Ocaml_Op<"yield", [
+    Pure,
+    ReturnLike, 
+    Terminator
+  ]> {
+  let summary = "Yield a value from a let binding";
+  let description = [{
+    The `ocaml.yield` operation terminates let binding regions and yields
+    the computed value. It serves as the terminator for both initialization
+    regions and body regions in let operations.
+  }];
+
+  let arguments = (ins AnyType:$value);
+  
+  let builders = [
+  ];
+  
+  let assemblyFormat = "$value attr-dict `:` type($value)";
+}
+
 def Ocaml_ProgramOp : Ocaml_Op<"program", [
   NoTerminator,
 ]> {
@@ -251,17 +272,14 @@ def Ocaml_ModuleOp : Ocaml_Op<"module", [
   }];
 }
 
-def Ocaml_LetOp : Ocaml_Op<"letv"> {
-  let summary = "OCaml let value-definition";
-  let description = "OCaml let value-definition";
-  let arguments = (ins
-    StrAttr:$sym_name
-  );
+def Ocaml_BlockOp : Ocaml_Op<"block"> {
+  let summary = "OCaml block";
+  let description = "OCaml block";
+  let arguments = (ins);
   let results = (outs AnyOCamlType:$result);
-  let regions = (region AnyRegion:$body, AnyRegion:$in_scope);
-  let assemblyFormat = "$sym_name `:` type($result) `=` $body `in` $in_scope attr-dict";
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat = "attr-dict `:` type($result) $body";
   let builders = [
-    OpBuilder<(ins "::mlir::StringRef":$name, "::mlir::Type":$type)>,
   ];
   let extraClassDeclaration = [{
     Block *getBodyBlock() { return &getBody().front(); }

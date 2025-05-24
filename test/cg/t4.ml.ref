@@ -26,7 +26,7 @@
 
  * CHECK-LABEL:   func.func private @area(
  * CHECK-SAME:                            %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.variant<"shape" is "A" | "B" of !ocaml.box<i64>>) -> !ocaml.box<i64> attributes {env = "areaenv$0"} {
- * CHECK:           %[[VAL_1:.*]] = scf.execute_region -> !ocaml.box<i64> {
+ * CHECK:           %[[VAL_1:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:             %[[VAL_2:.*]] = ocaml.pattern_variable : !ocaml.box<i64>
  * CHECK:             %[[VAL_3:.*]] = func.call @B(%[[VAL_2]]) : (!ocaml.box<i64>) -> !ocaml.variant<"shape" is "A" | "B" of !ocaml.box<i64>>
  * CHECK:             %[[VAL_4:.*]] = ocaml.match %[[VAL_0]] against %[[VAL_3]] : !ocaml.variant<"shape" is "A" | "B" of !ocaml.box<i64>>
@@ -50,7 +50,7 @@
  * CHECK:             %[[VAL_13:.*]] = ocaml.convert %[[VAL_12]] from i1 to !ocaml.box<i64>
  * CHECK:             cf.br ^bb5(%[[VAL_13]] : !ocaml.box<i64>)
  * CHECK:           ^bb5(%[[VAL_14:.*]]: !ocaml.box<i64>):
- * CHECK:             scf.yield %[[VAL_14]] : !ocaml.box<i64>
+ * CHECK:             ocaml.yield %[[VAL_14]] : !ocaml.box<i64>
  * CHECK:           }
  * CHECK:           return %[[VAL_1]] : !ocaml.box<i64>
  * CHECK:         }

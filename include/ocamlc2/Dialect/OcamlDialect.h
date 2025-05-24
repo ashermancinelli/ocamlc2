@@ -6,6 +6,7 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "ocamlc2/Dialect/OcamlDialect.h.inc"
 #include <mlir/IR/Attributes.h>
 #include <mlir/Pass/PassManager.h>

@@ -1,0 +1,79 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use File::Find;
+use File::Basename;
+use File::Temp qw(tempfile);
+use v5.32;
+
+my $tools = dirname(__FILE__);
+my $root = dirname($tools) . '/test/cg';
+my $yes = 0;
+my @files_to_process = ();
+
+# Process command line arguments
+foreach (@ARGV) {
+    if (/-y/ or /--yes/) {
+        $yes = 1;
+    } elsif (-f $_) {
+        push @files_to_process, $_;
+    }
+}
+
+# Function to process a single file
+sub process_file {
+    my ($file) = @_;
+    return unless -f $file;
+    return unless $file =~ /\.ml$/;
+    
+    my $dir = dirname($file);
+    my $ref = $file . '.ref';
+    
+    open my $fh, '<', $file or die "Failed to open $file: $!";
+    my @lines = <$fh>;
+    close $fh;
+    my $read = sub {
+        `read -p 'look ok? '` unless $yes;
+    };
+    
+    foreach my $line (@lines) {
+        if ($line =~ /RUN: (.+)/) {
+            my $cmd = $1;
+            $cmd =~ s/%s/$file/;
+            $cmd =~ s/%S/$dir/;
+            $cmd =~ s/\|.+//;
+            $cmd .= " | $tools/genmlirchecks";
+            say $file;
+            say $cmd;
+            my ($tfh, $temp) = tempfile();
+            `$cmd >> $temp`;
+            if (not -f $ref) {
+                say "Note: no reference file for $file";
+                print `cat $temp`;
+            } else {
+                my $diff = `diff -u $ref $temp`;
+                if (not $diff) {
+                    say "No changes";
+                    next;
+                }
+                say $diff;
+            }
+            $read->();
+            say "mv $temp $ref";
+            `mv $temp $ref`;
+        }
+    }
+}
+
+# If files were provided on the command line, process them directly
+if (@files_to_process) {
+    process_file($_) for @files_to_process;
+} 
+# Otherwise, search for files recursively
+else {
+    say "Searching in: $root";
+    find(sub {
+        process_file($File::Find::name);
+    }, $root);
+}
+

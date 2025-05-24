@@ -448,12 +448,12 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genMatchExpression(const Node node) {
   auto caseNodes = getNamedChildren(node, {"match_case"});
   return [&] -> mlir::FailureOr<mlir::Value> {
     InsertionGuard guard(builder);
-    auto regionOp = builder.create<mlir::scf::ExecuteRegionOp>(loc(node), returnType);
+    auto regionOp = builder.create<mlir::ocaml::BlockOp>(loc(node), returnType);
     auto &region = regionOp.getRegion();
     auto &returnBlock = region.emplaceBlock();
     returnBlock.addArgument(returnType, loc(node));
     builder.setInsertionPointToEnd(&returnBlock);
-    builder.create<mlir::scf::YieldOp>(loc(node), mlir::ValueRange{returnBlock.getArgument(0)});
+    builder.create<mlir::ocaml::YieldOp>(loc(node), returnBlock.getArgument(0));
     auto *matchFailureBlock = builder.createBlock(&returnBlock);
     auto falseOp = builder.create<mlir::arith::ConstantOp>(loc(node), builder.getI1Type(), builder.getBoolAttr(false));
     builder.create<mlir::cf::AssertOp>(loc(node), falseOp, "No match found");
@@ -479,7 +479,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genMatchExpression(const Node node) {
                                          mlir::ValueRange{*bodyValue});
       matchFailureBlock = patternBlock;
     }
-    return regionOp.getResult(0);
+    return {regionOp};
   }();
 }
 
@@ -702,7 +702,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetExpression(const Node node) {
     return failure();
   }
   auto bodyType = *maybeBodyType;
-  auto letExpressionRegion = builder.create<mlir::scf::ExecuteRegionOp>(loc(node), bodyType);
+  auto letExpressionRegion = builder.create<mlir::ocaml::BlockOp>(loc(node), bodyType);
   auto &bodyBlock = letExpressionRegion.getRegion().emplaceBlock();
   builder.setInsertionPointToStart(&bodyBlock);
   for (auto definition : definitions) {
@@ -717,12 +717,12 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetExpression(const Node node) {
 
   if (!mlir::isa<mlir::ocaml::UnitType>(bodyType)) {
     auto bodyValue = *maybeBodyValue;
-    builder.create<mlir::scf::YieldOp>(loc(node), mlir::ValueRange{bodyValue});
+    builder.create<mlir::ocaml::YieldOp>(loc(node), bodyValue);
   } else {
-    builder.create<mlir::scf::YieldOp>(
-        loc(node), mlir::ValueRange{builder.createUnit(loc(node))});
+    builder.create<mlir::ocaml::YieldOp>(
+        loc(node), builder.createUnit(loc(node)));
   }
-  return letExpressionRegion.getResult(0);
+  return {letExpressionRegion};
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genInfixExpression(const Node node) {
@@ -925,7 +925,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genIfExpression(const Node node) {
   }
 
   if (!resultType.empty()) {
-    builder.create<mlir::scf::YieldOp>(loc(node), mlir::ValueRange{*thenValue});
+    builder.create<mlir::ocaml::YieldOp>(loc(node), *thenValue);
   }
 
   if (elseNode) {
@@ -934,7 +934,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genIfExpression(const Node node) {
     if (failed(elseValue)) {
       return failure();
     }
-    builder.create<mlir::scf::YieldOp>(loc(node), mlir::ValueRange{*elseValue});
+    builder.create<mlir::ocaml::YieldOp>(loc(node), *elseValue);
   }
 
   return {resultType.empty() ? builder.createUnit(loc(node))

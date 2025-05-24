@@ -20,24 +20,24 @@
  * CHECK:         }
 
  * CHECK-LABEL:   ocaml.program : {
- * CHECK:           %[[VAL_0:.*]] = scf.execute_region -> !ocaml.box<i64> {
+ * CHECK:           %[[VAL_0:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:             %[[VAL_1:.*]] = arith.constant 5 : i64
  * CHECK:             %[[VAL_2:.*]] = ocaml.convert %[[VAL_1]] from i64 to !ocaml.box<i64>
- * CHECK:             %[[VAL_3:.*]] = scf.execute_region -> !ocaml.box<i64> {
+ * CHECK:             %[[VAL_3:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:               %[[VAL_4:.*]] = arith.constant 7 : i64
  * CHECK:               %[[VAL_5:.*]] = ocaml.convert %[[VAL_4]] from i64 to !ocaml.box<i64>
- * CHECK:               %[[VAL_6:.*]] = scf.execute_region -> !ocaml.box<i64> {
+ * CHECK:               %[[VAL_6:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:                 %[[VAL_7:.*]] = ocaml.closure.env.new {for = "zenv$0"}
  * CHECK:                 ocaml.closure.env.capture %[[VAL_7]]["y"] = %[[VAL_5]] : !ocaml.box<i64>
  * CHECK:                 ocaml.closure.env.capture %[[VAL_7]]["x"] = %[[VAL_2]] : !ocaml.box<i64>
  * CHECK:                 %[[VAL_8:.*]] = ocaml.closure.new @z capturing %[[VAL_7]] : <(!ocaml.unit) -> !ocaml.box<i64>>
  * CHECK:                 %[[VAL_9:.*]] = ocaml.unit
  * CHECK:                 %[[VAL_10:.*]] = ocaml.call %[[VAL_8]](%[[VAL_9]]) : (<(!ocaml.unit) -> !ocaml.box<i64>>) -> !ocaml.unit -> !ocaml.box<i64>
- * CHECK:                 scf.yield %[[VAL_10]] : !ocaml.box<i64>
+ * CHECK:                 ocaml.yield %[[VAL_10]] : !ocaml.box<i64>
  * CHECK:               }
- * CHECK:               scf.yield %[[VAL_6]] : !ocaml.box<i64>
+ * CHECK:               ocaml.yield %[[VAL_6]] : !ocaml.box<i64>
  * CHECK:             }
- * CHECK:             scf.yield %[[VAL_3]] : !ocaml.box<i64>
+ * CHECK:             ocaml.yield %[[VAL_3]] : !ocaml.box<i64>
  * CHECK:           }
  * CHECK:         }
 

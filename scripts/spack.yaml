@@ -1,0 +1,12 @@
+spack:
+  specs:
+  - llvm@20+clang+mlir~lua~offload~polly~lldb~lld~libomptarget libcxx=none targets=aarch64 openmp=none build_mode=relwithdebinfo
+  - tree-sitter
+  - perl
+  view: true
+  concretizer:
+    unify: true
+  develop:
+    llvm:
+      spec: llvm@20
+      path: /Users/ashermancinelli/workspace/llvm-project
