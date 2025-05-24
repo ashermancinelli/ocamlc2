@@ -925,7 +925,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genIfExpression(const Node node) {
   }
 
   if (!resultType.empty()) {
-    builder.create<mlir::ocaml::YieldOp>(loc(node), *thenValue);
+    builder.create<mlir::scf::YieldOp>(loc(node), *thenValue);
   }
 
   if (elseNode) {
@@ -934,7 +934,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genIfExpression(const Node node) {
     if (failed(elseValue)) {
       return failure();
     }
-    builder.create<mlir::ocaml::YieldOp>(loc(node), *elseValue);
+    builder.create<mlir::scf::YieldOp>(loc(node), *elseValue);
   }
 
   return {resultType.empty() ? builder.createUnit(loc(node))
@@ -944,6 +944,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genIfExpression(const Node node) {
 mlir::FailureOr<mlir::Value> MLIRGen3::genString(const Node node) {
   TRACE();
   auto str = getText(node);
+  str = str.drop_front().drop_back();
   return builder.createString(loc(node), str);
 }
 

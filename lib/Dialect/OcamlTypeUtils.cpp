@@ -10,6 +10,11 @@ bool areTypesCoercible(mlir::Type from, mlir::Type into) {
   if (mlir::isa<mlir::ocaml::OpaqueBoxType>(into)) {
     return true;
   }
+  if (mlir::isa<mlir::ocaml::ArrayType>(from) && mlir::isa<mlir::ocaml::ArrayType>(into)) {
+    auto fromArray = mlir::cast<mlir::ocaml::ArrayType>(from);
+    auto intoArray = mlir::cast<mlir::ocaml::ArrayType>(into);
+    return areTypesCoercible(fromArray.getElementType(), intoArray.getElementType());
+  }
   return false;
 }
 

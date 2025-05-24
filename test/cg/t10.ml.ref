@@ -17,7 +17,7 @@
  * CHECK:           %[[VAL_3:.*]] = call @">"(%[[VAL_0]], %[[VAL_2]]) : (!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1>
  * CHECK:           %[[VAL_4:.*]] = ocaml.convert %[[VAL_3]] from !ocaml.box<i1> to i1
  * CHECK:           %[[VAL_5:.*]] = scf.if %[[VAL_4]] -> (!ocaml.sbox) {
- * CHECK:             %[[VAL_6:.*]] = ocaml.embox_string "\22large\22"
+ * CHECK:             %[[VAL_6:.*]] = ocaml.embox_string "large"
  * CHECK:             scf.yield %[[VAL_6]] : !ocaml.sbox
  * CHECK:           } else {
  * CHECK:             %[[VAL_7:.*]] = arith.constant 5 : i64
@@ -25,7 +25,7 @@
  * CHECK:             %[[VAL_9:.*]] = func.call @">"(%[[VAL_0]], %[[VAL_8]]) : (!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1>
  * CHECK:             %[[VAL_10:.*]] = ocaml.convert %[[VAL_9]] from !ocaml.box<i1> to i1
  * CHECK:             %[[VAL_11:.*]] = scf.if %[[VAL_10]] -> (!ocaml.sbox) {
- * CHECK:               %[[VAL_12:.*]] = ocaml.embox_string "\22medium\22"
+ * CHECK:               %[[VAL_12:.*]] = ocaml.embox_string "medium"
  * CHECK:               scf.yield %[[VAL_12]] : !ocaml.sbox
  * CHECK:             } else {
  * CHECK:               %[[VAL_13:.*]] = arith.constant 0 : i64
@@ -33,10 +33,10 @@
  * CHECK:               %[[VAL_15:.*]] = func.call @">"(%[[VAL_0]], %[[VAL_14]]) : (!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1>
  * CHECK:               %[[VAL_16:.*]] = ocaml.convert %[[VAL_15]] from !ocaml.box<i1> to i1
  * CHECK:               %[[VAL_17:.*]] = scf.if %[[VAL_16]] -> (!ocaml.sbox) {
- * CHECK:                 %[[VAL_18:.*]] = ocaml.embox_string "\22small\22"
+ * CHECK:                 %[[VAL_18:.*]] = ocaml.embox_string "small"
  * CHECK:                 scf.yield %[[VAL_18]] : !ocaml.sbox
  * CHECK:               } else {
- * CHECK:                 %[[VAL_19:.*]] = ocaml.embox_string "\22negative or zero\22"
+ * CHECK:                 %[[VAL_19:.*]] = ocaml.embox_string "negative or zero"
  * CHECK:                 scf.yield %[[VAL_19]] : !ocaml.sbox
  * CHECK:               }
  * CHECK:               scf.yield %[[VAL_17]] : !ocaml.sbox

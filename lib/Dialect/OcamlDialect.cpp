@@ -5,6 +5,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectInterface.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
+#include "ocamlc2/Dialect/OcamlOpBuilder.h"
 #include "ocamlc2/Dialect/OcamlTypeUtils.h"
 #include "ocamlc2/Dialect/TypeDetail.h"
 #include "mlir/IR/Attributes.h"
@@ -43,9 +44,13 @@ void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &
   auto closureType = mlir::cast<mlir::ocaml::ClosureType>(closure.getType());
   auto functionType = closureType.getFunctionType();
   assert(args.size() == functionType.getNumInputs());
-  for (auto [arg, argType] : llvm::zip_equal(args, functionType.getInputs())) {
-    DBGS(arg.getType() << " " << argType << "\n");
+  auto inputs = functionType.getInputs();
+  llvm::SmallVector<mlir::Value> converted;
+  for (auto [arg, argType] : llvm::zip_equal(args, inputs)) {
+    DBGS("coercible? " << arg.getType() << " " << argType << "\n");
     assert(areTypesCoercible(arg.getType(), argType));
+    converted.push_back(
+        builder.create<mlir::ocaml::ConvertOp>(arg.getLoc(), argType, arg));
   }
   auto resultType = functionType.getResult(0);
   build(builder, result, resultType, closure, args, {}, {});

@@ -61,7 +61,7 @@
  * CHECK:           %[[VAL_2:.*]] = func.call @A() : () -> !ocaml.variant<"shape" is "A" | "B" of !ocaml.box<i64>>
  * CHECK:           %[[VAL_3:.*]] = ocaml.call %[[VAL_1]](%[[VAL_2]]) : (<(!ocaml.variant<"shape" is "A" | "B" of !ocaml.box<i64>>) -> !ocaml.box<i64>>) -> !ocaml.variant<"shape" is "A" | "B" of !ocaml.box<i64>> -> !ocaml.box<i64>
  * CHECK:           %[[VAL_4:.*]] = func.call @print_int(%[[VAL_3]]) : (!ocaml.box<i64>) -> !ocaml.unit
- * CHECK:           %[[VAL_5:.*]] = ocaml.embox_string "\22\22"
+ * CHECK:           %[[VAL_5:.*]] = ocaml.embox_string ""
  * CHECK:           %[[VAL_6:.*]] = func.call @print_endline(%[[VAL_5]]) : (!ocaml.sbox) -> !ocaml.unit
  * CHECK:         }
 

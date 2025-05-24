@@ -14,6 +14,5 @@ let () =
   | None -> print_string "3 not found in array"; print_newline ()
 
 (**
- * RUN: g3 %s | FileCheck %s
- * XFAIL: *
+ * RUN: g3 %s | FileCheck %s.ref
  *)
