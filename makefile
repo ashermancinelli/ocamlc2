@@ -1,7 +1,6 @@
 CMAKE            ?= cmake
 LIT              ?= lit
 # LLVM             ?= /opt/homebrew/opt/llvm@19
-# LLVM             ?= /Users/ashermancinelli/workspace/spack/opt/spack/darwin-m1/llvm-main-jwslh4xaozl2pmkamzviwxogdq5yvv4q
 LLVM             ?= /usr/local
 CBIN             ?= $(LLVM)/bin
 CXX               = $(CBIN)/clang++

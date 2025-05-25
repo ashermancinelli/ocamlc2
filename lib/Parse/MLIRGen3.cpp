@@ -816,22 +816,23 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genInfixExpression(const Node node) {
          });
 }
 
-mlir::FailureOr<mlir::ocaml::ClosureEnvValue> MLIRGen3::findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp) {
+mlir::FailureOr<mlir::Value> MLIRGen3::findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp) {
   return findEnvForFunction(funcOp) |
-         or_else([&]() -> mlir::FailureOr<mlir::ocaml::ClosureEnvValue> {
+         or_else([&]() -> mlir::FailureOr<mlir::Value> {
            auto env = builder.create<mlir::ocaml::EnvOp>(
                mlir::UnknownLoc::get(builder.getContext()),
                mlir::ocaml::EnvType::get(builder.getContext()));
-           return success(env);
+           return {env};
          });
 }
 
-mlir::FailureOr<mlir::ocaml::ClosureEnvValue> MLIRGen3::findEnvForFunction(mlir::func::FuncOp funcOp) {
+mlir::FailureOr<mlir::Value> MLIRGen3::findEnvForFunction(mlir::func::FuncOp funcOp) {
   auto envAttr = funcOp->getAttr("env");
   if (not envAttr) {
-    return failure();
+    return {builder.create<mlir::ocaml::EnvOp>(
+        funcOp->getLoc(), mlir::ocaml::EnvType::get(builder.getContext()))};
   }
-  FailureOr<mlir::ocaml::ClosureEnvValue> env=failure();
+  FailureOr<mlir::Value> env=failure();
   getModule().walk([&](mlir::ocaml::EnvOp envOp) {
     if (mlir::ocaml::ClosureEnvValue{envOp}.getFor() == envAttr) {
       env = success(envOp.getResult());
@@ -899,6 +900,37 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
       builder.createArrayFromElements(loc(node), *arrayType, elementValues);
   assert(array.getType() == *arrayType);
   return array;
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genExternal(const Node node) {
+  TRACE();
+  auto type = mlirType(node);
+  if (failed(type)) {
+    return failure();
+  }
+  auto children = getNamedChildren(node);
+  assert(children.size() == 3);
+  auto name = children[0];
+  auto bindcName = children[2];
+  auto nameStr = unifier.getTextSaved(name);
+  auto bindcNameStr = unifier.getTextSaved(bindcName);
+  bindcNameStr = bindcNameStr.drop_front(1).drop_back(1); // strip quotes
+  return mlirType(node) | and_then([&](auto closureType) -> mlir::FailureOr<mlir::func::FuncOp> {
+    InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(module->getBodyBlock());
+    auto functionType = mlir::cast<mlir::ocaml::ClosureType>(closureType).getFunctionType();
+    auto funcOp = builder.create<mlir::func::FuncOp>(loc(node), nameStr, functionType);
+    funcOp.setPrivate();
+    funcOp->setAttr("bindc", builder.getStringAttr(bindcNameStr));
+    return {funcOp};
+  }) | and_then([&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
+    auto env = findEnvForFunctionOrNullEnv(funcOp);
+    if (failed(env)) {
+      return failure();
+    }
+    auto closureOp = builder.create<mlir::ocaml::ClosureOp>(loc(node), *type, funcOp.getSymName(), *env);
+    return {closureOp};
+  });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genPrefixExpression(const Node node) {
@@ -1255,6 +1287,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genConsExpression(node);
   } else if (type == "prefix_expression") {
     return genPrefixExpression(node);
+  } else if (type == "external") {
+    return genExternal(node);
   }
   error(node) << "NYI: " << type << " (" << __LINE__ << ')';
   assert(false);

@@ -82,6 +82,7 @@ private:
   mlir::FailureOr<mlir::Value> genFunExpression(const Node node);
   mlir::FailureOr<mlir::Value> genListExpression(const Node node);
   mlir::FailureOr<mlir::Value> genConsExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genExternal(const Node node);
   mlir::FailureOr<mlir::Value> genPrefixExpression(const Node node);
   mlir::FailureOr<mlir::func::FuncOp>
   genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
@@ -107,8 +108,8 @@ private:
   mlir::FailureOr<mlir::Type> mlirVariantCtorType(ocamlc2::CtorOperator *ctor, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
-  mlir::FailureOr<mlir::ocaml::ClosureEnvValue> findEnvForFunction(mlir::func::FuncOp funcOp);
-  mlir::FailureOr<mlir::ocaml::ClosureEnvValue> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
+  mlir::FailureOr<mlir::Value> findEnvForFunction(mlir::func::FuncOp funcOp);
+  mlir::FailureOr<mlir::Value> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);
