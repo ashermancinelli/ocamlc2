@@ -31,5 +31,5 @@ ExternalProject_Add(bdwgc
 #   "-DCMAKE_CXX_FLAGS=${TPL_CXX_FLAGS}"
 #   -DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS}
 # )
-install(FILES ${CMAKE_BINARY_DIR}/lib/libgc.* DESTINATION lib)
-install(FILES ${CMAKE_BINARY_DIR}/lib/libcord.* DESTINATION lib)
+# install(FILES ${CMAKE_BINARY_DIR}/lib/libgc.* DESTINATION lib)
+# install(FILES ${CMAKE_BINARY_DIR}/lib/libcord.* DESTINATION lib)

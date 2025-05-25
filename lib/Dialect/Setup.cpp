@@ -46,7 +46,9 @@ namespace mlir::ocaml {
   void setupCodegenPipeline(mlir::PassManager &pm) {
     pm.addPass(mlir::ocaml::createConvertOCamlToLLVM());
     pm.addPass(mlir::createArithToLLVMConversionPass());
-    pm.addPass(mlir::createConvertSCFToCFPass());
+    // in newer llvm
+    // pm.addPass(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(mlir::createConvertControlFlowToLLVMPass());
     pm.addPass(mlir::createConvertFuncToLLVMPass());
   }

@@ -1,6 +1,5 @@
 (*
- * RUN: g3 %s | FileCheck %s
- * XFAIL: *
+ * RUN: g3 %s | FileCheck %s.ref
  *)
 let make_adders () =
   let result = ref [] in

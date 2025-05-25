@@ -1836,12 +1836,14 @@ TypeExpr* Unifier::inferPrefixExpression(Cursor ast) {
   assert(node.getType() == "prefix_expression");
   auto op = node.getChildByFieldName("operator");
   auto expr = node.getChildByFieldName("expression");
-  if (op.getType() != "prefix_operator") {
-    RNULL("Expected prefix operator", op);
-  }
+  auto opType = getVariableType(op);
+  ORNULL(opType);
+  setType(op, opType);
+  auto exprType = infer(expr);
+  ORNULL(exprType);
   auto *tv = createTypeVariable();
-  auto *refType = getRefOfType(tv);
-  UNIFY_OR_RNULL(infer(expr), refType);
+  auto *functionType = getFunctionType({exprType, tv});
+  UNIFY_OR_RNULL(opType, functionType);
   return tv;
 }
 

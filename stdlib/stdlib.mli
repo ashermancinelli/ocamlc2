@@ -42,3 +42,5 @@ val ( ^ ) : string -> string -> string
 val ( = ) : 'a -> 'a -> bool
 val ( <> ) : 'a -> 'a -> bool
 val ( < ) : 'a -> 'a -> bool
+val ( ! ) : 'a ref -> 'a
+val ( := ) : 'a ref -> 'a -> unit

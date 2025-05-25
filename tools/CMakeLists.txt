@@ -21,15 +21,17 @@ function(add_ocamlc2_tool name)
     install(TARGETS ${name} DESTINATION bin)
 endfunction()
 
-add_ocamlc2_tool(ocamlc2-link ocamlc2-link.cpp)
-add_ocamlc2_tool(ocamlc2-parse ocamlc2-parse.cpp)
-add_ocamlc2_tool(ocamlc2-tomlir ocamlc2-tomlir.cpp LINK_MLIR_LIBS)
+# add_ocamlc2_tool(ocamlc2-link ocamlc2-link.cpp)
+# add_ocamlc2_tool(ocamlc2-parse ocamlc2-parse.cpp)
+# add_ocamlc2_tool(ocamlc2-tomlir ocamlc2-tomlir.cpp LINK_MLIR_LIBS)
 
-add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp)
+# add_ocamlc2_tool(ocamlc2-parse2 ocamlc2-parse2.cpp)
 add_ocamlc2_tool(p3 p3.cpp)
-add_ocamlc2_tool(ocamlc2-camlparse ocamlc2-camlparse.cpp)
-add_ocamlc2_tool(ocamlc2-tomlir2 ocamlc2-tomlir2.cpp LINK_MLIR_LIBS)
+# add_ocamlc2_tool(ocamlc2-camlparse ocamlc2-camlparse.cpp)
+# add_ocamlc2_tool(ocamlc2-tomlir2 ocamlc2-tomlir2.cpp LINK_MLIR_LIBS)
 add_ocamlc2_tool(g3 g3.cpp LINK_MLIR_LIBS)
+add_ocamlc2_tool(ocaml-opt ocaml-opt.cpp LINK_MLIR_LIBS)
+target_link_libraries(ocaml-opt PRIVATE MLIROptLib MLIRTransforms)
 
 # Copy the 'c' script to binary directory
 add_custom_command(
@@ -42,13 +44,13 @@ add_custom_command(
 # Add a custom target that depends on the script
 add_custom_target(copy_c_script ALL DEPENDS ${CMAKE_BINARY_DIR}/bin/c)
 
-# Install the script
-install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/c
-    DESTINATION bin
-    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-                GROUP_READ GROUP_EXECUTE
-                WORLD_READ WORLD_EXECUTE
-)
+# # Install the script
+# install(
+#     FILES ${CMAKE_CURRENT_SOURCE_DIR}/c
+#     DESTINATION bin
+#     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+#                 GROUP_READ GROUP_EXECUTE
+#                 WORLD_READ WORLD_EXECUTE
+# )
 
-install(TARGETS ocamlc2-link ocamlc2-parse ocamlc2-tomlir DESTINATION bin)
+# install(TARGETS ocamlc2-link ocamlc2-parse ocamlc2-tomlir DESTINATION bin)

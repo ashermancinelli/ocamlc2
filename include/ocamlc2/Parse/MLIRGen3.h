@@ -14,10 +14,18 @@
 #include "ocamlc2/Parse/TSUnifier.h"
 
 namespace ocamlc2 {
+
+struct BuiltinBuilder {
+  std::function<mlir::FailureOr<mlir::Value>(mlir::Location, mlir::ValueRange)> builder;
+  mlir::FailureOr<mlir::Value> operator()(mlir::Location loc, mlir::ValueRange args) const {
+    return builder(loc, args);
+  }
+};
+
 struct MLIRGen3;
 using VariableScope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::Value>;
 using VariantDeclarations = std::vector<std::pair<std::string, std::optional<mlir::Type>>>;
-using Callee = std::variant<mlir::func::FuncOp, mlir::Value>;
+using Callee = std::variant<mlir::func::FuncOp, mlir::Value, BuiltinBuilder>;
 
 struct Scope;
 
@@ -71,6 +79,9 @@ private:
   mlir::FailureOr<mlir::Value> genString(const Node node);
   mlir::FailureOr<mlir::Value> genIfExpression(const Node node);
   mlir::FailureOr<mlir::Value> genFunExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genListExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genConsExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genPrefixExpression(const Node node);
   mlir::FailureOr<mlir::func::FuncOp>
   genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
                   mlir::Location loc, llvm::ArrayRef<Node> parameters,

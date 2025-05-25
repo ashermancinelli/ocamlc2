@@ -132,6 +132,10 @@ public:
     return mlir::ocaml::ArrayType::get(elementType);
   }
 
+  inline mlir::Type getListType(mlir::Type elementType) {
+    return mlir::ocaml::ListType::get(elementType);
+  }
+
   inline mlir::Type getOBoxType() {
     return mlir::ocaml::OpaqueBoxType::get(getContext());
   }

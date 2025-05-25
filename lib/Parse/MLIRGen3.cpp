@@ -286,19 +286,35 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
     if (args.empty()) {
       auto mlirType = mlirTypeFromBasicTypeOperator(to->getName());
       if (failed(mlirType)) {
-        return error(loc) << "Unknown basic type operator: " << SSWRAP(*type);
+        error(loc) << "Unknown basic type operator: " << SSWRAP(*type);
+        assert(false);
       }
       return mlirType;
     }
     auto name = to->getName();
+    DBGS("name: '" << name << "'\n");
     if (name == "array") {
       auto elementType = mlirType(args.front(), loc);
       if (failed(elementType)) {
         return failure();
       }
       return builder.getArrayType(*elementType);
+    } else if (name == "list") {
+      auto elementType = mlirType(args.front(), loc);
+      if (failed(elementType)) {
+        return failure();
+      }
+      return builder.getListType(*elementType);
+    } else if (name == "ref") {
+      auto elementType = mlirType(args.front(), loc);
+      if (failed(elementType)) {
+        return failure();
+      }
+      return mlir::ocaml::ReferenceType::get(*elementType);
     }
-    return error(loc) << "Unknown type operator: " << SSWRAP(*type);
+
+    error(loc) << "Unknown type operator: " << SSWRAP(*type);
+    assert(false);
   } else if (const auto *tv = llvm::dyn_cast<ocamlc2::TypeVariable>(type)) {
     TRACE();
     if (tv->instantiated()) {
@@ -306,7 +322,8 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
     }
     return builder.getOBoxType();
   }
-  return error(loc) << "Unknown type: " << SSWRAP(*type);
+  error(loc) << "Unknown type: " << SSWRAP(*type);
+  assert(false);
 }
 
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const Node node) {
@@ -675,6 +692,27 @@ mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
            return failure();
          }) |
          or_else([&]() -> mlir::FailureOr<Callee> {
+           if (str == "ref") {
+             return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args) -> mlir::FailureOr<mlir::Value> {
+               auto ref = builder.create<mlir::ocaml::ReferenceOp>(loc, args[0]);
+               return {ref};
+             }}};
+           } else if (str == "!") {
+             return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args) -> mlir::FailureOr<mlir::Value> {
+               auto ref = builder.create<mlir::ocaml::LoadOp>(loc, args[0]);
+               return {ref};
+             }}};
+           } else if (str == ":=") {
+             return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args) -> mlir::FailureOr<mlir::Value> {
+               auto memref = args[0];
+               auto value = args[1];
+               builder.create<mlir::ocaml::StoreOp>(loc, value, memref);
+               return {mlir::Value()};
+             }}};
+           }
+           return failure();
+         }) |
+         or_else([&]() -> mlir::FailureOr<Callee> {
            auto type = mlirType(node);
            if (failed(type)) {
              return failure();
@@ -687,6 +725,7 @@ mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
            builder.setInsertionPointToStart(module->getBodyBlock());
            auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
            callee.setPrivate();
+           callee->setAttr("unresolved", mlir::UnitAttr::get(builder.getContext()));
            return Callee{callee};
          });
 }
@@ -738,7 +777,6 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genInfixExpression(const Node node) {
                   and_then([&](auto lhsValue) -> mlir::FailureOr<mlir::Value> {
                     return gen(rhs) |
                            and_then([&](auto rhsValue) {
-                             // Let genApplication add the env operand automatically
                              return genApplication(l, callee, {lhsValue, rhsValue});
                            });
                   });
@@ -772,6 +810,9 @@ mlir::FailureOr<mlir::ocaml::ClosureEnvValue> MLIRGen3::findEnvForFunction(mlir:
 mlir::FailureOr<mlir::Value> MLIRGen3::genApplication(mlir::Location loc, Callee callee, llvm::ArrayRef<mlir::Value> args) {
   return std::visit(
       Overload{
+          [&](BuiltinBuilder builder) -> mlir::FailureOr<mlir::Value> {
+            return builder(loc, args);
+          },
           [&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
             return builder.createCall(loc, funcOp, args);
           },
@@ -784,10 +825,9 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genApplication(mlir::Location loc, Callee
 mlir::FailureOr<mlir::Value>
 MLIRGen3::genApplicationExpression(const Node node) {
   TRACE();
-  const auto children = getNamedChildren(node);
-  const auto callee = children[0];
-  DBGS("callee: " << getText(callee) << '\n');
-  auto args = llvm::drop_begin(children);
+  auto callee = node.getChildByFieldName("function");
+  auto args = SmallVector<Node>{llvm::drop_begin(getNamedChildren(node))};
+  DBGS("callee: " << getText(callee) << " args: " << args.size() << '\n');
   return genCallee(callee) |
          and_then([&](auto callee) -> mlir::FailureOr<mlir::Value> {
            const auto maybeArgs = llvm::to_vector(llvm::map_range(
@@ -828,6 +868,57 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
   return array;
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genPrefixExpression(const Node node) {
+  TRACE();
+  auto type = mlirType(node);
+  if (failed(type)) {
+    return failure();
+  }
+  auto oper = node.getChildByFieldName("operator");
+  auto operand = node.getChildByFieldName("expression");
+  return genCallee(oper) | and_then([&](auto callee) -> mlir::FailureOr<mlir::Value> {
+    return gen(operand) | and_then([&](auto operand) -> mlir::FailureOr<mlir::Value> {
+      return genApplication(loc(node), callee, {operand});
+    });
+  });
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genConsExpression(const Node node) {
+  TRACE();
+  auto type = mlirType(node);
+  if (failed(type)) {
+    return failure();
+  }
+  assert(llvm::isa<mlir::ocaml::ListType>(*type));
+  auto value = node.getChildByFieldName("left");
+  auto list = node.getChildByFieldName("right");
+  return gen(value) | and_then([&](auto value) -> mlir::FailureOr<mlir::Value> {
+    return gen(list) | and_then([&](auto list) -> mlir::FailureOr<mlir::Value> {
+      auto consOp = builder.create<mlir::ocaml::ListConsOp>(loc(node), value, list);
+      return {consOp};
+    });
+  });
+}
+
+mlir::FailureOr<mlir::Value> MLIRGen3::genListExpression(const Node node) {
+  TRACE();
+  auto type = mlirType(node);
+  if (failed(type)) {
+    return failure();
+  }
+  auto listType = mlir::cast<mlir::ocaml::ListType>(*type);
+  mlir::Value list = builder.create<mlir::ocaml::ListNewOp>(loc(node), listType);
+  auto elements = getNamedChildren(node);
+  for (auto element : elements) {
+    auto elementValue = gen(element);
+    if (failed(elementValue)) {
+      return failure();
+    }
+    list = builder.create<mlir::ocaml::ListAppendOp>(loc(node), list, *elementValue);
+  }
+  return {list};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
   TRACE();
   auto parameters = getNamedChildren(node, {"parameter"});
@@ -862,6 +953,10 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
                         },
                         [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
                           return {value};
+                        },
+                        [&](BuiltinBuilder builder) -> mlir::FailureOr<mlir::Value> {
+                          assert(false && "wtf?");
+                          return failure();
                         }},
                callee);
          });
@@ -1098,6 +1193,10 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
                      },
                      [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
                        return value;
+                     },
+                     [&](BuiltinBuilder builder) -> mlir::FailureOr<mlir::Value> {
+                       assert(false && "wtf?");
+                       return failure();
                      }},
                  callee);
            });
@@ -1117,8 +1216,16 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genArrayGetExpression(node);
   } else if (type == "fun_expression") {
     return genFunExpression(node);
+  } else if (type == "list_expression") {
+    return genListExpression(node);
+  } else if (type == "cons_expression") {
+    return genConsExpression(node);
+  } else if (type == "prefix_expression") {
+    return genPrefixExpression(node);
   }
-  return error(node) << "NYI: " << type << " (" << __LINE__ << ')';
+  error(node) << "NYI: " << type << " (" << __LINE__ << ')';
+  assert(false);
+  return failure();
 }
 
 mlir::FailureOr<mlir::OwningOpRef<mlir::ocaml::ModuleOp>> MLIRGen3::gen() {

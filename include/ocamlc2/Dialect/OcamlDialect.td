@@ -47,6 +47,18 @@ def Ocaml_ReferenceType : Ocaml_Type<"Reference", "ref"> {
   ];
 }
 
+def Ocaml_ListType : Ocaml_Type<"List", "list"> {
+  let summary = "OCaml list";
+  let description = "OCaml list";
+  let parameters = (ins AnyType:$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "::mlir::Type":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>,
+  ];
+}
+
 def Ocaml_ArrayType : Ocaml_Type<"Array", "array"> {
   let summary = "OCaml array";
   let description = "OCaml array";
@@ -165,6 +177,8 @@ def AnyOCamlType : TypeConstraint<
         "::mlir::ocaml::BoxType, ::mlir::ocaml::OpaqueBoxType, "
         "::mlir::ocaml::StringType, ::mlir::ocaml::UnitType, "
         "::mlir::ocaml::TupleType, ::mlir::ocaml::VariantType, "
+        "::mlir::ocaml::ReferenceType, ::mlir::ocaml::ListType, "
+        "::mlir::ocaml::ModuleType, ::mlir::ocaml::ClosureType, "
         "::mlir::ocaml::ArrayType>($_self)">,
   "OCaml value">;
 
@@ -174,6 +188,47 @@ def AnyOcamlReferenceType : TypeConstraint<
 
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
+
+def Ocaml_ListNewOp : Ocaml_Op<"list.new"> {
+  let summary = "OCaml list new";
+  let description = "OCaml list new";
+  let arguments = (ins);
+  let results = (outs Ocaml_ListType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+  let builders = [
+    OpBuilder<(ins), [{
+      return build($_builder, $_state, mlir::ocaml::ListType::get(mlir::ocaml::OpaqueBoxType::get($_builder.getContext())));
+    }]>,
+  ];
+}
+
+def Ocaml_ListConsOp : Ocaml_Op<"list.cons"> {
+  let summary = "OCaml list cons";
+  let description = "OCaml list cons";
+  let arguments = (ins AnyOCamlType:$value, Ocaml_ListType:$list);
+  let results = (outs Ocaml_ListType:$result);
+  let assemblyFormat = "$value `,` $list attr-dict `:` type($value) `,` type($list) `->` type($result)";
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$value, "::mlir::Value":$list), [{
+      auto listType = mlir::cast<mlir::ocaml::ListType>(list.getType());
+      return build($_builder, $_state, listType, value, list);
+    }]>,
+  ];
+}
+
+def Ocaml_ListAppendOp : Ocaml_Op<"list.append"> {
+  let summary = "OCaml list append";
+  let description = "OCaml list append";
+  let arguments = (ins Ocaml_ListType:$list, AnyOCamlType:$value);
+  let results = (outs Ocaml_ListType:$result);
+  let assemblyFormat = "$list `,` $value attr-dict `:` type($list) `,` type($value) `->` type($result)";
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$list, "::mlir::Value":$value), [{
+      auto listType = mlir::cast<mlir::ocaml::ListType>(list.getType());
+      return build($_builder, $_state, listType, list, value);
+    }]>,
+  ];
+}
 
 def Ocaml_YieldOp : Ocaml_Op<"yield", [
     Pure,
@@ -376,17 +431,36 @@ def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
 def Ocaml_LoadOp : Ocaml_Op<"load"> {
   let summary = "OCaml load";
   let description = "OCaml load";
-  let arguments = (ins AnyOcamlReferenceType:$input);
+  let arguments = (ins Ocaml_ReferenceType:$input);
   let results = (outs AnyOCamlType:$result);
   let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input), [{
+      auto refType = mlir::cast<mlir::ocaml::ReferenceType>(input.getType());
+      return build($_builder, $_state, refType.getElementType(), input);
+    }]>,
+  ];
 }
 
 def Ocaml_StoreOp : Ocaml_Op<"store"> {
   let summary = "OCaml store";
   let description = "OCaml store";
-  let arguments = (ins AnyOCamlType:$value, AnyOcamlReferenceType:$input);
+  let arguments = (ins AnyOCamlType:$value, Ocaml_ReferenceType:$input);
   let results = (outs);
   let assemblyFormat = "$value `to` $input attr-dict `:` type($value) `to` type($input)";
+}
+
+def Ocaml_ReferenceOp : Ocaml_Op<"ref"> {
+  let summary = "OCaml ref";
+  let description = "OCaml ref";
+  let arguments = (ins AnyOCamlType:$value);
+  let results = (outs Ocaml_ReferenceType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$value), [{
+      return build($_builder, $_state, mlir::ocaml::ReferenceType::get($_builder.getContext(), value.getType()), value);
+    }]>,
+  ];
 }
 
 def Ocaml_AddressOfOp : Ocaml_Op<"addressof"> {
