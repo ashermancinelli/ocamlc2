@@ -34,15 +34,15 @@ add_ocamlc2_tool(ocaml-opt ocaml-opt.cpp LINK_MLIR_LIBS)
 target_link_libraries(ocaml-opt PRIVATE MLIROptLib MLIRTransforms)
 
 # Copy the 'c' script to binary directory
-add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/bin/c
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/c ${CMAKE_BINARY_DIR}/bin/c
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/c
-    COMMENT "Copying compiler driver script to bin directory"
-)
+# add_custom_command(
+#     OUTPUT ${CMAKE_BINARY_DIR}/bin/c
+#     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/c ${CMAKE_BINARY_DIR}/bin/c
+#     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/c
+#     COMMENT "Copying compiler driver script to bin directory"
+# )
 
 # Add a custom target that depends on the script
-add_custom_target(copy_c_script ALL DEPENDS ${CMAKE_BINARY_DIR}/bin/c)
+# add_custom_target(copy_c_script ALL DEPENDS ${CMAKE_BINARY_DIR}/bin/c)
 
 # # Install the script
 # install(

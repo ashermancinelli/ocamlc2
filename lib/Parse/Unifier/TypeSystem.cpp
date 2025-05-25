@@ -8,6 +8,28 @@
 
 namespace ocamlc2 {
 
+TypeVariable::TypeVariable() : TypeExpr(Kind::Variable) {
+  static int id = 0;
+  this->id = id++;
+}
+
+bool TypeExpr::operator==(const TypeExpr& other) const {
+  if (auto *to = llvm::dyn_cast<TypeOperator>(this)) {
+    if (auto *toOther = llvm::dyn_cast<TypeOperator>(&other)) {
+      return *to == *toOther;
+    }
+  } else if (auto *tv = llvm::dyn_cast<TypeVariable>(this)) {
+    if (auto *tvOther = llvm::dyn_cast<TypeVariable>(&other)) {
+      return *tv == *tvOther;
+    }
+  }
+  return false;
+}
+
+bool TypeVariable::operator==(const TypeVariable& other) const {
+  return id == other.id;
+}
+
 static llvm::raw_ostream &showTypeVariables(llvm::raw_ostream &os, const TypeOperator &type) {
   auto vars = SmallVector<TypeExpr *>(type.getArgs());
   switch (vars.size()) {
