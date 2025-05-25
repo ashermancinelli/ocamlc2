@@ -11,7 +11,7 @@
  * CHECK-LABEL:   func.func private @funexpr$0(
  * CHECK-SAME:                                 %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.obox) -> !ocaml.box<i64> attributes {env = "funexpr$0env$1"} {
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.env.get_current : !ocaml.env
- * CHECK:           %[[VAL_2:.*]] = ocaml.closure.env.get %[[VAL_1]]["x"] -> !ocaml.box<i64>
+ * CHECK:           %[[VAL_2:.*]] = ocaml.closure.env.get %[[VAL_1]][x] : !ocaml.box<i64>
  * CHECK:           return %[[VAL_2]] : !ocaml.box<i64>
  * CHECK:         }
 
@@ -20,12 +20,13 @@
  * CHECK:             %[[VAL_1:.*]] = arith.constant 5 : i64
  * CHECK:             %[[VAL_2:.*]] = ocaml.convert %[[VAL_1]] from i64 to !ocaml.box<i64>
  * CHECK:             %[[VAL_3:.*]] = ocaml.block : !ocaml.box<i64> {
- * CHECK:               %[[VAL_4:.*]] = ocaml.closure.env.new {for = "funexpr$0env$1"}
- * CHECK:               ocaml.closure.env.capture %[[VAL_4]]["x"] = %[[VAL_2]] : !ocaml.box<i64>
- * CHECK:               %[[VAL_5:.*]] = ocaml.closure.new @funexpr$0 capturing %[[VAL_4]] : <(!ocaml.obox) -> !ocaml.box<i64>>
+ * CHECK:               %[[VAL_4:.*]] = ocaml.closure.env.new {for = "funexpr$0env$1"} : !ocaml.env
+ * CHECK:               ocaml.closure.env.capture %[[VAL_4]][x] = %[[VAL_2]] {id = "x"}
+ * CHECK:               %[[VAL_5:.*]] = ocaml.closure.new @funexpr$0 capturing %[[VAL_4]] : !ocaml.closure<(!ocaml.obox) -> !ocaml.box<i64>>
  * CHECK:               %[[VAL_6:.*]] = ocaml.unit
- * CHECK:               %[[VAL_7:.*]] = ocaml.call %[[VAL_5]](%[[VAL_6]]) : (<(!ocaml.obox) -> !ocaml.box<i64>>) -> !ocaml.unit -> !ocaml.box<i64>
- * CHECK:               ocaml.yield %[[VAL_7]] : !ocaml.box<i64>
+ * CHECK:               %[[VAL_7:.*]] = ocaml.convert %[[VAL_6]] from !ocaml.unit to !ocaml.obox
+ * CHECK:               %[[VAL_8:.*]] = ocaml.call %[[VAL_5]](%[[VAL_6]]) : (!ocaml.closure<(!ocaml.obox) -> !ocaml.box<i64>>) : !ocaml.unit -> !ocaml.box<i64>
+ * CHECK:               ocaml.yield %[[VAL_8]] : !ocaml.box<i64>
  * CHECK:             }
  * CHECK:             ocaml.yield %[[VAL_3]] : !ocaml.box<i64>
  * CHECK:           }

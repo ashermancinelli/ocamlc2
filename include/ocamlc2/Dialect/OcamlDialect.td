@@ -162,7 +162,13 @@ def Ocaml_ClosureType : Ocaml_Type<"Closure", "closure"> {
   let summary = "OCaml closure";
   let description = "OCaml closure";
   let parameters = (ins FunctionType:$functionType);
-  let assemblyFormat = "`<` $functionType `>`";
+  // let assemblyFormat = "`<` $functionType `>`";
+  let hasCustomAssemblyFormat = 1;
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "::mlir::FunctionType":$functionType), [{
+      return $_get(functionType.getContext(), functionType);
+    }]>,
+  ];
 }
 
 def AnyBoxType : TypeConstraint<
@@ -189,11 +195,27 @@ def AnyOcamlReferenceType : TypeConstraint<
 class Ocaml_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ocaml_Dialect, mnemonic, traits>;
 
+def IsaListType : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::ListType>($_self)">,
+  "OCaml list">;
+
+def IsaReferenceType : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::ReferenceType>($_self)">,
+  "OCaml reference">;
+
+def IsaClosureType : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::ClosureType>($_self)">,
+  "OCaml closure">;
+
+def IsaEnvType : Type<
+  CPred<"::mlir::isa<::mlir::ocaml::EnvType>($_self)">,
+  "OCaml environment">;
+
 def Ocaml_ListNewOp : Ocaml_Op<"list.new"> {
   let summary = "OCaml list new";
   let description = "OCaml list new";
   let arguments = (ins);
-  let results = (outs Ocaml_ListType:$result);
+  let results = (outs IsaListType:$result);
   let assemblyFormat = "attr-dict `:` type($result)";
   let builders = [
     OpBuilder<(ins), [{
@@ -205,9 +227,10 @@ def Ocaml_ListNewOp : Ocaml_Op<"list.new"> {
 def Ocaml_ListConsOp : Ocaml_Op<"list.cons"> {
   let summary = "OCaml list cons";
   let description = "OCaml list cons";
-  let arguments = (ins AnyOCamlType:$value, Ocaml_ListType:$list);
-  let results = (outs Ocaml_ListType:$result);
-  let assemblyFormat = "$value `,` $list attr-dict `:` type($value) `,` type($list) `->` type($result)";
+  let arguments = (ins AnyOCamlType:$value, IsaListType:$list);
+  let results = (outs IsaListType:$result);
+  // let assemblyFormat = "$value `,` $list attr-dict `:` type($value) `,` type($list) `->` type($result)";
+  let hasCustomAssemblyFormat = 1;
   let builders = [
     OpBuilder<(ins "::mlir::Value":$value, "::mlir::Value":$list), [{
       auto listType = mlir::cast<mlir::ocaml::ListType>(list.getType());
@@ -219,8 +242,8 @@ def Ocaml_ListConsOp : Ocaml_Op<"list.cons"> {
 def Ocaml_ListAppendOp : Ocaml_Op<"list.append"> {
   let summary = "OCaml list append";
   let description = "OCaml list append";
-  let arguments = (ins Ocaml_ListType:$list, AnyOCamlType:$value);
-  let results = (outs Ocaml_ListType:$result);
+  let arguments = (ins IsaListType:$list, AnyOCamlType:$value);
+  let results = (outs IsaListType:$result);
   let assemblyFormat = "$list `,` $value attr-dict `:` type($list) `,` type($value) `->` type($result)";
   let builders = [
     OpBuilder<(ins "::mlir::Value":$list, "::mlir::Value":$value), [{
@@ -265,23 +288,24 @@ def Ocaml_EnvOp : Ocaml_Op<"closure.env.new", [Pure]> {
   let summary = "OCaml environment";
   let description = "OCaml environment for closures and captured values";
   let arguments = (ins);
-  let results = (outs Ocaml_EnvType:$result);
-  let assemblyFormat = "attr-dict";
+  let results = (outs IsaEnvType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 def Ocaml_EnvCaptureOp : Ocaml_Op<"closure.env.capture"> {
   let summary = "OCaml environment capture";
   let description = "OCaml environment capture";
-  let arguments = (ins Ocaml_EnvType:$env, StrAttr:$id, AnyOCamlType:$value);
+  let arguments = (ins IsaEnvType:$env, StrAttr:$id, AnyOCamlType:$value);
   let results = (outs);
-  let assemblyFormat = "$env `[` $id `]` `=` $value attr-dict `:` type($value)";
+  // let assemblyFormat = "$env `[` $id `]` `=` $value attr-dict `:` type($value)";
+  let hasCustomAssemblyFormat = 1;
 }
 
 def Ocaml_EnvGetCurrentOp : Ocaml_Op<"closure.env.get_current"> {
   let summary = "";
   let description = "";
   let arguments = (ins);
-  let results = (outs Ocaml_EnvType:$result);
+  let results = (outs IsaEnvType:$result);
   let assemblyFormat = "attr-dict `:` type($result)";
   let builders = [
     OpBuilder<(ins), [{
@@ -293,17 +317,19 @@ def Ocaml_EnvGetCurrentOp : Ocaml_Op<"closure.env.get_current"> {
 def Ocaml_EnvGetOp : Ocaml_Op<"closure.env.get", [MemoryEffectsOpInterface]> {
   let summary = "OCaml environment get";
   let description = "OCaml environment get";
-  let arguments = (ins Arg<Ocaml_EnvType, "environment being read from", [MemRead]>:$env, StrAttr:$id);
+  let arguments = (ins Arg<IsaEnvType, "environment being read from", [MemRead]>:$env, StrAttr:$id);
   let results = (outs AnyOCamlType:$result);
-  let assemblyFormat = "$env `[` $id `]` attr-dict `->` type($result)";
+  // let assemblyFormat = "$env `[` $id `]` attr-dict `->` type($result)";
+  let hasCustomAssemblyFormat = 1;
 }
 
 def Ocaml_ClosureOp : Ocaml_Op<"closure.new", [Pure]> {
   let summary = "OCaml closure";
   let description = "OCaml closure";
-  let arguments = (ins FlatSymbolRefAttr:$symbol, Ocaml_EnvType:$env);
-  let results = (outs Ocaml_ClosureType:$result);
-  let assemblyFormat = "$symbol `capturing` $env attr-dict `:` type($result)";
+  let arguments = (ins FlatSymbolRefAttr:$symbol, IsaEnvType:$env);
+  let results = (outs IsaClosureType:$result);
+  // let assemblyFormat = "$symbol `capturing` $env attr-dict `:` type($result)";
+  let hasCustomAssemblyFormat = 1;
 }
 
 def Ocaml_ModuleOp : Ocaml_Op<"module", [
@@ -405,19 +431,19 @@ def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
   let summary = "OCaml call";
   let description = "OCaml call";
   let arguments = (ins 
-    Ocaml_ClosureType:$closure,
+    IsaClosureType:$closure,
     Variadic<AnyType>:$args,
     OptionalAttr<DictArrayAttr>:$arg_attrs,
     OptionalAttr<DictArrayAttr>:$res_attrs
   );
   let results = (outs AnyOCamlType:$result);
-  let assemblyFormat = "$closure `(` $args `)` attr-dict `:` `(` type($closure) `)` `->` type($args) `->` type($result)";
+  let assemblyFormat = "$closure `(` $args `)` attr-dict `:` `(` type($closure) `)` `:` type($args) `->` type($result)";
   let builders = [
     OpBuilder<(ins "::mlir::Value":$closure, "::mlir::ValueRange":$args)>,
   ];
   let extraClassDeclaration = [{
     FunctionType getCalleeType() {
-      return getClosure().getType().getFunctionType();
+      return cast<ClosureType>(getClosure().getType()).getFunctionType();
     }
     MutableOperandRange getArgOperandsMutable() { return getArgsMutable(); }
     operand_iterator arg_operand_begin() { return operand_begin() + 1; }
@@ -431,9 +457,10 @@ def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
 def Ocaml_LoadOp : Ocaml_Op<"load"> {
   let summary = "OCaml load";
   let description = "OCaml load";
-  let arguments = (ins Ocaml_ReferenceType:$input);
+  let arguments = (ins IsaReferenceType:$input);
   let results = (outs AnyOCamlType:$result);
-  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
+  // let assemblyFormat = "$input attr-dict `:` type($input) `->` type($result)";
+  let hasCustomAssemblyFormat = 1;
   let builders = [
     OpBuilder<(ins "::mlir::Value":$input), [{
       auto refType = mlir::cast<mlir::ocaml::ReferenceType>(input.getType());
@@ -445,16 +472,18 @@ def Ocaml_LoadOp : Ocaml_Op<"load"> {
 def Ocaml_StoreOp : Ocaml_Op<"store"> {
   let summary = "OCaml store";
   let description = "OCaml store";
-  let arguments = (ins AnyOCamlType:$value, Ocaml_ReferenceType:$input);
+  let arguments = (ins AnyOCamlType:$value, IsaReferenceType:$input);
   let results = (outs);
-  let assemblyFormat = "$value `to` $input attr-dict `:` type($value) `to` type($input)";
+  // let assemblyFormat = "$value `to` $input attr-dict `:` type($value) `to` type($input)";
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 def Ocaml_ReferenceOp : Ocaml_Op<"ref"> {
   let summary = "OCaml ref";
   let description = "OCaml ref";
   let arguments = (ins AnyOCamlType:$value);
-  let results = (outs Ocaml_ReferenceType:$result);
+  let results = (outs IsaReferenceType:$result);
   let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
   let builders = [
     OpBuilder<(ins "::mlir::Value":$value), [{
@@ -467,7 +496,7 @@ def Ocaml_AddressOfOp : Ocaml_Op<"addressof"> {
   let summary = "OCaml address of";
   let description = "OCaml address of";
   let arguments = (ins SymbolRefAttr:$symbol);
-  let results = (outs AnyOcamlReferenceType:$result);
+  let results = (outs IsaReferenceType:$result);
   let assemblyFormat = "$symbol attr-dict `:` type($result)";
 }
 

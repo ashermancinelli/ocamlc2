@@ -25,6 +25,22 @@ int main() {
   auto array = builder.getArrayType(i64);
   llvm::outs() << array << "\n";
 
+  auto functionType = builder.getFunctionType(i64, i64);
+  auto closure = mlir::ocaml::ClosureType::get(functionType);
+  llvm::outs() << closure << "\n";
+
+  {
+    auto list = mlir::ocaml::ListType::get(i64);
+    llvm::outs() << list << "\n";
+  }
+  {
+    auto list = mlir::ocaml::ListType::get(closure);
+    llvm::outs() << list << "\n";
+  }
+
+  auto env = mlir::ocaml::EnvType::get(&context);
+  llvm::outs() << env << "\n";
+
   return 0;
 }
 
@@ -33,4 +49,9 @@ int main() {
 // CHECK: !ocaml.box<i64>
 // CHECK: !ocaml.tuple<i64, i64>
 // CHECK: !ocaml.variant<"foo" is "None" | "Some" of i64 | "More" of !ocaml.tuple<i64, i64>>
+// CHECK: !ocaml.array<i64>
+// CHECK: !ocaml.closure<(i64) -> i64>
+// CHECK: !ocaml.list<i64>
+// CHECK: !ocaml.list<!ocaml.closure<(i64) -> i64>>
+// CHECK: !ocaml.env
 

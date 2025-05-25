@@ -40,6 +40,199 @@ namespace mlir::ocaml::detail {
 
 }
 
+void mlir::ocaml::LoadOp::print(mlir::OpAsmPrinter &printer) {
+  printer << ' ' << getInput();
+  printer.printOptionalAttrDict((*this)->getAttrs());
+  printer << " : " << getInput().getType();
+}
+
+
+mlir::ParseResult mlir::ocaml::LoadOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+  mlir::OpAsmParser::UnresolvedOperand inputRawOperand{};
+  if (parser.parseOperand(inputRawOperand))
+    return mlir::failure();
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return mlir::failure();
+  mlir::Type type;
+  if (parser.parseColonType(type))
+    return mlir::failure();
+  mlir::Value input;
+  if (parser.resolveOperand(inputRawOperand, type, result.operands))
+    return mlir::failure();
+  result.addOperands({input});
+  result.addTypes(type);
+  return mlir::success();
+}
+
+void mlir::ocaml::StoreOp::print(mlir::OpAsmPrinter &printer) {
+  printer << ' ' << getValue() << " to " << getInput() << " : " << getInput().getType();
+  printer.printOptionalAttrDict((*this)->getAttrs());
+}
+
+mlir::ParseResult mlir::ocaml::StoreOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+  mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
+  mlir::OpAsmParser::UnresolvedOperand inputRawOperand{};
+  if (parser.parseOperand(valueRawOperand))
+    return mlir::failure();
+  if (parser.parseKeyword("to"))
+    return mlir::failure();
+  if (parser.parseOperand(inputRawOperand))
+    return mlir::failure();
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return mlir::failure();
+  mlir::Type type;
+  if (parser.parseColonType(type))
+    return mlir::failure();
+  mlir::Value value;
+  mlir::Value input;
+  if (parser.resolveOperand(valueRawOperand, value.getType(), result.operands))
+    return mlir::failure();
+  if (parser.resolveOperand(inputRawOperand, type, result.operands))
+    return mlir::failure();
+  result.addOperands({value, input});
+  result.addTypes(type);
+  return mlir::success();
+}
+
+mlir::LogicalResult mlir::ocaml::StoreOp::verify() {
+  auto valueType = getValue().getType();
+  auto inputType = getInput().getType();
+  auto referenceType = mlir::cast<mlir::ocaml::ReferenceType>(inputType);
+  if (!referenceType) {
+    return emitError() << "input is not a reference type";
+  }
+  if (valueType != referenceType.getElementType()) {
+    return emitError() << "value type " << valueType << " does not match input type " << referenceType.getElementType();
+  }
+  return mlir::success();
+}
+
+void mlir::ocaml::EnvCaptureOp::print(mlir::OpAsmPrinter &printer) {
+  printer << ' ' << getEnv() << "[" << getId() << "] = " << getValue();
+  printer.printOptionalAttrDict((*this)->getAttrs());
+}
+
+mlir::ParseResult mlir::ocaml::EnvCaptureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+  mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
+  mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
+  std::string id;
+  if (parser.parseOperand(envRawOperand))
+    return mlir::failure();
+  if (parser.parseLSquare())
+    return mlir::failure();
+  if (parser.parseString(&id))
+    return mlir::failure();
+  if (parser.parseRSquare())
+    return mlir::failure();
+  if (parser.parseEqual())
+    return mlir::failure();
+  if (parser.parseOperand(valueRawOperand))
+    return mlir::failure();
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return mlir::failure();
+  mlir::Value env;
+  mlir::Value value;
+  if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
+    return mlir::failure();
+  if (parser.resolveOperand(valueRawOperand, value.getType(), result.operands))
+    return mlir::failure();
+  result.addOperands({env, value});
+  result.addAttribute(getIdAttrName(result.name), mlir::StringAttr::get(parser.getContext(), id));
+  return mlir::success();
+}
+
+void mlir::ocaml::EnvGetOp::print(mlir::OpAsmPrinter &printer) {
+  printer << ' ' << getEnv() << "[" << getId() << "]" << " : " << getType();
+}
+
+mlir::ParseResult mlir::ocaml::EnvGetOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+  mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
+  std::string id;
+  if (parser.parseOperand(envRawOperand))
+    return mlir::failure();
+  if (parser.parseLSquare())
+    return mlir::failure();
+  if (parser.parseString(&id))
+    return mlir::failure();
+  if (parser.parseRSquare())
+    return mlir::failure();
+  mlir::Type type;
+  if (parser.parseColonType(type))
+    return mlir::failure();
+  mlir::Value env;
+  if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
+    return mlir::failure();
+  result.addOperands({env});
+  result.addAttribute(getIdAttrName(result.name),
+                      mlir::StringAttr::get(parser.getContext(), id));
+  result.addTypes(type);
+  return mlir::success();
+}
+
+void mlir::ocaml::ClosureOp::print(mlir::OpAsmPrinter &printer) {
+  printer << ' ' << getSymbolAttr() << " capturing " << getEnv() << " : " << getType();
+}
+
+void mlir::ocaml::ListConsOp::print(mlir::OpAsmPrinter &printer) {
+  printer << ' ' << getValue() << " :: " << getList() << " : " << getType();
+}
+
+mlir::ParseResult mlir::ocaml::ListConsOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+  mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
+  mlir::OpAsmParser::UnresolvedOperand listRawOperand{};
+  if (parser.parseOperand(valueRawOperand))
+    return mlir::failure();
+  if (parser.parseKeyword("::"))
+    return mlir::failure();
+  if (parser.parseOperand(listRawOperand))
+    return mlir::failure();
+  mlir::Type type;
+  if (parser.parseColonType(type))
+    return mlir::failure();
+  mlir::Value value;
+  mlir::Value list;
+  if (parser.resolveOperand(valueRawOperand, value.getType(), result.operands))
+    return mlir::failure();
+  if (parser.resolveOperand(listRawOperand, list.getType(), result.operands))
+    return mlir::failure();
+  result.addOperands({value, list});
+  result.addTypes(type);
+  return mlir::success();
+}
+
+mlir::ParseResult mlir::ocaml::ClosureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+  mlir::StringAttr name;
+  mlir::Type type;
+  if (parser.parseSymbolName(name, mlir::SymbolTable::getSymbolAttrName(),
+                             result.attributes))
+    return mlir::failure();
+  if (parser.parseKeyword("capturing"))
+    return mlir::failure();
+  if (parser.parseType(type))
+    return mlir::failure();
+  if (parser.parseColonType(type))
+    return mlir::failure();
+  result.addAttribute(
+      getSymbolAttrName(result.name),
+      mlir::StringAttr::get(parser.getContext(), name.getValue()));
+  return mlir::success();
+}
+
+void mlir::ocaml::ClosureType::print(mlir::AsmPrinter &printer) const {
+  printer << "<" << getFunctionType() << ">";
+}
+
+mlir::Type mlir::ocaml::ClosureType::parse(mlir::AsmParser &parser) {
+  mlir::FunctionType functionType;
+  if (parser.parseLess())
+    return {};
+  if (parser.parseType(functionType))
+    return {};
+  if (parser.parseGreater())
+    return {};
+  return parser.getChecked<ClosureType>(parser.getContext(), functionType);
+}
+
 void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &result, mlir::Value closure, mlir::ValueRange args) {
   auto closureType = mlir::cast<mlir::ocaml::ClosureType>(closure.getType());
   auto functionType = closureType.getFunctionType();
@@ -49,8 +242,10 @@ void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &
   for (auto [arg, argType] : llvm::zip_equal(args, inputs)) {
     DBGS("coercible? " << arg.getType() << " " << argType << "\n");
     assert(areTypesCoercible(arg.getType(), argType));
-    converted.push_back(
-        builder.create<mlir::ocaml::ConvertOp>(arg.getLoc(), argType, arg));
+    if (arg.getType() != argType) {
+      arg = builder.create<mlir::ocaml::ConvertOp>(arg.getLoc(), argType, arg);
+    }
+    converted.push_back(arg);
   }
   auto resultType = functionType.getResult(0);
   build(builder, result, resultType, closure, args, {}, {});

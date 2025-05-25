@@ -7,27 +7,27 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @print_newline(!ocaml.unit) -> !ocaml.unit
- * CHECK:         func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit
- * CHECK:         func.func private @print_string(!ocaml.sbox) -> !ocaml.unit
- * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>
- * CHECK:         func.func private @Some(!ocaml.box<i64>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
- * CHECK:         func.func private @"="(!ocaml.obox, !ocaml.obox) -> !ocaml.box<i1>
+ * CHECK-LABEL:   func.func private @print_newline(!ocaml.unit) -> !ocaml.unit attributes {unresolved}
+ * CHECK:         func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {unresolved}
+ * CHECK:         func.func private @print_string(!ocaml.sbox) -> !ocaml.unit attributes {unresolved}
+ * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {unresolved}
+ * CHECK:         func.func private @Some(!ocaml.box<i64>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>> attributes {unresolved}
+ * CHECK:         func.func private @"="(!ocaml.obox, !ocaml.obox) -> !ocaml.box<i1> attributes {unresolved}
 
  * CHECK-LABEL:   func.func private @None() -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>> attributes {ocaml.variant_ctor} {
  * CHECK:           %[[VAL_0:.*]] = arith.constant 0 : i64
  * CHECK:           %[[VAL_1:.*]] = ocaml.builtin "variant_ctor_empty"(%[[VAL_0]]) : i64 -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
  * CHECK:           return %[[VAL_1]] : !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
  * CHECK:         }
- * CHECK:         func.func private @Array.length(!ocaml.array<!ocaml.obox>) -> !ocaml.box<i64>
- * CHECK:         func.func private @">="(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1>
+ * CHECK:         func.func private @Array.length(!ocaml.array<!ocaml.obox>) -> !ocaml.box<i64> attributes {unresolved}
+ * CHECK:         func.func private @">="(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1> attributes {unresolved}
 
  * CHECK-LABEL:   func.func private @aux(
  * CHECK-SAME:                           %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>> attributes {env = "auxenv$1"} {
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.env.get_current : !ocaml.env
- * CHECK:           %[[VAL_2:.*]] = ocaml.closure.env.get %[[VAL_1]]["item"] -> !ocaml.obox
+ * CHECK:           %[[VAL_2:.*]] = ocaml.closure.env.get %[[VAL_1]][item] : !ocaml.obox
  * CHECK:           %[[VAL_3:.*]] = ocaml.closure.env.get_current : !ocaml.env
- * CHECK:           %[[VAL_4:.*]] = ocaml.closure.env.get %[[VAL_3]]["arr"] -> !ocaml.array<!ocaml.obox>
+ * CHECK:           %[[VAL_4:.*]] = ocaml.closure.env.get %[[VAL_3]][arr] : !ocaml.array<!ocaml.obox>
  * CHECK:           %[[VAL_5:.*]] = call @Array.length(%[[VAL_4]]) : (!ocaml.array<!ocaml.obox>) -> !ocaml.box<i64>
  * CHECK:           %[[VAL_6:.*]] = call @">="(%[[VAL_0]], %[[VAL_5]]) : (!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1>
  * CHECK:           %[[VAL_7:.*]] = ocaml.convert %[[VAL_6]] from !ocaml.box<i1> to i1
@@ -58,22 +58,21 @@
  * CHECK-SAME:                                  %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.obox,
  * CHECK-SAME:                                  %[[VAL_1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.array<!ocaml.obox>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>> attributes {env = "find_indexenv$0"} {
  * CHECK:           %[[VAL_2:.*]] = ocaml.block : !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>> {
- * CHECK:             %[[VAL_3:.*]] = ocaml.closure.env.new {for = "auxenv$1"}
- * CHECK:             ocaml.closure.env.capture %[[VAL_3]]["item"] = %[[VAL_0]] : !ocaml.obox
- * CHECK:             ocaml.closure.env.capture %[[VAL_3]]["arr"] = %[[VAL_1]] : !ocaml.array<!ocaml.obox>
- * CHECK:             %[[VAL_4:.*]] = ocaml.closure.new @aux capturing %[[VAL_3]] : <(!ocaml.box<i64>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>
+ * CHECK:             %[[VAL_3:.*]] = ocaml.closure.env.new {for = "auxenv$1"} : !ocaml.env
+ * CHECK:             ocaml.closure.env.capture %[[VAL_3]][item] = %[[VAL_0]] {id = "item"}
+ * CHECK:             ocaml.closure.env.capture %[[VAL_3]][arr] = %[[VAL_1]] {id = "arr"}
+ * CHECK:             %[[VAL_4:.*]] = ocaml.closure.new @aux capturing %[[VAL_3]] : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>
  * CHECK:             %[[VAL_5:.*]] = arith.constant 0 : i64
  * CHECK:             %[[VAL_6:.*]] = ocaml.convert %[[VAL_5]] from i64 to !ocaml.box<i64>
- * CHECK:             %[[VAL_7:.*]] = ocaml.convert %[[VAL_6]] from !ocaml.box<i64> to !ocaml.box<i64>
- * CHECK:             %[[VAL_8:.*]] = ocaml.call %[[VAL_4]](%[[VAL_6]]) : (<(!ocaml.box<i64>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>) -> !ocaml.box<i64> -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
- * CHECK:             ocaml.yield %[[VAL_8]] : !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
+ * CHECK:             %[[VAL_7:.*]] = ocaml.call %[[VAL_4]](%[[VAL_6]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>) : !ocaml.box<i64> -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
+ * CHECK:             ocaml.yield %[[VAL_7]] : !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
  * CHECK:           }
  * CHECK:           return %[[VAL_2]] : !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
  * CHECK:         }
 
  * CHECK-LABEL:   ocaml.program : {
- * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {for = "find_indexenv$0"}
- * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @find_index capturing %[[VAL_0]] : <(!ocaml.obox, !ocaml.array<!ocaml.obox>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>
+ * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {for = "find_indexenv$0"} : !ocaml.env
+ * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @find_index capturing %[[VAL_0]] : !ocaml.closure<(!ocaml.obox, !ocaml.array<!ocaml.obox>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>
  * CHECK:           %[[VAL_2:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:             %[[VAL_3:.*]] = arith.constant 1 : i64
  * CHECK:             %[[VAL_4:.*]] = ocaml.convert %[[VAL_3]] from i64 to !ocaml.box<i64>
@@ -91,7 +90,7 @@
  * CHECK:               %[[VAL_16:.*]] = ocaml.convert %[[VAL_15]] from i64 to !ocaml.box<i64>
  * CHECK:               %[[VAL_17:.*]] = ocaml.convert %[[VAL_16]] from !ocaml.box<i64> to !ocaml.obox
  * CHECK:               %[[VAL_18:.*]] = ocaml.convert %[[VAL_13]] from !ocaml.array<!ocaml.box<i64>> to !ocaml.array<!ocaml.obox>
- * CHECK:               %[[VAL_19:.*]] = ocaml.call %[[VAL_1]](%[[VAL_16]], %[[VAL_13]]) : (<(!ocaml.obox, !ocaml.array<!ocaml.obox>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>) -> !ocaml.box<i64>, !ocaml.array<!ocaml.box<i64>> -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
+ * CHECK:               %[[VAL_19:.*]] = ocaml.call %[[VAL_1]](%[[VAL_16]], %[[VAL_13]]) : (!ocaml.closure<(!ocaml.obox, !ocaml.array<!ocaml.obox>) -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>>) : !ocaml.box<i64>, !ocaml.array<!ocaml.box<i64>> -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
  * CHECK:               %[[VAL_20:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:                 %[[VAL_21:.*]] = func.call @None() : () -> !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
  * CHECK:                 %[[VAL_22:.*]] = ocaml.match %[[VAL_19]] against %[[VAL_21]] : !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>

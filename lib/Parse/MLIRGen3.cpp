@@ -18,6 +18,7 @@
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/TypeRange.h>
@@ -136,10 +137,11 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   if (failed(maybeFunctionType)) {
     return failure();
   }
-  auto functionType = mlir::dyn_cast<mlir::FunctionType>(*maybeFunctionType);
-  if (not functionType) {
+  auto closureType = mlir::dyn_cast<mlir::ocaml::ClosureType>(*maybeFunctionType);
+  if (not closureType) {
     return error(node) << "Expected function type for let binding";
   }
+  auto functionType = closureType.getFunctionType();
   auto nameString = getText(patternNode);
   return genFunctionBody(nameString, functionType, loc(node), parameters,
                          bodyNode) |
@@ -195,8 +197,12 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(ocamlc2::TypeExpr *type, 
     SmallVector<mlir::Type> successfulArgTypes;
     auto mappedTypes = llvm::map_to_vector(argTypes, [](auto t) { return *t; });
     llvm::append_range(successfulArgTypes, mappedTypes);
-    auto returnType = *mlirType(typeOperatorArgs.back(), loc);
-    return mlir::FunctionType::get(builder.getContext(), successfulArgTypes, {returnType});
+    return mlirType(typeOperatorArgs.back(), loc) |
+           and_then([&](auto returnType) -> mlir::FailureOr<mlir::Type> {
+             auto functionType = mlir::FunctionType::get(builder.getContext(),
+                                                          successfulArgTypes, {returnType});
+             return mlir::ocaml::ClosureType::get(functionType);
+           });
   }
   return error(loc) << "Could get MLIR type from unified function type: "
                      << SSWRAP(*type);
@@ -398,9 +404,9 @@ mlir::FailureOr<Callee> MLIRGen3::genConstructorPath(const Node node) {
   // ------------------------------------------------------------------
   // 2. Constructor with payload – treat the path as a function value.
   // ------------------------------------------------------------------
-  auto funcType = llvm::dyn_cast<mlir::FunctionType>(type);
-  if (!funcType) {
-    return error(node) << "Expected function type if not a variant type directly";
+  auto functionType = llvm::dyn_cast<mlir::FunctionType>(type);
+  if (!functionType) {
+    return error(node) << "Expected function type if not a variant type directly: " << type;
   }
   if (auto sym = module->lookupSymbol<mlir::func::FuncOp>(constructorName)) {
     return {sym};
@@ -408,13 +414,13 @@ mlir::FailureOr<Callee> MLIRGen3::genConstructorPath(const Node node) {
 
   builder.setInsertionPointToStart(module->getBodyBlock());
   auto func =
-      builder.create<mlir::func::FuncOp>(loc(node), constructorName, funcType);
+      builder.create<mlir::func::FuncOp>(loc(node), constructorName, functionType);
   func->setAttrs({builder.createVariantCtorAttr()});
   func.setPrivate();
   func.addEntryBlock();
   builder.setInsertionPointToEnd(&func.front());
   DBGS("func: " << func << "\n");
-  auto opaqueVariantType = funcType.getResult(0);
+  auto opaqueVariantType = functionType.getResult(0);
   auto variantType =
       llvm::dyn_cast<mlir::ocaml::VariantType>(opaqueVariantType);
   if (!variantType) {
@@ -679,12 +685,38 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genNumber(const Node node) {
   return error(node) << "Failed to parse number: " << str;
 }
 
+mlir::FailureOr<Callee> MLIRGen3::genBuiltinCallee(const Node node) {
+  TRACE();
+  auto str = unifier.getTextSaved(node);
+  if (str == "ref") {
+    return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args)
+                                     -> mlir::FailureOr<mlir::Value> {
+      auto ref = builder.create<mlir::ocaml::ReferenceOp>(loc, args[0]);
+      return {ref};
+    }}};
+  } else if (str == "!") {
+    return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args)
+                                     -> mlir::FailureOr<mlir::Value> {
+      auto ref = builder.create<mlir::ocaml::LoadOp>(loc, args[0]);
+      return {ref};
+    }}};
+  } else if (str == ":=") {
+    return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args)
+                                     -> mlir::FailureOr<mlir::Value> {
+      auto memref = args[0];
+      auto value = args[1];
+      builder.create<mlir::ocaml::StoreOp>(loc, value, memref);
+      return {mlir::Value()};
+    }}};
+  }
+  return failure();
+}
+
 mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
   TRACE();
   auto str = unifier.getTextSaved(node);
   auto value = getVariable(str, loc(node));
-  return value |
-         or_else([&]() -> mlir::FailureOr<Callee> {
+  return value | or_else([&]() -> mlir::FailureOr<Callee> {
            auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
            if (callee) {
              return Callee{callee};
@@ -692,41 +724,42 @@ mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
            return failure();
          }) |
          or_else([&]() -> mlir::FailureOr<Callee> {
-           if (str == "ref") {
-             return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args) -> mlir::FailureOr<mlir::Value> {
-               auto ref = builder.create<mlir::ocaml::ReferenceOp>(loc, args[0]);
-               return {ref};
-             }}};
-           } else if (str == "!") {
-             return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args) -> mlir::FailureOr<mlir::Value> {
-               auto ref = builder.create<mlir::ocaml::LoadOp>(loc, args[0]);
-               return {ref};
-             }}};
-           } else if (str == ":=") {
-             return Callee{BuiltinBuilder{[&](mlir::Location loc, mlir::ValueRange args) -> mlir::FailureOr<mlir::Value> {
-               auto memref = args[0];
-               auto value = args[1];
-               builder.create<mlir::ocaml::StoreOp>(loc, value, memref);
-               return {mlir::Value()};
-             }}};
-           }
-           return failure();
+           return genBuiltinCallee(node);
          }) |
          or_else([&]() -> mlir::FailureOr<Callee> {
-           auto type = mlirType(node);
-           if (failed(type)) {
-             return failure();
-           }
-           auto functionType = mlir::dyn_cast<mlir::FunctionType>(*type);
-           if (not functionType) {
-             return error(node) << "Failed to get callee: " << str;
-           }
-           InsertionGuard guard(builder);
-           builder.setInsertionPointToStart(module->getBodyBlock());
-           auto callee = builder.create<mlir::func::FuncOp>(loc(node), str, functionType);
-           callee.setPrivate();
-           callee->setAttr("unresolved", mlir::UnitAttr::get(builder.getContext()));
-           return Callee{callee};
+           return mlirType(node) |
+                  and_then([&](mlir::Type type)
+                               -> mlir::FailureOr<mlir::FunctionType> {
+                    return llvm::TypeSwitch<
+                               mlir::Type, mlir::FailureOr<mlir::FunctionType>>(
+                               type)
+                        .Case<mlir::ocaml::ClosureType>(
+                            [](mlir::ocaml::ClosureType closureType)
+                                -> mlir::FailureOr<mlir::FunctionType> {
+                              return closureType.getFunctionType();
+                            })
+                        .Case<mlir::FunctionType>(
+                            [](mlir::FunctionType functionType)
+                                -> mlir::FailureOr<mlir::FunctionType> {
+                              return functionType;
+                            })
+                        .Default([&](mlir::Type type)
+                                     -> mlir::FailureOr<mlir::FunctionType> {
+                          return error(node)
+                                 << "Expected function type for callee: "
+                                 << type;
+                        });
+                  }) |
+                  and_then([&](auto functionType) -> mlir::FailureOr<Callee> {
+                    InsertionGuard guard(builder);
+                    builder.setInsertionPointToStart(module->getBodyBlock());
+                    auto callee = builder.create<mlir::func::FuncOp>(
+                        loc(node), str, functionType);
+                    callee.setPrivate();
+                    callee->setAttr("unresolved",
+                                    mlir::UnitAttr::get(builder.getContext()));
+                    return Callee{callee};
+                  });
          });
 }
 
@@ -925,8 +958,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
   auto body = node.getChildByFieldName("body");
   return mlirFunctionType(node) |
          and_then([&](auto funType) -> mlir::FailureOr<mlir::FunctionType> {
-           if (auto ft = mlir::dyn_cast<mlir::FunctionType>(funType)) {
-             return ft;
+           if (auto closureType = mlir::dyn_cast<mlir::ocaml::ClosureType>(funType)) {
+             return closureType.getFunctionType();
            }
            return error(node)
                   << "Expected function type for fun expression: " << funType;

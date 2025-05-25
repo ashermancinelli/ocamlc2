@@ -7,7 +7,7 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>
+ * CHECK-LABEL:   func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {unresolved}
 
  * CHECK-LABEL:   func.func private @foo(
  * CHECK-SAME:                           %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.unit) -> !ocaml.box<i64> attributes {env = "fooenv$0"} {
@@ -18,8 +18,8 @@
  * CHECK:           %[[VAL_5:.*]] = call @"+"(%[[VAL_2]], %[[VAL_4]]) : (!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>
  * CHECK:           return %[[VAL_5]] : !ocaml.box<i64>
  * CHECK:         }
- * CHECK:         func.func private @float_of_int(!ocaml.box<i64>) -> !ocaml.box<f64>
- * CHECK:         func.func private @print_float(!ocaml.box<f64>) -> !ocaml.unit
+ * CHECK:         func.func private @float_of_int(!ocaml.box<i64>) -> !ocaml.box<f64> attributes {unresolved}
+ * CHECK:         func.func private @print_float(!ocaml.box<f64>) -> !ocaml.unit attributes {unresolved}
 
  * CHECK-LABEL:   ocaml.program : {
  * CHECK:           %[[VAL_0:.*]] = arith.constant 1 : i64
@@ -35,8 +35,8 @@
  * CHECK:             %[[VAL_10:.*]] = func.call @print_float(%[[VAL_9]]) : (!ocaml.box<f64>) -> !ocaml.unit
  * CHECK:             %[[VAL_11:.*]] = ocaml.unit
  * CHECK:           }
- * CHECK:           %[[VAL_12:.*]] = ocaml.closure.env.new {for = "fooenv$0"}
- * CHECK:           %[[VAL_13:.*]] = ocaml.closure.new @foo capturing %[[VAL_12]] : <(!ocaml.unit) -> !ocaml.box<i64>>
+ * CHECK:           %[[VAL_12:.*]] = ocaml.closure.env.new {for = "fooenv$0"} : !ocaml.env
+ * CHECK:           %[[VAL_13:.*]] = ocaml.closure.new @foo capturing %[[VAL_12]] : !ocaml.closure<(!ocaml.unit) -> !ocaml.box<i64>>
  * CHECK:         }
 
  *)

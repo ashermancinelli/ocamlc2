@@ -7,8 +7,8 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @print_string(!ocaml.sbox) -> !ocaml.unit
- * CHECK:         func.func private @">"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1>
+ * CHECK-LABEL:   func.func private @print_string(!ocaml.sbox) -> !ocaml.unit attributes {unresolved}
+ * CHECK:         func.func private @">"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i1> attributes {unresolved}
 
  * CHECK-LABEL:   func.func private @test(
  * CHECK-SAME:                            %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.sbox attributes {env = "testenv$0"} {
@@ -47,11 +47,11 @@
  * CHECK:         }
 
  * CHECK-LABEL:   ocaml.program : {
- * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {for = "testenv$0"}
- * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @test capturing %[[VAL_0]] : <(!ocaml.box<i64>) -> !ocaml.sbox>
+ * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {for = "testenv$0"} : !ocaml.env
+ * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @test capturing %[[VAL_0]] : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.sbox>
  * CHECK:           %[[VAL_2:.*]] = arith.constant 7 : i64
  * CHECK:           %[[VAL_3:.*]] = ocaml.convert %[[VAL_2]] from i64 to !ocaml.box<i64>
- * CHECK:           %[[VAL_4:.*]] = ocaml.call %[[VAL_1]](%[[VAL_3]]) : (<(!ocaml.box<i64>) -> !ocaml.sbox>) -> !ocaml.box<i64> -> !ocaml.sbox
+ * CHECK:           %[[VAL_4:.*]] = ocaml.call %[[VAL_1]](%[[VAL_3]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.sbox>) : !ocaml.box<i64> -> !ocaml.sbox
  * CHECK:           %[[VAL_5:.*]] = func.call @print_string(%[[VAL_4]]) : (!ocaml.sbox) -> !ocaml.unit
  * CHECK:         }
 

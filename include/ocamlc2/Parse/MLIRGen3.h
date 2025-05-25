@@ -68,6 +68,7 @@ private:
   mlir::FailureOr<mlir::Value> genNumber(const Node node);
   mlir::FailureOr<mlir::Value> genApplicationExpression(const Node node);
   mlir::FailureOr<mlir::Value> genApplication(mlir::Location, Callee callee, llvm::ArrayRef<mlir::Value> args);
+  mlir::FailureOr<Callee> genBuiltinCallee(const Node node);
   mlir::FailureOr<Callee> genCallee(const Node node);
   mlir::FailureOr<mlir::Value> genInfixExpression(const Node node);
   mlir::FailureOr<mlir::Value> genLetExpression(const Node node);
