@@ -7,38 +7,38 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @B(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {ocaml.unresolved}
+ * CHECK-LABEL:   func.func private @B(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {ocaml.unresolved}
 
- * CHECK-LABEL:   func.func private @A() -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {ocaml.variant_ctor} {
+ * CHECK-LABEL:   func.func private @A() -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {ocaml.variant_ctor} {
  * CHECK:           %[[VAL_0:.*]] = arith.constant 0 : i64
- * CHECK:           %[[VAL_1:.*]] = ocaml.builtin "variant_ctor_empty"(%[[VAL_0]]) : i64 -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
- * CHECK:           return %[[VAL_1]] : !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:           %[[VAL_1:.*]] = ocaml.builtin "variant_ctor_empty"(%[[VAL_0]]) : i64 -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:           return %[[VAL_1]] : !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:         }
 
  * CHECK-LABEL:   ocaml.program : {
- * CHECK:           %[[VAL_0:.*]] = func.call @A() : () -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:           %[[VAL_0:.*]] = func.call @A() : () -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:           %[[VAL_1:.*]] = arith.constant 5 : i64
  * CHECK:           %[[VAL_2:.*]] = ocaml.convert %[[VAL_1]] from i64 to !ocaml.box<i64>
- * CHECK:           %[[VAL_3:.*]] = ocaml.closure.new @B : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>
- * CHECK:           %[[VAL_4:.*]] = ocaml.call %[[VAL_3]](%[[VAL_2]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>) : !ocaml.box<i64> -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:           %[[VAL_3:.*]] = ocaml.closure.new @B : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>
+ * CHECK:           %[[VAL_4:.*]] = ocaml.call %[[VAL_3]](%[[VAL_2]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>) : !ocaml.box<i64> -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:           %[[VAL_5:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:             %[[VAL_6:.*]] = arith.constant 2 : i64
  * CHECK:             %[[VAL_7:.*]] = ocaml.convert %[[VAL_6]] from i64 to !ocaml.box<i64>
- * CHECK:             %[[VAL_8:.*]] = ocaml.closure.new @B : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>
- * CHECK:             %[[VAL_9:.*]] = ocaml.call %[[VAL_8]](%[[VAL_7]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>) : !ocaml.box<i64> -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:             %[[VAL_8:.*]] = ocaml.closure.new @B : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>
+ * CHECK:             %[[VAL_9:.*]] = ocaml.call %[[VAL_8]](%[[VAL_7]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>>) : !ocaml.box<i64> -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:             %[[VAL_10:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:               %[[VAL_11:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:                 %[[VAL_12:.*]] = ocaml.pattern_variable : !ocaml.obox
- * CHECK:                 %[[VAL_13:.*]] = ocaml.convert %[[VAL_12]] from !ocaml.obox to !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
- * CHECK:                 %[[VAL_14:.*]] = ocaml.match %[[VAL_9]] against %[[VAL_13]] : !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:                 %[[VAL_13:.*]] = ocaml.convert %[[VAL_12]] from !ocaml.obox to !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:                 %[[VAL_14:.*]] = ocaml.match %[[VAL_9]] against %[[VAL_13]] : !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:                 cf.cond_br %[[VAL_14]], ^bb1, ^bb2
  * CHECK:               ^bb1:
  * CHECK:                 %[[VAL_15:.*]] = arith.constant 1 : i64
  * CHECK:                 %[[VAL_16:.*]] = ocaml.convert %[[VAL_15]] from i64 to !ocaml.box<i64>
  * CHECK:                 cf.br ^bb5(%[[VAL_16]] : !ocaml.box<i64>)
  * CHECK:               ^bb2:
- * CHECK:                 %[[VAL_17:.*]] = func.call @A() : () -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
- * CHECK:                 %[[VAL_18:.*]] = ocaml.match %[[VAL_9]] against %[[VAL_17]] : !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:                 %[[VAL_17:.*]] = func.call @A() : () -> !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
+ * CHECK:                 %[[VAL_18:.*]] = ocaml.match %[[VAL_9]] against %[[VAL_17]] : !ocaml.variant<"l" is "A" | "B" of !ocaml.box<i64> | "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>>
  * CHECK:                 cf.cond_br %[[VAL_18]], ^bb3, ^bb4
  * CHECK:               ^bb3:
  * CHECK:                 %[[VAL_19:.*]] = arith.constant 0 : i64

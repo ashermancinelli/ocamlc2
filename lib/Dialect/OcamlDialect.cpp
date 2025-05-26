@@ -281,7 +281,7 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   if (failed(parseCtorAndType()))
     return {};
 
-  while (succeeded(parser.parseOptionalKeyword("or"))) {
+  while (succeeded(parser.parseOptionalKeyword("|"))) {
     if (failed(parseCtorAndType()))
       return {};
   }
@@ -303,7 +303,7 @@ void VariantType::print(mlir::AsmPrinter &printer) const {
       printer << " of " << type;
     }
     if (iter.index() < getConstructors().size() - 1) {
-      printer << " or ";
+      printer << " | ";
     }
   }
   printer << ">";
