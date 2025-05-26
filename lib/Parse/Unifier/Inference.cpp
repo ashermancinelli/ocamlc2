@@ -551,6 +551,7 @@ TypeExpr* Unifier::inferIfExpression(Cursor ast) {
 }
 
 TypeExpr* Unifier::declareVariable(Node node, TypeExpr* type) {
+  TRACE();
   if (node.getType() == "parenthesized_operator") {
     node = node.getNamedChild(0);
   }
@@ -560,6 +561,7 @@ TypeExpr* Unifier::declareVariable(Node node, TypeExpr* type) {
 }
 
 TypeExpr* Unifier::inferForExpression(Cursor ast) {
+  TRACE();
   assert(ast.gotoFirstChild());
   assert(ast.gotoNextSibling());
   auto id = ast.getCurrentNode();

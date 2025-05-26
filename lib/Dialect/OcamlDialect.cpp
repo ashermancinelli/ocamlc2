@@ -1,26 +1,25 @@
-#include "mlir/Interfaces/CallInterfaces.h"
-#include "mlir/Interfaces/ControlFlowInterfaces.h"
-#include "mlir/Interfaces/FunctionImplementation.h"
-#include "mlir/Transforms/InliningUtils.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/DialectInterface.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
-#include "ocamlc2/Dialect/OcamlOpBuilder.h"
-#include "ocamlc2/Dialect/OcamlTypeUtils.h"
-#include "ocamlc2/Dialect/TypeDetail.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "llvm/ADT/TypeSwitch.h"
-#include <mlir/IR/OpDefinition.h>
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/DialectInterface.h"
+#include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/FunctionImplementation.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/InliningUtils.h"
+#include "ocamlc2/Dialect/OcamlOpBuilder.h"
+#include "ocamlc2/Dialect/OcamlTypeUtils.h"
+#include "ocamlc2/Dialect/TypeDetail.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include <llvm/ADT/Hashing.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Debug.h>
+#include <mlir/IR/OpDefinition.h>
 #include <optional>
-
 
 #define DEBUG_TYPE "ocaml-dialect"
 #include "ocamlc2/Support/Debug.h.inc"
@@ -35,19 +34,14 @@ using namespace mlir::ocaml;
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
 
-
-namespace mlir::ocaml::detail {
-
-}
-
 void mlir::ocaml::LoadOp::print(mlir::OpAsmPrinter &printer) {
   printer << ' ' << getInput();
   printer.printOptionalAttrDict((*this)->getAttrs());
   printer << " : " << getInput().getType();
 }
 
-
-mlir::ParseResult mlir::ocaml::LoadOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+mlir::ParseResult mlir::ocaml::LoadOp::parse(mlir::OpAsmParser &parser,
+                                             mlir::OperationState &result) {
   mlir::OpAsmParser::UnresolvedOperand inputRawOperand{};
   if (parser.parseOperand(inputRawOperand))
     return mlir::failure();
@@ -65,11 +59,13 @@ mlir::ParseResult mlir::ocaml::LoadOp::parse(mlir::OpAsmParser &parser, mlir::Op
 }
 
 void mlir::ocaml::StoreOp::print(mlir::OpAsmPrinter &printer) {
-  printer << ' ' << getValue() << " to " << getInput() << " : " << getInput().getType();
+  printer << ' ' << getValue() << " to " << getInput() << " : "
+          << getInput().getType();
   printer.printOptionalAttrDict((*this)->getAttrs());
 }
 
-mlir::ParseResult mlir::ocaml::StoreOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+mlir::ParseResult mlir::ocaml::StoreOp::parse(mlir::OpAsmParser &parser,
+                                              mlir::OperationState &result) {
   mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
   mlir::OpAsmParser::UnresolvedOperand inputRawOperand{};
   if (parser.parseOperand(valueRawOperand))
@@ -102,82 +98,60 @@ mlir::LogicalResult mlir::ocaml::StoreOp::verify() {
     return emitError() << "input is not a reference type";
   }
   if (valueType != referenceType.getElementType()) {
-    return emitError() << "value type " << valueType << " does not match input type " << referenceType.getElementType();
+    return emitError() << "value type " << valueType
+                       << " does not match input type "
+                       << referenceType.getElementType();
   }
   return mlir::success();
 }
 
-void mlir::ocaml::EnvCaptureOp::print(mlir::OpAsmPrinter &printer) {
-  printer << ' ' << getEnv() << "[" << getId() << "] = " << getValue();
-  printer.printOptionalAttrDict((*this)->getAttrs());
+void mlir::ocaml::ClosureOp::build(mlir::OpBuilder &builder,
+                                   mlir::OperationState &result,
+                                   mlir::func::FuncOp funcOp, mlir::Value env) {
+  auto closureType = mlir::ocaml::ClosureType::get(builder.getContext(),
+                                                   funcOp.getFunctionType());
+  build(builder, result, closureType, funcOp.getSymName(), env);
 }
 
-mlir::ParseResult mlir::ocaml::EnvCaptureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-  mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
-  mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
-  std::string id;
-  if (parser.parseOperand(envRawOperand))
-    return mlir::failure();
-  if (parser.parseLSquare())
-    return mlir::failure();
-  if (parser.parseString(&id))
-    return mlir::failure();
-  if (parser.parseRSquare())
-    return mlir::failure();
-  if (parser.parseEqual())
-    return mlir::failure();
-  if (parser.parseOperand(valueRawOperand))
-    return mlir::failure();
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return mlir::failure();
-  mlir::Value env;
-  mlir::Value value;
-  if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
-    return mlir::failure();
-  if (parser.resolveOperand(valueRawOperand, value.getType(), result.operands))
-    return mlir::failure();
-  result.addOperands({env, value});
-  result.addAttribute(getIdAttrName(result.name), mlir::StringAttr::get(parser.getContext(), id));
-  return mlir::success();
-}
-
-void mlir::ocaml::EnvGetOp::print(mlir::OpAsmPrinter &printer) {
-  printer << ' ' << getEnv() << "[" << getId() << "]" << " : " << getType();
-}
-
-mlir::ParseResult mlir::ocaml::EnvGetOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-  mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
-  std::string id;
-  if (parser.parseOperand(envRawOperand))
-    return mlir::failure();
-  if (parser.parseLSquare())
-    return mlir::failure();
-  if (parser.parseString(&id))
-    return mlir::failure();
-  if (parser.parseRSquare())
-    return mlir::failure();
-  mlir::Type type;
-  if (parser.parseColonType(type))
-    return mlir::failure();
-  mlir::Value env;
-  if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
-    return mlir::failure();
-  result.addOperands({env});
-  result.addAttribute(getIdAttrName(result.name),
-                      mlir::StringAttr::get(parser.getContext(), id));
-  result.addTypes(type);
-  return mlir::success();
-}
-
-void mlir::ocaml::ClosureOp::print(mlir::OpAsmPrinter &printer) {
-  printer << ' ' << getSymbolAttr() << " capturing " << getEnv() << " : " << getType();
+void mlir::ocaml::CurryOp::build(mlir::OpBuilder &builder,
+                                 mlir::OperationState &result,
+                                 mlir::Value closure, mlir::ValueRange args) {
+  auto closureType = mlir::cast<mlir::ocaml::ClosureType>(closure.getType());
+  auto functionType = closureType.getFunctionType();
+  llvm::SmallVector<mlir::Value> converted;
+  for (auto [i, arg] : llvm::enumerate(args)) {
+    auto argType = functionType.getInput(i);
+    DBGS("coercible? " << arg.getType() << " " << argType << "\n");
+    assert(areTypesCoercible(arg.getType(), argType));
+    if (arg.getType() != argType) {
+      arg = builder.create<mlir::ocaml::ConvertOp>(arg.getLoc(), argType, arg);
+    }
+    converted.push_back(arg);
+  }
+  auto resultType = [&] -> mlir::Type {
+    if (functionType.getNumInputs() == converted.size()) {
+      return functionType.getResult(0);
+    } else {
+      SmallVector<mlir::Type> newFunctionInputTypes;
+      llvm::append_range(
+          newFunctionInputTypes,
+          llvm::drop_begin(functionType.getInputs(), converted.size()));
+      auto newFunctionType =
+          mlir::FunctionType::get(builder.getContext(), newFunctionInputTypes,
+                                  functionType.getResults());
+      return mlir::ocaml::ClosureType::get(builder.getContext(),
+                                           newFunctionType);
+    }
+  }();
+  build(builder, result, resultType, closure, args);
 }
 
 void mlir::ocaml::ListConsOp::print(mlir::OpAsmPrinter &printer) {
   printer << ' ' << getValue() << " :: " << getList() << " : " << getType();
 }
 
-mlir::ParseResult mlir::ocaml::ListConsOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+mlir::ParseResult mlir::ocaml::ListConsOp::parse(mlir::OpAsmParser &parser,
+                                                 mlir::OperationState &result) {
   mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
   mlir::OpAsmParser::UnresolvedOperand listRawOperand{};
   if (parser.parseOperand(valueRawOperand))
@@ -200,24 +174,6 @@ mlir::ParseResult mlir::ocaml::ListConsOp::parse(mlir::OpAsmParser &parser, mlir
   return mlir::success();
 }
 
-mlir::ParseResult mlir::ocaml::ClosureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-  mlir::StringAttr name;
-  mlir::Type type;
-  if (parser.parseSymbolName(name, mlir::SymbolTable::getSymbolAttrName(),
-                             result.attributes))
-    return mlir::failure();
-  if (parser.parseKeyword("capturing"))
-    return mlir::failure();
-  if (parser.parseType(type))
-    return mlir::failure();
-  if (parser.parseColonType(type))
-    return mlir::failure();
-  result.addAttribute(
-      getSymbolAttrName(result.name),
-      mlir::StringAttr::get(parser.getContext(), name.getValue()));
-  return mlir::success();
-}
-
 void mlir::ocaml::ClosureType::print(mlir::AsmPrinter &printer) const {
   printer << "<" << getFunctionType() << ">";
 }
@@ -233,7 +189,12 @@ mlir::Type mlir::ocaml::ClosureType::parse(mlir::AsmParser &parser) {
   return parser.getChecked<ClosureType>(parser.getContext(), functionType);
 }
 
-void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &result, mlir::Value closure, mlir::ValueRange args) {
+void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder,
+                                mlir::OperationState &result,
+                                mlir::Value closure, mlir::ValueRange args) {
+  TRACE();
+  DBGS("closure: " << closure.getType() << " with " << args.size()
+                   << " args\n");
   auto closureType = mlir::cast<mlir::ocaml::ClosureType>(closure.getType());
   auto functionType = closureType.getFunctionType();
   assert(args.size() == functionType.getNumInputs());
@@ -251,7 +212,8 @@ void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &
   build(builder, result, resultType, closure, args, {}, {});
 }
 
-mlir::ParseResult mlir::ocaml::GlobalOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+mlir::ParseResult mlir::ocaml::GlobalOp::parse(mlir::OpAsmParser &parser,
+                                               mlir::OperationState &result) {
   mlir::StringAttr name;
   mlir::Type type;
   if (parser.parseSymbolName(name, mlir::SymbolTable::getSymbolAttrName(),
@@ -268,8 +230,8 @@ void mlir::ocaml::GlobalOp::print(mlir::OpAsmPrinter &p) {
 }
 
 void mlir::ocaml::GlobalOp::build(mlir::OpBuilder &builder,
-                                  mlir::OperationState &result, llvm::StringRef name,
-                                  mlir::Type type,
+                                  mlir::OperationState &result,
+                                  llvm::StringRef name, mlir::Type type,
                                   llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   result.addAttribute(getTypeAttrName(result.name), mlir::TypeAttr::get(type));
   result.addAttribute(mlir::SymbolTable::getSymbolAttrName(),
@@ -278,20 +240,12 @@ void mlir::ocaml::GlobalOp::build(mlir::OpBuilder &builder,
                       mlir::SymbolRefAttr::get(builder.getContext(), name));
 }
 
-static mlir::StringRef ocamlAttributePrefix() {
-  return "ocaml.";
-}
-
-llvm::StringRef mlir::ocaml::getVariantCtorAttrName() {
-  return "ocaml.variant_ctor";
-}
-
 mlir::LogicalResult mlir::ocaml::ArrayFromElementsOp::verify() {
   return mlir::success();
 }
 
 mlir::NamedAttribute mlir::ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
-  auto name = ocamlAttributePrefix() + "match_case";
+  auto name = mlir::ocaml::getOcamlAttributePrefix() + "match_case";
   return mlir::NamedAttribute(mlir::StringAttr::get(context, name),
                               mlir::UnitAttr::get(context));
 }
@@ -311,13 +265,13 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   auto parseCtorAndType = [&] -> LogicalResult {
     std::string ctor;
     mlir::Type type;
-    if (parser.parseString(&ctor))
+    if (failed(parser.parseString(&ctor)))
       return mlir::failure();
-    if (parser.parseOptionalKeyword("of")) {
-      type = UnitType::get(parser.getContext());
-    } else {
-      if (parser.parseType(type))
+    if (succeeded(parser.parseOptionalKeyword("of"))) {
+      if (failed(parser.parseType(type)))
         return mlir::failure();
+    } else {
+      type = UnitType::get(parser.getContext());
     }
     elements.push_back(type);
     ctors.push_back(mlir::StringAttr::get(parser.getContext(), ctor));
@@ -327,7 +281,7 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   if (failed(parseCtorAndType()))
     return {};
 
-  while (parser.parseOptionalKeyword("|")) {
+  while (succeeded(parser.parseOptionalKeyword("or"))) {
     if (failed(parseCtorAndType()))
       return {};
   }
@@ -336,7 +290,8 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
     return {};
 
   mlir::StringAttr nameAttr = mlir::StringAttr::get(parser.getContext(), name);
-  return parser.getChecked<VariantType>(parser.getContext(), nameAttr, ctors, elements);
+  return parser.getChecked<VariantType>(parser.getContext(), nameAttr, ctors,
+                                        elements);
 }
 
 void VariantType::print(mlir::AsmPrinter &printer) const {
@@ -348,14 +303,17 @@ void VariantType::print(mlir::AsmPrinter &printer) const {
       printer << " of " << type;
     }
     if (iter.index() < getConstructors().size() - 1) {
-      printer << " | ";
+      printer << " or ";
     }
   }
   printer << ">";
 }
 
-mlir::FailureOr<std::pair<unsigned, mlir::Type>> mlir::ocaml::VariantType::typeForConstructor(llvm::StringRef name, VariantType type) {
-  for (auto iter : llvm::enumerate(llvm::zip(type.getConstructors(), type.getTypes()))) {
+mlir::FailureOr<std::pair<unsigned, mlir::Type>>
+mlir::ocaml::VariantType::typeForConstructor(llvm::StringRef name,
+                                             VariantType type) {
+  for (auto iter :
+       llvm::enumerate(llvm::zip(type.getConstructors(), type.getTypes()))) {
     auto [ctor, type] = iter.value();
     if (ctor == name) {
       return {std::make_pair(iter.index(), type)};
@@ -364,7 +322,8 @@ mlir::FailureOr<std::pair<unsigned, mlir::Type>> mlir::ocaml::VariantType::typeF
   return mlir::failure();
 }
 
-mlir::OpFoldResult mlir::ocaml::ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {
+mlir::OpFoldResult
+mlir::ocaml::ConvertOp::fold(ConvertOp::FoldAdaptor adaptor) {
   auto input = getInput();
   if (getFromType() == getToType()) {
     return input;
@@ -383,24 +342,22 @@ namespace mlir {
 struct OcamlInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
   Operation *materializeCallConversion(OpBuilder &builder, Value input,
-                                        Type resultType,
-                                        Location conversionLoc) const final {
+                                       Type resultType,
+                                       Location conversionLoc) const final {
     return builder.create<ConvertOp>(conversionLoc, resultType, input);
   }
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
     return true;
   }
-  bool isLegalToInline(Operation *, Region *, bool,
-                       IRMapping &) const final {
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
     return true;
   }
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        IRMapping &valueMapping) const final {
     return true;
   }
-  void handleTerminator(Operation *op,
-                        ValueRange valuesToRepl) const final {
+  void handleTerminator(Operation *op, ValueRange valuesToRepl) const final {
     auto returnOp = cast<func::ReturnOp>(op);
     assert(returnOp.getNumOperands() == valuesToRepl.size());
     for (const auto &it : llvm::enumerate(returnOp.getOperands()))
@@ -410,19 +367,16 @@ struct OcamlInlinerInterface : public DialectInlinerInterface {
 
 } // namespace mlir
 
-
 void OcamlDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "ocamlc2/Dialect/OcamlTypes.cpp.inc"
-  >();
+      >();
   addOperations<
 #define GET_OP_LIST
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
-  >();
+      >();
   addInterfaces<OcamlInlinerInterface>();
 }
 
-namespace mlir::ocaml {
-
-} // namespace mlir::ocaml
+namespace mlir::ocaml {} // namespace mlir::ocaml

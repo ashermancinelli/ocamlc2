@@ -4,12 +4,14 @@ use warnings;
 use File::Find;
 use File::Basename;
 use File::Temp qw(tempfile);
+use Term::ReadLine;
 use v5.32;
 
 my $tools = dirname(__FILE__);
 my $root = dirname($tools) . '/test/cg';
 my $yes = 0;
 my @files_to_process = ();
+my $term = Term::ReadLine->new('genmlirchecks');
 
 # Process command line arguments
 foreach (@ARGV) {
@@ -33,7 +35,17 @@ sub process_file {
     my @lines = <$fh>;
     close $fh;
     my $read = sub {
-        `read -p 'look ok? '` unless $yes;
+        if ($yes) {
+            return 1;
+        } else {
+            # Flush output before prompting
+            STDOUT->flush();
+            my $resp = $term->readline('look ok? ');
+            say "Got response: '$resp'";
+            
+            # Return true for 'y', 'Y', or empty string (default yes)
+            return ($resp =~ /^[Yy]/) || ($resp eq "");
+        }
     };
     
     foreach my $line (@lines) {
@@ -58,9 +70,14 @@ sub process_file {
                 }
                 say $diff;
             }
-            $read->();
-            say "mv $temp $ref";
-            `mv $temp $ref`;
+            if ($read->()) {
+                say "Applying changes";
+                say "mv $temp $ref";
+                `mv $temp $ref`;
+            } else {
+                say "Not applying changes";
+                next;
+            }
         }
     }
 }

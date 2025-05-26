@@ -32,6 +32,8 @@ add_ocamlc2_tool(p3 p3.cpp)
 add_ocamlc2_tool(g3 g3.cpp LINK_MLIR_LIBS)
 add_ocamlc2_tool(ocaml-opt ocaml-opt.cpp LINK_MLIR_LIBS)
 target_link_libraries(ocaml-opt PRIVATE MLIROptLib MLIRTransforms)
+add_ocamlc2_tool(ocaml-lsp-server ocaml-lsp-server.cpp LINK_MLIR_LIBS)
+target_link_libraries(ocaml-lsp-server PRIVATE MLIRLspServerLib)
 
 # Copy the 'c' script to binary directory
 # add_custom_command(

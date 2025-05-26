@@ -3,6 +3,7 @@
 add_mlir_dialect_library(MLIROcaml
     OcamlDialect.cpp
     OcamlTypeUtils.cpp
+    OcamlAttrUtils.cpp
     BufferizeBoxes.cpp
     ConvertOCamlToLLVM.cpp
     LowerOCamlRuntime.cpp

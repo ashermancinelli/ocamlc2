@@ -33,7 +33,7 @@ public:
 
   mlir::Value createEnv(mlir::Location loc, llvm::StringRef name) {
     auto env = create<mlir::ocaml::EnvOp>(loc, EnvType::get(getContext()));
-    env->setAttr("for", getStringAttr(name));
+    env->setAttr(mlir::ocaml::getEnvironmentIsForFunctionAttrName(), getStringAttr(name));
     return env;
   }
 

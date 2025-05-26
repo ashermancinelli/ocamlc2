@@ -67,6 +67,7 @@ private:
   mlir::FailureOr<mlir::Value> genCompilationUnit(const Node node);
   mlir::FailureOr<mlir::Value> genNumber(const Node node);
   mlir::FailureOr<mlir::Value> genApplicationExpression(const Node node);
+  mlir::FailureOr<mlir::Value> genCallOrCurry(mlir::Location loc, mlir::Value closure, llvm::ArrayRef<mlir::Value> args);
   mlir::FailureOr<mlir::Value> genApplication(mlir::Location, Callee callee, llvm::ArrayRef<mlir::Value> args);
   mlir::FailureOr<Callee> genBuiltinCallee(const Node node);
   mlir::FailureOr<Callee> genCallee(const Node node);
@@ -108,9 +109,13 @@ private:
   mlir::FailureOr<mlir::Type> mlirVariantCtorType(ocamlc2::CtorOperator *ctor, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
+  mlir::FailureOr<std::variant<mlir::ocaml::ProgramOp, mlir::func::FuncOp>>
+  getCurrentFuncOrProgram(mlir::Operation *op=nullptr);
   mlir::FailureOr<mlir::Value> findEnvForFunction(mlir::func::FuncOp funcOp);
   mlir::FailureOr<mlir::Value> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);
+  llvm::StringRef getTextFromValuePath(Node node);
+  llvm::StringRef getTextStripQuotes(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);
   }
