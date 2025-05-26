@@ -72,3 +72,6 @@ g3:
 
 repl: p3
 	$(BUILD_DIR)/bin/p3
+
+lsp:
+	$(NINJA) -C $(BUILD_DIR) ocaml-lsp-server

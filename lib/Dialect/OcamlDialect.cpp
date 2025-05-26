@@ -169,8 +169,65 @@ mlir::ParseResult mlir::ocaml::EnvGetOp::parse(mlir::OpAsmParser &parser, mlir::
   return mlir::success();
 }
 
-void mlir::ocaml::ClosureOp::print(mlir::OpAsmPrinter &printer) {
-  printer << ' ' << getSymbolAttr() << " capturing " << getEnv() << " : " << getType();
+// void mlir::ocaml::ClosureOp::print(mlir::OpAsmPrinter &printer) {
+//   printer << ' ' << getSymbolAttr() << " capturing " << getEnv() << " : " << getType();
+// }
+
+// mlir::ParseResult mlir::ocaml::ClosureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+//   mlir::StringAttr name;
+//   mlir::Type type;
+//   if (parser.parseSymbolName(name, mlir::SymbolTable::getSymbolAttrName(),
+//                              result.attributes))
+//     return mlir::failure();
+//   if (parser.parseKeyword("capturing"))
+//     return mlir::failure();
+//   if (parser.parseType(type))
+//     return mlir::failure();
+//   if (parser.parseColonType(type))
+//     return mlir::failure();
+//   result.addAttribute(
+//       getSymbolAttrName(result.name),
+//       mlir::StringAttr::get(parser.getContext(), name.getValue()));
+//   return mlir::success();
+// }
+
+void mlir::ocaml::ClosureOp::build(mlir::OpBuilder &builder,
+                                   mlir::OperationState &result,
+                                   mlir::func::FuncOp funcOp, mlir::Value env) {
+  auto closureType = mlir::ocaml::ClosureType::get(builder.getContext(),
+                                                   funcOp.getFunctionType());
+  build(builder, result, closureType, funcOp.getSymName(), env);
+}
+
+void mlir::ocaml::CurryOp::build(mlir::OpBuilder &builder, mlir::OperationState &result, mlir::Value closure, mlir::ValueRange args) {
+  auto closureType = mlir::cast<mlir::ocaml::ClosureType>(closure.getType());
+  auto functionType = closureType.getFunctionType();
+  llvm::SmallVector<mlir::Value> converted;
+  for (auto [i, arg] : llvm::enumerate(args)) {
+    auto argType = functionType.getInput(i);
+    DBGS("coercible? " << arg.getType() << " " << argType << "\n");
+    assert(areTypesCoercible(arg.getType(), argType));
+    if (arg.getType() != argType) {
+      arg = builder.create<mlir::ocaml::ConvertOp>(arg.getLoc(), argType, arg);
+    }
+    converted.push_back(arg);
+  }
+  auto resultType = [&] -> mlir::Type {
+    if (functionType.getNumInputs() == converted.size()) {
+      return functionType.getResult(0);
+    } else {
+      SmallVector<mlir::Type> newFunctionInputTypes;
+      llvm::append_range(
+          newFunctionInputTypes,
+          llvm::drop_begin(functionType.getInputs(), converted.size()));
+      auto newFunctionType =
+          mlir::FunctionType::get(builder.getContext(), newFunctionInputTypes,
+                                  functionType.getResults());
+      return mlir::ocaml::ClosureType::get(builder.getContext(),
+                                           newFunctionType);
+    }
+  }();
+  build(builder, result, resultType, closure, args);
 }
 
 void mlir::ocaml::ListConsOp::print(mlir::OpAsmPrinter &printer) {
@@ -200,24 +257,6 @@ mlir::ParseResult mlir::ocaml::ListConsOp::parse(mlir::OpAsmParser &parser, mlir
   return mlir::success();
 }
 
-mlir::ParseResult mlir::ocaml::ClosureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-  mlir::StringAttr name;
-  mlir::Type type;
-  if (parser.parseSymbolName(name, mlir::SymbolTable::getSymbolAttrName(),
-                             result.attributes))
-    return mlir::failure();
-  if (parser.parseKeyword("capturing"))
-    return mlir::failure();
-  if (parser.parseType(type))
-    return mlir::failure();
-  if (parser.parseColonType(type))
-    return mlir::failure();
-  result.addAttribute(
-      getSymbolAttrName(result.name),
-      mlir::StringAttr::get(parser.getContext(), name.getValue()));
-  return mlir::success();
-}
-
 void mlir::ocaml::ClosureType::print(mlir::AsmPrinter &printer) const {
   printer << "<" << getFunctionType() << ">";
 }
@@ -234,6 +273,8 @@ mlir::Type mlir::ocaml::ClosureType::parse(mlir::AsmParser &parser) {
 }
 
 void mlir::ocaml::CallOp::build(mlir::OpBuilder &builder, mlir::OperationState &result, mlir::Value closure, mlir::ValueRange args) {
+  TRACE();
+  DBGS("closure: " << closure.getType() << " with " << args.size() << " args\n");
   auto closureType = mlir::cast<mlir::ocaml::ClosureType>(closure.getType());
   auto functionType = closureType.getFunctionType();
   assert(args.size() == functionType.getNumInputs());
@@ -311,13 +352,13 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   auto parseCtorAndType = [&] -> LogicalResult {
     std::string ctor;
     mlir::Type type;
-    if (parser.parseString(&ctor))
+    if (failed(parser.parseString(&ctor)))
       return mlir::failure();
-    if (parser.parseOptionalKeyword("of")) {
-      type = UnitType::get(parser.getContext());
-    } else {
-      if (parser.parseType(type))
+    if (succeeded(parser.parseOptionalKeyword("of"))) {
+      if (failed(parser.parseType(type)))
         return mlir::failure();
+    } else {
+      type = UnitType::get(parser.getContext());
     }
     elements.push_back(type);
     ctors.push_back(mlir::StringAttr::get(parser.getContext(), ctor));
@@ -327,7 +368,7 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   if (failed(parseCtorAndType()))
     return {};
 
-  while (parser.parseOptionalKeyword("|")) {
+  while (succeeded(parser.parseOptionalKeyword("or"))) {
     if (failed(parseCtorAndType()))
       return {};
   }
@@ -348,7 +389,7 @@ void VariantType::print(mlir::AsmPrinter &printer) const {
       printer << " of " << type;
     }
     if (iter.index() < getConstructors().size() - 1) {
-      printer << " | ";
+      printer << " or ";
     }
   }
   printer << ">";

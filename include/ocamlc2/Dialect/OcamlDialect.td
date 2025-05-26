@@ -169,6 +169,8 @@ def Ocaml_ClosureType : Ocaml_Type<"Closure", "closure"> {
       return $_get(functionType.getContext(), functionType);
     }]>,
   ];
+  let extraClassDeclaration = [{
+  }];
 }
 
 def AnyBoxType : TypeConstraint<
@@ -326,10 +328,24 @@ def Ocaml_EnvGetOp : Ocaml_Op<"closure.env.get", [MemoryEffectsOpInterface]> {
 def Ocaml_ClosureOp : Ocaml_Op<"closure.new", [Pure]> {
   let summary = "OCaml closure";
   let description = "OCaml closure";
-  let arguments = (ins FlatSymbolRefAttr:$symbol, IsaEnvType:$env);
+  let arguments = (ins FlatSymbolRefAttr:$symbol, Optional<Ocaml_EnvType>:$env);
   let results = (outs IsaClosureType:$result);
-  // let assemblyFormat = "$symbol `capturing` $env attr-dict `:` type($result)";
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "$symbol (`capturing` $env^)? attr-dict `:` type($result)";
+  // let hasCustomAssemblyFormat = 1;
+  let builders = [
+    OpBuilder<(ins "::mlir::func::FuncOp":$funcOp, CArg<"::mlir::Value", "{}">:$env)>,
+  ];
+}
+
+def Ocaml_CurryOp : Ocaml_Op<"closure.curry"> {
+  let summary = "OCaml closure curry";
+  let description = "OCaml closure curry";
+  let arguments = (ins IsaClosureType:$closure, Variadic<AnyType>:$args);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$closure `(` $args `)` attr-dict `:` type($closure) `,` functional-type($args, $result)";
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$closure, "::mlir::ValueRange":$args)>,
+  ];
 }
 
 def Ocaml_ModuleOp : Ocaml_Op<"module", [
