@@ -7,6 +7,8 @@
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "ocamlc2/Dialect/OcamlAttrUtils.h"
+#include "ocamlc2/Dialect/OcamlTypeUtils.h"
 #include "ocamlc2/Dialect/OcamlDialect.h.inc"
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/Attributes.h>
@@ -32,10 +34,7 @@ struct VariantTypeStorage;
 #include "ocamlc2/Dialect/OcamlOps.h.inc"
 
 namespace mlir::ocaml {
-inline bool isa_box_type(mlir::Type type) {
-  return isa<BoxType, OpaqueBoxType, StringType, UnitType>(type);
-}
-llvm::StringRef getVariantCtorAttrName();
+
 void setupRegistry(mlir::DialectRegistry &registry);
 void setupContext(mlir::MLIRContext &context);
 void setupDefaultPipeline(mlir::PassManager &pm);

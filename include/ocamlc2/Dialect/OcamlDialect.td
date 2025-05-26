@@ -292,6 +292,18 @@ def Ocaml_EnvOp : Ocaml_Op<"closure.env.new", [Pure]> {
   let arguments = (ins);
   let results = (outs IsaEnvType:$result);
   let assemblyFormat = "attr-dict `:` type($result)";
+  let builders = [
+    OpBuilder<(ins "::mlir::StringRef":$forFunction), [{
+      auto attr = $_builder.getStringAttr(forFunction);
+      $_state.addAttribute(mlir::ocaml::getEnvironmentIsForFunctionAttrName(), attr);
+      $_state.addTypes(mlir::ocaml::EnvType::get($_builder.getContext()));
+    }]>,
+  ];
+  let extraClassDeclaration = [{
+    StringAttr getFor() const {
+      return mlir::cast<StringAttr>((*this)->getAttr(mlir::ocaml::getEnvironmentIsForFunctionAttrName()));
+    }
+  }];
 }
 
 def Ocaml_EnvCaptureOp : Ocaml_Op<"closure.env.capture"> {

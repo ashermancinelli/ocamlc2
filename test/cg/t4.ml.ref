@@ -7,9 +7,9 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @print_endline(!ocaml.sbox) -> !ocaml.unit attributes {unresolved}
- * CHECK:         func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {unresolved}
- * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {unresolved}
+ * CHECK-LABEL:   func.func private @print_endline(!ocaml.sbox) -> !ocaml.unit attributes {ocaml.unresolved}
+ * CHECK:         func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {ocaml.unresolved}
+ * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {ocaml.unresolved}
 
  * CHECK-LABEL:   func.func private @B(
  * CHECK-SAME:                         %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>> attributes {ocaml.variant_ctor} {
@@ -25,7 +25,7 @@
  * CHECK:         }
 
  * CHECK-LABEL:   func.func private @area(
- * CHECK-SAME:                            %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>>) -> !ocaml.box<i64> attributes {env = "areaenv$0"} {
+ * CHECK-SAME:                            %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>>) -> !ocaml.box<i64> attributes {ocaml.env = "areaenv$0"} {
  * CHECK:           %[[VAL_1:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:             %[[VAL_2:.*]] = ocaml.pattern_variable : !ocaml.box<i64>
  * CHECK:             %[[VAL_3:.*]] = func.call @B(%[[VAL_2]]) : (!ocaml.box<i64>) -> !ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>>
@@ -57,7 +57,7 @@
  * CHECK:         }
 
  * CHECK-LABEL:   ocaml.program : {
- * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {for = "areaenv$0"} : !ocaml.env
+ * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {ocaml.env_for_function = "areaenv$0"} : !ocaml.env
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @area capturing %[[VAL_0]] : !ocaml.closure<(!ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>>) -> !ocaml.box<i64>>
  * CHECK:           %[[VAL_2:.*]] = func.call @A() : () -> !ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>>
  * CHECK:           %[[VAL_3:.*]] = ocaml.call %[[VAL_1]](%[[VAL_2]]) : (!ocaml.closure<(!ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>>) -> !ocaml.box<i64>>) : !ocaml.variant<"shape" is "A" or "B" of !ocaml.box<i64>> -> !ocaml.box<i64>

@@ -18,4 +18,8 @@ bool areTypesCoercible(mlir::Type from, mlir::Type into) {
   return false;
 }
 
+bool isa_box_type(mlir::Type type) {
+  return isa<BoxType, OpaqueBoxType, StringType, UnitType, ClosureType>(type);
+}
+
 }

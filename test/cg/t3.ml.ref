@@ -7,11 +7,11 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {unresolved}
+ * CHECK-LABEL:   func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {ocaml.unresolved}
 
  * CHECK-LABEL:   func.func private @f(
  * CHECK-SAME:                         %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>,
- * CHECK-SAME:                         %[[VAL_1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.unit attributes {env = "fenv$0"} {
+ * CHECK-SAME:                         %[[VAL_1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.unit attributes {ocaml.env = "fenv$0"} {
  * CHECK:           %[[VAL_2:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:             %[[VAL_3:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:               %[[VAL_4:.*]] = ocaml.convert %[[VAL_0]] from !ocaml.box<i64> to i64
@@ -33,7 +33,7 @@
  * CHECK:         }
 
  * CHECK-LABEL:   ocaml.program : {
- * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {for = "fenv$0"} : !ocaml.env
+ * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {ocaml.env_for_function = "fenv$0"} : !ocaml.env
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @f capturing %[[VAL_0]] : !ocaml.closure<(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.unit>
  * CHECK:         }
 

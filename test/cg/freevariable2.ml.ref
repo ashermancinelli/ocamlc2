@@ -7,10 +7,10 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {unresolved}
+ * CHECK-LABEL:   func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {ocaml.unresolved}
 
  * CHECK-LABEL:   func.func private @z(
- * CHECK-SAME:                         %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.unit) -> !ocaml.box<i64> attributes {env = "zenv$0"} {
+ * CHECK-SAME:                         %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.unit) -> !ocaml.box<i64> attributes {ocaml.env = "zenv$0"} {
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.env.get_current : !ocaml.env
  * CHECK:           %[[VAL_2:.*]] = ocaml.closure.env.get %[[VAL_1]]["y"] -> !ocaml.box<i64>
  * CHECK:           %[[VAL_3:.*]] = ocaml.closure.env.get_current : !ocaml.env
@@ -28,7 +28,7 @@
  * CHECK:               %[[VAL_4:.*]] = arith.constant 7 : i64
  * CHECK:               %[[VAL_5:.*]] = ocaml.convert %[[VAL_4]] from i64 to !ocaml.box<i64>
  * CHECK:               %[[VAL_6:.*]] = ocaml.block : !ocaml.box<i64> {
- * CHECK:                 %[[VAL_7:.*]] = ocaml.closure.env.new {for = "zenv$0"} : !ocaml.env
+ * CHECK:                 %[[VAL_7:.*]] = ocaml.closure.env.new {ocaml.env_for_function = "zenv$0"} : !ocaml.env
  * CHECK:                 ocaml.closure.env.capture %[[VAL_7]]["y"] = %[[VAL_5]] : !ocaml.box<i64>
  * CHECK:                 ocaml.closure.env.capture %[[VAL_7]]["x"] = %[[VAL_2]] : !ocaml.box<i64>
  * CHECK:                 %[[VAL_8:.*]] = ocaml.closure.new @z capturing %[[VAL_7]] : !ocaml.closure<(!ocaml.unit) -> !ocaml.box<i64>>

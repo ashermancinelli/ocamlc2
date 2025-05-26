@@ -98,13 +98,13 @@ MLIRGen3::genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
   DBGS("Generating function: " << name << "\n");
   InsertionGuard guard(builder);
   VariableScope scope(variables);
-  mlir::ocaml::ClosureEnvValue env =
-      builder.createEnv(location, getUniqueName((name + "env").str()));
+  auto env = builder.createEnv(location, getUniqueName((name + "env").str()));
+  auto envOp = mlir::cast<mlir::ocaml::EnvOp>(env.getDefiningOp());
   builder.setInsertionPointToStart(module->getBodyBlock());
   auto function =
       builder.create<mlir::func::FuncOp>(location, name, funType);
   function.setPrivate();
-  function->setAttr("env", env.getFor());
+  function->setAttr(mlir::ocaml::getEnvironmentAttrName(), envOp.getFor());
   auto *bodyBlock = function.addEntryBlock();
   builder.setInsertionPointToEnd(bodyBlock);
   auto it = function.getArguments().begin();
@@ -130,9 +130,6 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   if (patternType == unifier.getUnitType()) {
     return gen(bodyNode);
   }
-  if (isRecursive) {
-    DBGS("recursive\n");
-  }
   auto parameters = getNamedChildren(node, {"parameter"});
   if (parameters.empty()) {
     return genLetBindingValueDefinition(patternNode, bodyNode);
@@ -150,8 +147,11 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   return genFunctionBody(nameString, functionType, loc(node), parameters,
                          bodyNode) |
          and_then([&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
+           if (isRecursive) {
+             funcOp->setAttr(mlir::ocaml::getRecursiveAttrName(), builder.getUnitAttr());
+           }
            return findEnvForFunction(funcOp) |
-                  and_then([&](mlir::ocaml::ClosureEnvValue env) -> mlir::FailureOr<mlir::Value> {
+                  and_then([&](mlir::Value env) -> mlir::FailureOr<mlir::Value> {
                     auto symbol = funcOp.getSymName();
                     auto closureType = mlir::ocaml::ClosureType::get(
                         builder.getContext(), funcOp.getFunctionType());
@@ -767,7 +767,7 @@ mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
                     auto callee = builder.create<mlir::func::FuncOp>(
                         loc(node), str, functionType);
                     callee.setPrivate();
-                    callee->setAttr("unresolved",
+                    callee->setAttr(mlir::ocaml::getUnresolvedFunctionAttrName(),
                                     mlir::UnitAttr::get(builder.getContext()));
                     return Callee{callee};
                   });
@@ -862,14 +862,14 @@ MLIRGen3::getCurrentFuncOrProgram(mlir::Operation *op) {
 
 mlir::FailureOr<mlir::Value> MLIRGen3::findEnvForFunction(mlir::func::FuncOp funcOp) {
   TRACE();
-  auto envAttr = funcOp->getAttr("env");
+  auto envAttr = funcOp->getAttr(mlir::ocaml::getEnvironmentAttrName());
   if (not envAttr) {
     DBGS("no env attr\n");
     return failure();
   }
   FailureOr<mlir::Value> env=failure();
   getModule().walk([&](mlir::ocaml::EnvOp envOp) {
-    if (mlir::ocaml::ClosureEnvValue{envOp}.getFor() == envAttr) {
+    if (envOp.getFor() == envAttr) {
       env = {envOp};
     }
   });
@@ -1021,7 +1021,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genExternal(const Node node) {
            auto funcOp = builder.create<mlir::func::FuncOp>(loc(node), nameStr,
                                                             functionType);
            funcOp.setPrivate();
-           funcOp->setAttr("bindc", builder.getStringAttr(bindcNameStr));
+           funcOp->setAttr(mlir::ocaml::getExternalFunctionAttrName(), builder.getStringAttr(bindcNameStr));
            return {funcOp};
          }) |
          and_then(

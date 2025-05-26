@@ -7,13 +7,13 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {unresolved}
- * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {unresolved}
- * CHECK:         func.func private @"/"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {unresolved}
+ * CHECK-LABEL:   func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {ocaml.unresolved}
+ * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {ocaml.unresolved}
+ * CHECK:         func.func private @"/"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {ocaml.unresolved}
 
  * CHECK-LABEL:   func.func private @mean(
  * CHECK-SAME:                            %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>,
- * CHECK-SAME:                            %[[VAL_1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.box<i64> attributes {env = "meanenv$0"} {
+ * CHECK-SAME:                            %[[VAL_1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.box<i64> attributes {ocaml.env = "meanenv$0"} {
  * CHECK:           %[[VAL_2:.*]] = ocaml.closure.new @"+" : !ocaml.closure<(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>>
  * CHECK:           %[[VAL_3:.*]] = ocaml.call %[[VAL_2]](%[[VAL_0]], %[[VAL_1]]) : (!ocaml.closure<(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>>) : !ocaml.box<i64>, !ocaml.box<i64> -> !ocaml.box<i64>
  * CHECK:           %[[VAL_4:.*]] = arith.constant 2 : i64
@@ -24,7 +24,7 @@
  * CHECK:         }
 
  * CHECK-LABEL:   ocaml.program : {
- * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {for = "meanenv$0"} : !ocaml.env
+ * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {ocaml.env_for_function = "meanenv$0"} : !ocaml.env
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @mean capturing %[[VAL_0]] : !ocaml.closure<(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>>
  * CHECK:           %[[VAL_2:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:             %[[VAL_3:.*]] = arith.constant 5 : i64

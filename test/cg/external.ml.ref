@@ -7,7 +7,7 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @foo(!ocaml.box<i64>) -> !ocaml.box<i64> attributes {bindc = "foo_bindc"}
+ * CHECK-LABEL:   func.func private @foo(!ocaml.box<i64>) -> !ocaml.box<i64> attributes {ocaml.external = "foo_bindc"}
 
  * CHECK-LABEL:   ocaml.program : {
  * CHECK:           %[[VAL_0:.*]] = ocaml.closure.new @foo : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>

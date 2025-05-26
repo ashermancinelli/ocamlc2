@@ -7,8 +7,8 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {bindc = "ocaml_print_int"}
- * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {bindc = "ocaml_add"}
+ * CHECK-LABEL:   func.func private @print_int(!ocaml.box<i64>) -> !ocaml.unit attributes {ocaml.external = "ocaml_print_int"}
+ * CHECK:         func.func private @"+"(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64> attributes {ocaml.external = "ocaml_add"}
 
  * CHECK-LABEL:   ocaml.program : {
  * CHECK:           %[[VAL_0:.*]] = ocaml.closure.new @"+" : !ocaml.closure<(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>>

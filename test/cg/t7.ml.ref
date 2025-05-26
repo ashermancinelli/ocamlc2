@@ -7,7 +7,7 @@
  * minimized and named to reflect the test intent.
 
 
- * CHECK-LABEL:   func.func private @B(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {unresolved}
+ * CHECK-LABEL:   func.func private @B(!ocaml.box<i64>) -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {ocaml.unresolved}
 
  * CHECK-LABEL:   func.func private @A() -> !ocaml.variant<"l" is "A" or "B" of !ocaml.box<i64> or "C" of tuple<!ocaml.box<i64>, !ocaml.box<i64>>> attributes {ocaml.variant_ctor} {
  * CHECK:           %[[VAL_0:.*]] = arith.constant 0 : i64
