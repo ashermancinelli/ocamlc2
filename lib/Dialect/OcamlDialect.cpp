@@ -107,67 +107,70 @@ mlir::LogicalResult mlir::ocaml::StoreOp::verify() {
   return mlir::success();
 }
 
-void mlir::ocaml::EnvCaptureOp::print(mlir::OpAsmPrinter &printer) {
-  printer << ' ' << getEnv() << "[" << getId() << "] = " << getValue();
-  printer.printOptionalAttrDict((*this)->getAttrs());
-}
+// void mlir::ocaml::EnvCaptureOp::print(mlir::OpAsmPrinter &printer) {
+//   printer << ' ' << getEnv() << "[";
+//   printer.printSymbolName(getId());
+//   printer << "] = " << getValue();
+//   printer.printOptionalAttrDict((*this)->getAttrs());
+// }
 
-mlir::ParseResult mlir::ocaml::EnvCaptureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-  mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
-  mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
-  std::string id;
-  if (parser.parseOperand(envRawOperand))
-    return mlir::failure();
-  if (parser.parseLSquare())
-    return mlir::failure();
-  if (parser.parseString(&id))
-    return mlir::failure();
-  if (parser.parseRSquare())
-    return mlir::failure();
-  if (parser.parseEqual())
-    return mlir::failure();
-  if (parser.parseOperand(valueRawOperand))
-    return mlir::failure();
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return mlir::failure();
-  mlir::Value env;
-  mlir::Value value;
-  if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
-    return mlir::failure();
-  if (parser.resolveOperand(valueRawOperand, value.getType(), result.operands))
-    return mlir::failure();
-  result.addOperands({env, value});
-  result.addAttribute(getIdAttrName(result.name), mlir::StringAttr::get(parser.getContext(), id));
-  return mlir::success();
-}
+// mlir::ParseResult mlir::ocaml::EnvCaptureOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+//   mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
+//   mlir::OpAsmParser::UnresolvedOperand valueRawOperand{};
+//   if (parser.parseOperand(envRawOperand))
+//     return mlir::failure();
+//   if (parser.parseLSquare())
+//     return mlir::failure();
+//   mlir::StringAttr idAttr;
+//   if (parser.parseSymbolName(idAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes))
+//     return mlir::failure();
+//   if (parser.parseRSquare())
+//     return mlir::failure();
+//   if (parser.parseEqual())
+//     return mlir::failure();
+//   if (parser.parseOperand(valueRawOperand))
+//     return mlir::failure();
+//   if (parser.parseOptionalAttrDict(result.attributes))
+//     return mlir::failure();
+//   mlir::Value env;
+//   mlir::Value value;
+//   if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
+//     return mlir::failure();
+//   if (parser.resolveOperand(valueRawOperand, value.getType(), result.operands))
+//     return mlir::failure();
+//   result.addOperands({env, value});
+//   result.addAttribute(getIdAttrName(result.name), idAttr);
+//   return mlir::success();
+// }
 
-void mlir::ocaml::EnvGetOp::print(mlir::OpAsmPrinter &printer) {
-  printer << ' ' << getEnv() << "[" << getId() << "]" << " : " << getType();
-}
+// void mlir::ocaml::EnvGetOp::print(mlir::OpAsmPrinter &printer) {
+//   printer << ' ' << getEnv() << "[";
+//   printer.printSymbolName(getId());
+//   printer << "]" << " : " << getType();
+// }
 
-mlir::ParseResult mlir::ocaml::EnvGetOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
-  mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
-  std::string id;
-  if (parser.parseOperand(envRawOperand))
-    return mlir::failure();
-  if (parser.parseLSquare())
-    return mlir::failure();
-  if (parser.parseString(&id))
-    return mlir::failure();
-  if (parser.parseRSquare())
-    return mlir::failure();
-  mlir::Type type;
-  if (parser.parseColonType(type))
-    return mlir::failure();
-  mlir::Value env;
-  if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
-    return mlir::failure();
-  result.addOperands({env});
-  result.addAttribute(getIdAttrName(result.name),
-                      mlir::StringAttr::get(parser.getContext(), id));
-  result.addTypes(type);
-  return mlir::success();
-}
+// mlir::ParseResult mlir::ocaml::EnvGetOp::parse(mlir::OpAsmParser &parser, mlir::OperationState &result) {
+//   mlir::OpAsmParser::UnresolvedOperand envRawOperand{};
+//   std::string id;
+//   if (parser.parseOperand(envRawOperand))
+//     return mlir::failure();
+//   if (parser.parseLSquare())
+//     return mlir::failure();
+//   mlir::StringAttr idAttr;
+//   if (parser.parseAttribute(idAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes))
+//     return mlir::failure();
+//   if (parser.parseRSquare())
+//     return mlir::failure();
+//   mlir::Type type;
+//   if (parser.parseColonType(type))
+//     return mlir::failure();
+//   mlir::Value env;
+//   if (parser.resolveOperand(envRawOperand, env.getType(), result.operands))
+//     return mlir::failure();
+//   result.addOperands({env});
+//   result.addTypes(type);
+//   return mlir::success();
+// }
 
 // void mlir::ocaml::ClosureOp::print(mlir::OpAsmPrinter &printer) {
 //   printer << ' ' << getSymbolAttr() << " capturing " << getEnv() << " : " << getType();

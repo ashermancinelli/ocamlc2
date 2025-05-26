@@ -837,22 +837,32 @@ mlir::FailureOr<mlir::Value> MLIRGen3::findEnvForFunctionOrNullEnv(mlir::func::F
          });
 }
 
+
+mlir::FailureOr<std::variant<mlir::ocaml::ProgramOp, mlir::func::FuncOp>>
+MLIRGen3::getCurrentFuncOrProgram(mlir::Operation *op) {
+  if (op == nullptr) {
+    auto *block = builder.getInsertionBlock();
+    op = block->getParentOp();
+    if (auto program = mlir::dyn_cast<mlir::ocaml::ProgramOp>(op)) {
+      return {program};
+    } else if (auto func = mlir::dyn_cast<mlir::func::FuncOp>(op)) {
+      return {func};
+    }
+    // fallthrough
+  }
+
+  if (auto program = op->getParentOfType<mlir::ocaml::ProgramOp>()) {
+    return {program};
+  } else if (auto func = op->getParentOfType<mlir::func::FuncOp>()) {
+    return {func};
+  }
+
+  return failure();
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::findEnvForFunction(mlir::func::FuncOp funcOp) {
   TRACE();
   auto envAttr = funcOp->getAttr("env");
-  auto *currentBlock = builder.getInsertionBlock();
-  auto currentFunc = currentBlock->getParent()->getParentOfType<mlir::func::FuncOp>();
-  if (currentFunc && currentFunc == funcOp) {
-    DBGS("currentFunc == funcOp, checking if envget already exists\n");
-    mlir::Value env;
-    currentFunc.walk([&](mlir::ocaml::EnvGetCurrentOp envOp) {
-      env = envOp.getResult();
-    });
-    if (env) {
-      DBGS("envget already exists\n");
-      return {env};
-    }
-  }
   if (not envAttr) {
     DBGS("no env attr\n");
     return failure();
@@ -887,6 +897,23 @@ MLIRGen3::genApplication(mlir::Location loc, Callee callee,
                  return builder(loc, args);
                },
                [&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
+                 auto current = getCurrentFuncOrProgram();
+                 if (succeeded(current)) {
+                   if (std::holds_alternative<mlir::func::FuncOp>(*current)) {
+                     auto enclosingFunc =
+                         std::get<mlir::func::FuncOp>(*current);
+                     if (enclosingFunc == funcOp) {
+                       // In this case we are calling ourselves recursively -
+                       // don't do anything fancy with the environments!! Just
+                       // get the current environment instead of reaching
+                       // through the environment to the enclosing scope to get
+                       // the environment that way.
+                       auto env = builder.create<mlir::ocaml::EnvGetCurrentOp>(loc);
+                       auto closure = builder.create<mlir::ocaml::ClosureOp>(loc, funcOp, env);
+                       return genApplication(loc, closure, args);
+                     }
+                   }
+                 }
                  return findEnvForFunction(funcOp) |
                         and_then([&](auto env) -> mlir::FailureOr<mlir::Value> {
                           auto closure = builder.create<mlir::ocaml::ClosureOp>(loc, funcOp, env);
@@ -962,10 +989,14 @@ llvm::StringRef MLIRGen3::getTextFromValuePath(Node node) {
   auto type = node.getType();
   if (type == "value_path") {
     if (not children.empty() and children[0].getType() == "parenthesized_operator") {
-      return getTextFromValuePath(children[0]);
+      node = children[0].getNamedChild(0);
     }
+  } else if (type == "parenthesized_operator") {
+    node = node.getNamedChild(0);
   }
-  return getText(node);
+  auto text = getText(node);
+  DBGS(text << '\n');
+  return text;
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genExternal(const Node node) {
@@ -995,14 +1026,15 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genExternal(const Node node) {
          }) |
          and_then(
              [&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
-               auto env = findEnvForFunction(funcOp);
-               if (failed(env)) {
-                 auto closureOp = builder.create<mlir::ocaml::ClosureOp>( loc(node), funcOp);
-                 return {closureOp};
-               }
-               auto closureOp = builder.create<mlir::ocaml::ClosureOp>(
-                   loc(node), *type, funcOp.getSymName(), *env);
-               return {closureOp};
+               return findEnvForFunction(funcOp) |
+                      or_else([&]() -> mlir::FailureOr<mlir::Value> {
+                        return mlir::Value{};
+                      }) |
+                      and_then([&](auto env) -> mlir::FailureOr<mlir::Value> {
+                        auto closureOp = builder.create<mlir::ocaml::ClosureOp>(
+                            loc(node), funcOp, env);
+                        return {closureOp};
+                      });
              });
 }
 
@@ -1078,15 +1110,13 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
            return std::visit(
                Overload{[&](mlir::func::FuncOp funcOp)
                             -> mlir::FailureOr<mlir::Value> {
-                          auto env = findEnvForFunctionOrNullEnv(funcOp);
+                          auto env = findEnvForFunction(funcOp) | or_else([&]() -> mlir::FailureOr<mlir::Value> {
+                            return mlir::Value{};
+                          });
                           if (failed(env)) {
                             return failure();
                           }
-                          auto closureType = mlir::ocaml::ClosureType::get(
-                              builder.getContext(), funcOp.getFunctionType());
-                          auto closure = builder.create<mlir::ocaml::ClosureOp>(
-                              loc(node), closureType, funcOp.getSymName(),
-                              *env);
+                          auto closure = builder.create<mlir::ocaml::ClosureOp>(loc(node), funcOp, *env);
                           return {closure};
                         },
                         [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {

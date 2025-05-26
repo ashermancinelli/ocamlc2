@@ -297,10 +297,10 @@ def Ocaml_EnvOp : Ocaml_Op<"closure.env.new", [Pure]> {
 def Ocaml_EnvCaptureOp : Ocaml_Op<"closure.env.capture"> {
   let summary = "OCaml environment capture";
   let description = "OCaml environment capture";
-  let arguments = (ins IsaEnvType:$env, StrAttr:$id, AnyOCamlType:$value);
+  let arguments = (ins Ocaml_EnvType:$env, StrAttr:$id, AnyOCamlType:$value);
   let results = (outs);
-  // let assemblyFormat = "$env `[` $id `]` `=` $value attr-dict `:` type($value)";
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "$env `[` $id `]` `=` $value attr-dict `:` type($value)";
+  // let hasCustomAssemblyFormat = 1;
 }
 
 def Ocaml_EnvGetCurrentOp : Ocaml_Op<"closure.env.get_current"> {
@@ -319,10 +319,10 @@ def Ocaml_EnvGetCurrentOp : Ocaml_Op<"closure.env.get_current"> {
 def Ocaml_EnvGetOp : Ocaml_Op<"closure.env.get", [MemoryEffectsOpInterface]> {
   let summary = "OCaml environment get";
   let description = "OCaml environment get";
-  let arguments = (ins Arg<IsaEnvType, "environment being read from", [MemRead]>:$env, StrAttr:$id);
+  let arguments = (ins Arg<Ocaml_EnvType, "environment being read from", [MemRead]>:$env, StrAttr:$id);
   let results = (outs AnyOCamlType:$result);
-  // let assemblyFormat = "$env `[` $id `]` attr-dict `->` type($result)";
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "$env `[` $id `]` attr-dict `->` type($result)";
+  // let hasCustomAssemblyFormat = 1;
 }
 
 def Ocaml_ClosureOp : Ocaml_Op<"closure.new", [Pure]> {

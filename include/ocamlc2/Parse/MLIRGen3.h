@@ -109,6 +109,8 @@ private:
   mlir::FailureOr<mlir::Type> mlirVariantCtorType(ocamlc2::CtorOperator *ctor, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
+  mlir::FailureOr<std::variant<mlir::ocaml::ProgramOp, mlir::func::FuncOp>>
+  getCurrentFuncOrProgram(mlir::Operation *op=nullptr);
   mlir::FailureOr<mlir::Value> findEnvForFunction(mlir::func::FuncOp funcOp);
   mlir::FailureOr<mlir::Value> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);

@@ -12,7 +12,7 @@
  * CHECK-LABEL:   func.func private @two(
  * CHECK-SAME:                           %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.unit) -> !ocaml.box<i64> attributes {env = "twoenv$1"} {
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.env.get_current : !ocaml.env
- * CHECK:           %[[VAL_2:.*]] = ocaml.closure.env.get %[[VAL_1]][x] : !ocaml.box<i64>
+ * CHECK:           %[[VAL_2:.*]] = ocaml.closure.env.get %[[VAL_1]]["x"] -> !ocaml.box<i64>
  * CHECK:           %[[VAL_3:.*]] = arith.constant 2 : i64
  * CHECK:           %[[VAL_4:.*]] = ocaml.convert %[[VAL_3]] from i64 to !ocaml.box<i64>
  * CHECK:           %[[VAL_5:.*]] = ocaml.closure.new @"+" : !ocaml.closure<(!ocaml.box<i64>, !ocaml.box<i64>) -> !ocaml.box<i64>>
@@ -24,7 +24,7 @@
  * CHECK-SAME:                         %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.box<i64> attributes {env = "fenv$0"} {
  * CHECK:           %[[VAL_1:.*]] = ocaml.block : !ocaml.box<i64> {
  * CHECK:             %[[VAL_2:.*]] = ocaml.closure.env.new {for = "twoenv$1"} : !ocaml.env
- * CHECK:             ocaml.closure.env.capture %[[VAL_2]][x] = %[[VAL_0]] {id = "x"}
+ * CHECK:             ocaml.closure.env.capture %[[VAL_2]]["x"] = %[[VAL_0]] : !ocaml.box<i64>
  * CHECK:             %[[VAL_3:.*]] = ocaml.closure.new @two capturing %[[VAL_2]] : !ocaml.closure<(!ocaml.unit) -> !ocaml.box<i64>>
  * CHECK:             %[[VAL_4:.*]] = ocaml.unit
  * CHECK:             %[[VAL_5:.*]] = ocaml.call %[[VAL_3]](%[[VAL_4]]) : (!ocaml.closure<(!ocaml.unit) -> !ocaml.box<i64>>) : !ocaml.unit -> !ocaml.box<i64>
