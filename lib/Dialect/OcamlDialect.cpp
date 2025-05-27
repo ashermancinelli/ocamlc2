@@ -34,6 +34,169 @@ using namespace mlir::ocaml;
 #define GET_OP_CLASSES
 #include "ocamlc2/Dialect/OcamlOps.cpp.inc"
 
+namespace mlir::ocaml {
+namespace detail {
+struct ModuleTypeStorage : public mlir::TypeStorage {
+  using KeyTy = llvm::StringRef;
+
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.str());
+  }
+
+  bool operator==(const KeyTy &key) const { return key == getName(); }
+
+  static ModuleTypeStorage *construct(mlir::TypeStorageAllocator &allocator,
+                                      const KeyTy &key) {
+    auto *storage = allocator.allocate<ModuleTypeStorage>();
+    return new (storage) ModuleTypeStorage{key};
+  }
+
+  llvm::StringRef getName() const { return name; }
+
+  void setTypeList(llvm::ArrayRef<ModuleType::TypePair> list) { types = list; }
+  llvm::ArrayRef<ModuleType::TypePair> getTypeList() const { return types; }
+  void addType(llvm::StringRef ident, mlir::Type type) { types.emplace_back(ident, type); }
+  FailureOr<mlir::Type> getType(llvm::StringRef ident) const {
+    for (auto [i, type] : llvm::enumerate(types)) {
+      if (type.first == ident) {
+        return type.second;
+      }
+    }
+    return failure();
+  }
+  FailureOr<mlir::Type> getType(unsigned index) const {
+    if (index >= types.size()) {
+      return failure();
+    }
+    return types[index].second;
+  }
+  unsigned getNumFields() const { return types.size(); }
+  FailureOr<unsigned> getFieldIndex(llvm::StringRef ident) const {
+    for (auto [i, type] : llvm::enumerate(types)) {
+      if (type.first == ident) {
+        return i;
+      }
+    }
+    return failure();
+  }
+  void finalize() {
+    assert(!finalized);
+    finalized = true;
+  }
+  bool isFinalized() const { return finalized; }
+  void finalize(llvm::ArrayRef<ModuleType::TypePair> typeList) {
+    assert(!finalized);
+    finalized = true;
+    setTypeList(typeList);
+  }
+
+protected:
+  std::string name;
+  bool finalized;
+  std::vector<ModuleType::TypePair> types;
+
+private:
+  ModuleTypeStorage() = delete;
+  explicit ModuleTypeStorage(llvm::StringRef name)
+      : name{name}, finalized{false} {}
+};
+}
+}
+
+namespace {
+static llvm::SmallPtrSet<detail::ModuleTypeStorage const *, 4> moduleTypeVisited;
+}
+
+void mlir::ocaml::ModuleType::print(mlir::AsmPrinter &printer) const {
+  printer << "<";
+  printer.printString(getName());
+  if (!moduleTypeVisited.count(uniqueKey())) {
+    printer << ", {";
+    moduleTypeVisited.insert(uniqueKey());
+    auto length = getTypeList().size();
+    for (auto [i, type] : llvm::enumerate(getTypeList())) {
+      printer << type.first << " : " << type.second;
+      if (i < length - 1) {
+        printer << ", ";
+      }
+    }
+    printer << "}";
+    moduleTypeVisited.erase(uniqueKey());
+  }
+  printer << ">";
+}
+
+mlir::Type mlir::ocaml::ModuleType::parse(mlir::AsmParser &parser) {
+  std::string name;
+  ModuleType::TypeList typeList;
+  if (parser.parseLess())
+    return {};
+  if (parser.parseString(&name))
+    return {};
+  if (parser.parseOptionalLBrace()) {
+    while (true) {
+      llvm::StringRef field;
+      mlir::Type fldTy;
+      if (parser.parseKeyword(&field) || parser.parseColon() ||
+          parser.parseType(fldTy)) {
+        parser.emitError(parser.getNameLoc(), "expected type list");
+        return {};
+      }
+      typeList.emplace_back(field, fldTy);
+      if (parser.parseOptionalComma())
+        break;
+    }
+    if (parser.parseOptionalRBrace()) {
+      return {};
+    }
+  }
+  if (parser.parseGreater())
+    return {};
+  return parser.getChecked<ModuleType>(parser.getContext(), name);
+}
+
+llvm::LogicalResult mlir::ocaml::ModuleType::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    llvm::StringRef name) {
+  if (name.size() == 0)
+    return emitError() << "record types must have a name";
+  return mlir::success();
+}
+
+llvm::StringRef mlir::ocaml::ModuleType::getName() const {
+  return getImpl()->getName();
+}
+
+mlir::ocaml::ModuleType::TypeList mlir::ocaml::ModuleType::getTypeList() const {
+  return getImpl()->getTypeList();
+}
+
+bool mlir::ocaml::ModuleType::isFinalized() const { return getImpl()->isFinalized(); }
+
+mlir::ocaml::detail::ModuleTypeStorage const *mlir::ocaml::ModuleType::uniqueKey() const {
+  return getImpl();
+}
+
+void mlir::ocaml::ModuleType::addType(llvm::StringRef ident, mlir::Type type) {
+  getImpl()->addType(ident, type);
+}
+
+llvm::FailureOr<mlir::Type> mlir::ocaml::ModuleType::getType(llvm::StringRef ident) const {
+  return getImpl()->getType(ident);
+}
+
+llvm::FailureOr<mlir::Type> mlir::ocaml::ModuleType::getType(unsigned index) const {
+  return getImpl()->getType(index);
+}
+
+void mlir::ocaml::ModuleType::finalize() {
+  getImpl()->finalize();
+}
+
+void mlir::ocaml::ModuleType::finalize(llvm::ArrayRef<ModuleType::TypePair> typeList) {
+  getImpl()->finalize(typeList);
+}
+
 void mlir::ocaml::LoadOp::print(mlir::OpAsmPrinter &printer) {
   printer << ' ' << getInput();
   printer.printOptionalAttrDict((*this)->getAttrs());
@@ -103,6 +266,10 @@ mlir::LogicalResult mlir::ocaml::StoreOp::verify() {
                        << referenceType.getElementType();
   }
   return mlir::success();
+}
+
+mlir::StringAttr mlir::ocaml::EnvOp::getFor() const {
+  return mlir::cast<mlir::StringAttr>((*this)->getAttr(mlir::ocaml::getEnvironmentIsForFunctionAttrName()));
 }
 
 void mlir::ocaml::ClosureOp::build(mlir::OpBuilder &builder,

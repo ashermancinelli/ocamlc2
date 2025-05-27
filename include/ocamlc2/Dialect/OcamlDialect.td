@@ -102,8 +102,24 @@ def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
 def Ocaml_ModuleType : Ocaml_Type<"Module", "module"> {
   let summary = "OCaml module";
   let description = "OCaml module";
-  let parameters = (ins);
-  let assemblyFormat = "";
+  let parameters = (ins StringRefParameter<"name">:$name);
+  let genVerifyDecl = 1;
+  let genStorageClass = 0;
+  let hasCustomAssemblyFormat = 1;
+  let extraClassDeclaration = [{
+    using TypePair = std::pair<std::string, mlir::Type>;
+    using TypeList = std::vector<TypePair>;
+    TypeList getTypeList() const;
+    FailureOr<mlir::Type> getType(llvm::StringRef ident) const;
+    FailureOr<mlir::Type> getType(unsigned index) const;
+    FailureOr<unsigned> getFieldIndex(llvm::StringRef ident) const;
+    unsigned getNumFields() const;
+    bool isFinalized() const;
+    void addType(llvm::StringRef ident, mlir::Type type);
+    void finalize();
+    void finalize(llvm::ArrayRef<TypePair> typeList);
+    detail::ModuleTypeStorage const *uniqueKey() const;
+  }];
 }
 
 def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
@@ -300,9 +316,7 @@ def Ocaml_EnvOp : Ocaml_Op<"closure.env.new", [Pure]> {
     }]>,
   ];
   let extraClassDeclaration = [{
-    StringAttr getFor() const {
-      return mlir::cast<StringAttr>((*this)->getAttr(mlir::ocaml::getEnvironmentIsForFunctionAttrName()));
-    }
+    StringAttr getFor() const;
   }];
 }
 

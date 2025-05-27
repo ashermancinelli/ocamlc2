@@ -41,9 +41,30 @@ int main() {
   auto env = mlir::ocaml::EnvType::get(&context);
   llvm::outs() << env << "\n";
 
+  {
+    auto moduleType = mlir::ocaml::ModuleType::get(&context, "foo");
+    moduleType.addType("bar", i64);
+    moduleType.addType("baz", tuple);
+    moduleType.addType("qux", variant);
+    moduleType.finalize();
+    llvm::outs() << moduleType << "\n";
+  }
+
+  {
+    auto moduleType =
+        mlir::ocaml::ModuleType::get(&context, "foo$bar/bax!test");
+    moduleType.addType("bar", i64);
+    llvm::outs() << moduleType << "\n";
+  }
+
+  {
+    auto moduleType =
+        mlir::ocaml::ModuleType::get(&context, "empty_module");
+    llvm::outs() << moduleType << "\n";
+  }
+
   return 0;
 }
-
 // CHECK: !ocaml.unit
 // CHECK: !ocaml.obox
 // CHECK: !ocaml.box<i64>
@@ -54,4 +75,6 @@ int main() {
 // CHECK: !ocaml.list<i64>
 // CHECK: !ocaml.list<!ocaml.closure<(i64) -> i64>>
 // CHECK: !ocaml.env
-
+// CHECK: !ocaml.module<"foo", {bar : i64, baz : !ocaml.tuple<i64, i64>, qux : !ocaml.variant<"foo" is "None" | "Some" of i64 | "More" of !ocaml.tuple<i64, i64>>}>
+// CHECK: !ocaml.module<"foo$bar/bax!test", {bar : i64}>
+// CHECK: !ocaml.module<"empty_module", {}>

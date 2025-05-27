@@ -1,5 +1,5 @@
-#include "ocamlc2/Dialect/OcamlDialect.h"
 #include "ocamlc2/Dialect/OcamlAttrUtils.h"
+#include "ocamlc2/Dialect/OcamlDialect.h"
 
 llvm::StringRef mlir::ocaml::getVariantCtorAttrName() {
   return "ocaml.variant_ctor";
@@ -24,3 +24,7 @@ llvm::StringRef mlir::ocaml::getEnvironmentIsForFunctionAttrName() {
 }
 
 llvm::StringRef mlir::ocaml::getOcamlAttributePrefix() { return "ocaml."; }
+
+llvm::StringRef mlir::ocaml::getOcamlFunctorAttrName() {
+  return "ocaml.functor";
+}
