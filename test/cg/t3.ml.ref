@@ -13,21 +13,27 @@
  * CHECK-SAME:                         %[[VAL_0:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>,
  * CHECK-SAME:                         %[[VAL_1:[0-9]+|[a-zA-Z$._-][a-zA-Z0-9$._-]*]]: !ocaml.box<i64>) -> !ocaml.unit attributes {ocaml.env = "fenv$0"} {
  * CHECK:           %[[VAL_2:.*]] = ocaml.block : !ocaml.unit {
- * CHECK:             %[[VAL_3:.*]] = ocaml.block : !ocaml.unit {
- * CHECK:               %[[VAL_4:.*]] = ocaml.convert %[[VAL_0]] from !ocaml.box<i64> to i64
- * CHECK:               %[[VAL_5:.*]] = ocaml.convert %[[VAL_1]] from !ocaml.box<i64> to i64
- * CHECK:               %[[VAL_6:.*]] = arith.constant 1 : i64
- * CHECK:               scf.for %[[VAL_7:.*]] = %[[VAL_4]] to %[[VAL_5]] step %[[VAL_6]]  : i64 {
- * CHECK:                 %[[VAL_8:.*]] = ocaml.convert %[[VAL_7]] from i64 to !ocaml.box<i64>
- * CHECK:                 %[[VAL_9:.*]] = ocaml.closure.new @print_int : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.unit>
- * CHECK:                 %[[VAL_10:.*]] = ocaml.call %[[VAL_9]](%[[VAL_8]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.unit>) : !ocaml.box<i64> -> !ocaml.unit
- * CHECK:                 %[[VAL_11:.*]] = ocaml.unit
- * CHECK:               }
- * CHECK:               %[[VAL_12:.*]] = ocaml.unit
- * CHECK:               ocaml.yield %[[VAL_12]] : !ocaml.unit
+ * CHECK:             %[[VAL_3:.*]] = ocaml.block : !ocaml.box<i64> {
+ * CHECK:               ocaml.yield %[[VAL_0]] : !ocaml.box<i64>
  * CHECK:             }
- * CHECK:             %[[VAL_13:.*]] = ocaml.unit
- * CHECK:             ocaml.yield %[[VAL_13]] : !ocaml.unit
+ * CHECK:             %[[VAL_4:.*]] = ocaml.block : !ocaml.unit {
+ * CHECK:               %[[VAL_5:.*]] = ocaml.block : !ocaml.box<i64> {
+ * CHECK:                 ocaml.yield %[[VAL_1]] : !ocaml.box<i64>
+ * CHECK:               }
+ * CHECK:               %[[VAL_6:.*]] = ocaml.convert %[[VAL_3]] from !ocaml.box<i64> to i64
+ * CHECK:               %[[VAL_7:.*]] = ocaml.convert %[[VAL_5]] from !ocaml.box<i64> to i64
+ * CHECK:               %[[VAL_8:.*]] = arith.constant 1 : i64
+ * CHECK:               scf.for %[[VAL_9:.*]] = %[[VAL_6]] to %[[VAL_7]] step %[[VAL_8]]  : i64 {
+ * CHECK:                 %[[VAL_10:.*]] = ocaml.convert %[[VAL_9]] from i64 to !ocaml.box<i64>
+ * CHECK:                 %[[VAL_11:.*]] = ocaml.closure.new @print_int : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.unit>
+ * CHECK:                 %[[VAL_12:.*]] = ocaml.call %[[VAL_11]](%[[VAL_10]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.unit>) : !ocaml.box<i64> -> !ocaml.unit
+ * CHECK:                 %[[VAL_13:.*]] = ocaml.unit
+ * CHECK:               }
+ * CHECK:               %[[VAL_14:.*]] = ocaml.unit
+ * CHECK:               ocaml.yield %[[VAL_14]] : !ocaml.unit
+ * CHECK:             }
+ * CHECK:             %[[VAL_15:.*]] = ocaml.unit
+ * CHECK:             ocaml.yield %[[VAL_15]] : !ocaml.unit
  * CHECK:           }
  * CHECK:           return %[[VAL_2]] : !ocaml.unit
  * CHECK:         }

@@ -73,20 +73,48 @@ mlir::FailureOr<T> mustBe(mlir::FailureOr<std::variant<T, mlir::func::FuncOp>> r
   return failure();
 }
 
+bool MLIRGen3::shouldAddToModuleType(mlir::Operation *op) {
+  // function block arguments should be skipped
+  if (op == nullptr) {
+    DBGS("op is null\n");
+    return false;
+  }
+  auto parent = op->getParentOp();
+  while (parent) {
+    if (mlir::isa<mlir::ocaml::ModuleOp, mlir::ocaml::ProgramOp>(parent)) {
+      return true;
+    }
+    if (mlir::isa<mlir::func::FuncOp, mlir::ocaml::BlockOp>(parent)) {
+      return false;
+    }
+    parent = parent->getParentOp();
+  }
+  return false;
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBindingValueDefinition(const Node patternNode, const Node bodyNode) {
   TRACE();
+  auto bodyType = mlirType(patternNode);
+  if (failed(bodyType)) {
+    return failure();
+  }
+  auto ip = builder.saveInsertionPoint();
+  auto block = builder.create<mlir::ocaml::BlockOp>(loc(bodyNode), *bodyType);
+  builder.setInsertionPointToStart(&block.getBody().emplaceBlock());
   return gen(bodyNode) | and_then([&](auto bodyValue) -> mlir::FailureOr<mlir::Value> {
     return mlirType(patternNode) | and_then([&](auto patternType) -> mlir::FailureOr<mlir::Value> {
-      if (mlir::isa<mlir::ocaml::UnitType>(patternType)) {
-        return bodyValue;
-      }
       if (not ::mlir::ocaml::areTypesCoercible(bodyValue.getType(),
                                                patternType)) {
         return error(patternNode) << "generated type does not agree with "
                                   << "unifier's type for this expression: "
                                   << patternType << " vs " << bodyValue.getType();
       }
-      return declareVariable(patternNode, bodyValue, loc(patternNode));
+      builder.create<mlir::ocaml::YieldOp>(loc(patternNode), bodyValue);
+      builder.restoreInsertionPoint(ip);
+      if (mlir::isa<mlir::ocaml::UnitType>(patternType)) {
+        return bodyValue;
+      }
+      return declareVariable(patternNode, block.getResult(), loc(patternNode));
     });
   });
 }
@@ -1295,6 +1323,9 @@ mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(llvm::StringRef name,
                                                        mlir::Location loc) {
   auto savedName = stringArena.save(name);
   DBGS("declaring '" << savedName << "' of type " << value.getType() << "\n");
+  if (shouldAddToModuleType(value.getDefiningOp())) {
+    getCurrentModuleType().addType(savedName, value.getType());
+  }
   variables.insert(savedName, value);
   return value;
 }
@@ -1396,6 +1427,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
 mlir::FailureOr<mlir::OwningOpRef<mlir::ocaml::ModuleOp>> MLIRGen3::gen() {
   TRACE();
   module = builder.create<mlir::ocaml::ModuleOp>(loc(root), unifier.getLastModule());
+  pushModuleType(module->getModuleType());
   module->getBody().emplaceBlock();
   builder.setInsertionPointToStart(module->getBodyBlock());
   auto res = gen(root);
@@ -1410,6 +1442,8 @@ mlir::FailureOr<mlir::OwningOpRef<mlir::ocaml::ModuleOp>> MLIRGen3::gen() {
     llvm::errs() << *module << "\n";
     return mlir::failure();
   }
+  getCurrentModuleType().finalize();
+  popModuleType();
 
   return std::move(module);
 }

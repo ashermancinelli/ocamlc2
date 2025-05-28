@@ -52,11 +52,14 @@
  * CHECK-LABEL:   ocaml.program : {
  * CHECK:           %[[VAL_0:.*]] = ocaml.closure.env.new {ocaml.env_for_function = "testenv$0"} : !ocaml.env
  * CHECK:           %[[VAL_1:.*]] = ocaml.closure.new @test capturing %[[VAL_0]] : !ocaml.closure<(!ocaml.box<i64>) -> !ocaml.sbox>
- * CHECK:           %[[VAL_2:.*]] = arith.constant 7 : i64
- * CHECK:           %[[VAL_3:.*]] = ocaml.convert %[[VAL_2]] from i64 to !ocaml.box<i64>
- * CHECK:           %[[VAL_4:.*]] = ocaml.call %[[VAL_1]](%[[VAL_3]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.sbox>) : !ocaml.box<i64> -> !ocaml.sbox
- * CHECK:           %[[VAL_5:.*]] = ocaml.closure.new @print_string : !ocaml.closure<(!ocaml.sbox) -> !ocaml.unit>
- * CHECK:           %[[VAL_6:.*]] = ocaml.call %[[VAL_5]](%[[VAL_4]]) : (!ocaml.closure<(!ocaml.sbox) -> !ocaml.unit>) : !ocaml.sbox -> !ocaml.unit
+ * CHECK:           %[[VAL_2:.*]] = ocaml.block : !ocaml.unit {
+ * CHECK:             %[[VAL_3:.*]] = arith.constant 7 : i64
+ * CHECK:             %[[VAL_4:.*]] = ocaml.convert %[[VAL_3]] from i64 to !ocaml.box<i64>
+ * CHECK:             %[[VAL_5:.*]] = ocaml.call %[[VAL_1]](%[[VAL_4]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.sbox>) : !ocaml.box<i64> -> !ocaml.sbox
+ * CHECK:             %[[VAL_6:.*]] = ocaml.closure.new @print_string : !ocaml.closure<(!ocaml.sbox) -> !ocaml.unit>
+ * CHECK:             %[[VAL_7:.*]] = ocaml.call %[[VAL_6]](%[[VAL_5]]) : (!ocaml.closure<(!ocaml.sbox) -> !ocaml.unit>) : !ocaml.sbox -> !ocaml.unit
+ * CHECK:             ocaml.yield %[[VAL_7]] : !ocaml.unit
+ * CHECK:           }
  * CHECK:         }
 
  *)

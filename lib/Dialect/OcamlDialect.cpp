@@ -55,7 +55,11 @@ struct ModuleTypeStorage : public mlir::TypeStorage {
 
   void setTypeList(llvm::ArrayRef<ModuleType::TypePair> list) { types = list; }
   llvm::ArrayRef<ModuleType::TypePair> getTypeList() const { return types; }
-  void addType(llvm::StringRef ident, mlir::Type type) { types.emplace_back(ident, type); }
+  void addType(llvm::StringRef ident, mlir::Type type) {
+    DBGS("adding type " << ident << " : " << type << " to module type " << name << "\n");
+    types.emplace_back(ident, type);
+  }
+
   FailureOr<mlir::Type> getType(llvm::StringRef ident) const {
     for (auto [i, type] : llvm::enumerate(types)) {
       if (type.first == ident) {
@@ -80,6 +84,7 @@ struct ModuleTypeStorage : public mlir::TypeStorage {
     return failure();
   }
   void finalize() {
+    DBGS("finalizing module type " << name << " with " << types.size() << " types\n");
     assert(!finalized);
     finalized = true;
   }
@@ -107,6 +112,13 @@ namespace {
 static llvm::SmallPtrSet<detail::ModuleTypeStorage const *, 4> moduleTypeVisited;
 }
 
+void mlir::ocaml::ModuleOp::build(mlir::OpBuilder &builder,
+                                  mlir::OperationState &result,
+                                  llvm::StringRef name) {
+  auto moduleType = mlir::ocaml::ModuleType::get(builder.getContext(), name);
+  build(builder, result, moduleType, name);
+}
+
 void mlir::ocaml::ModuleType::print(mlir::AsmPrinter &printer) const {
   printer << "<";
   printer.printString(getName());
@@ -115,7 +127,9 @@ void mlir::ocaml::ModuleType::print(mlir::AsmPrinter &printer) const {
     moduleTypeVisited.insert(uniqueKey());
     auto length = getTypeList().size();
     for (auto [i, type] : llvm::enumerate(getTypeList())) {
-      printer << type.first << " : " << type.second;
+      printer.printString(StringRef(type.first));
+      printer << " : ";
+      printer.printType(type.second);
       if (i < length - 1) {
         printer << ", ";
       }

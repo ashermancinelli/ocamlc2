@@ -122,6 +122,10 @@ def Ocaml_ModuleType : Ocaml_Type<"Module", "module"> {
   }];
 }
 
+def IsaModuleType : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::ModuleType>($_self)">,
+  "OCaml module">;
+
 def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
   let summary = "OCaml box";
   let description = "OCaml box";
@@ -374,6 +378,16 @@ def Ocaml_CurryOp : Ocaml_Op<"closure.curry"> {
   ];
 }
 
+def Ocaml_ModuleTypeOp : Ocaml_Op<"module.type", [
+  Symbol
+]> {
+  let summary = "OCaml module type";
+  let description = "OCaml module type";
+  let arguments = (ins SymbolNameAttr:$symbol);
+  let results = (outs IsaModuleType:$result);
+  let assemblyFormat = "$symbol attr-dict `:` type($result)";
+}
+
 def Ocaml_ModuleOp : Ocaml_Op<"module", [
   Symbol,
   SymbolTable,
@@ -386,12 +400,14 @@ def Ocaml_ModuleOp : Ocaml_Op<"module", [
     SymbolNameAttr:$sym_name
   );
   let regions = (region SizedRegion<1>:$body);
-  let results = (outs);
-  let assemblyFormat = "$sym_name attr-dict `:` $body";
+  let results = (outs IsaModuleType:$result);
+  let assemblyFormat = "$sym_name attr-dict `:` type($result) $body";
   let builders = [
+    OpBuilder<(ins "::mlir::StringRef":$name)>,
   ];
   let extraClassDeclaration = [{
     Block *getBodyBlock() { return &getBody().front(); }
+    mlir::ocaml::ModuleType getModuleType() { return mlir::cast<mlir::ocaml::ModuleType>(getResult().getType()); }
   }];
 }
 

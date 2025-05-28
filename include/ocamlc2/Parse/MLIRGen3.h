@@ -111,6 +111,7 @@ private:
 
   mlir::FailureOr<std::variant<mlir::ocaml::ProgramOp, mlir::func::FuncOp>>
   getCurrentFuncOrProgram(mlir::Operation *op=nullptr);
+  bool shouldAddToModuleType(mlir::Operation *op);
   mlir::FailureOr<mlir::Value> findEnvForFunction(mlir::func::FuncOp funcOp);
   mlir::FailureOr<mlir::Value> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);
@@ -128,6 +129,17 @@ private:
   }
   mlir::FailureOr<std::tuple<bool, mlir::func::FuncOp>>
   valueIsFreeInCurrentContext(mlir::Value value);
+
+  llvm::SmallVector<mlir::ocaml::ModuleType> moduleTypeStack;
+  mlir::ocaml::ModuleType getCurrentModuleType() const {
+    return moduleTypeStack.back();
+  }
+  void pushModuleType(mlir::ocaml::ModuleType moduleType) {
+    moduleTypeStack.push_back(moduleType);
+  }
+  void popModuleType() {
+    moduleTypeStack.pop_back();
+  }
 
   llvm::SmallVector<ts::NodeID> captureIDs;
   llvm::DenseMap<TypeExpr *, mlir::Type> typeExprToMlirType;
