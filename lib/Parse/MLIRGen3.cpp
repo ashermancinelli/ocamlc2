@@ -92,12 +92,21 @@ bool MLIRGen3::shouldAddToModuleType(mlir::Operation *op) {
   return false;
 }
 
+mlir::LogicalResult MLIRGen3::shadowGlobalsIfNeeded(llvm::StringRef identifier) {
+  return failure();
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genLetBindingValueDefinition(const Node patternNode, const Node bodyNode) {
   TRACE();
   auto bodyType = mlirType(patternNode);
   if (failed(bodyType)) {
     return failure();
   }
+  UU auto initializerFunctionType = mlir::FunctionType::get(builder.getContext(), {}, {*bodyType});
+  // auto identifier = getIdentifierTextFromPattern(patternNode);
+  // if (failed(shadowGlobalsIfNeeded(identifier))) {
+  //   return failure();
+  // }
   auto ip = builder.saveInsertionPoint();
   auto block = builder.create<mlir::ocaml::BlockOp>(loc(bodyNode), *bodyType);
   builder.setInsertionPointToStart(&block.getBody().emplaceBlock());
@@ -1003,6 +1012,14 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
       builder.createArrayFromElements(loc(node), *arrayType, elementValues);
   assert(array.getType() == *arrayType);
   return array;
+}
+
+llvm::StringRef MLIRGen3::getIdentifierTextFromPattern(const Node node) {
+  assert(node.getType() == "pattern");
+  auto children = getNamedChildren(node);
+  assert(children.size() == 1);
+  auto child = children[0];
+  return getText(child);
 }
 
 llvm::StringRef MLIRGen3::getTextStripQuotes(const Node node) {

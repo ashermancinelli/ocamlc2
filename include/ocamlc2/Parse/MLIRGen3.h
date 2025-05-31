@@ -109,6 +109,11 @@ private:
   mlir::FailureOr<mlir::Type> mlirVariantCtorType(ocamlc2::CtorOperator *ctor, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
+  // If we find a variable at the top-level is shadowing others, we will only export the last use
+  // of the identifier. When we encounter a reused identifier, we need to visit all the uses
+  // of the identifier and mangle their names.
+  mlir::LogicalResult shadowGlobalsIfNeeded(llvm::StringRef identifier);
+
   mlir::FailureOr<std::variant<mlir::ocaml::ProgramOp, mlir::func::FuncOp>>
   getCurrentFuncOrProgram(mlir::Operation *op=nullptr);
   bool shouldAddToModuleType(mlir::Operation *op);
@@ -116,6 +121,7 @@ private:
   mlir::FailureOr<mlir::Value> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);
   llvm::StringRef getTextFromValuePath(Node node);
+  llvm::StringRef getIdentifierTextFromPattern(const Node node);
   llvm::StringRef getTextStripQuotes(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);
