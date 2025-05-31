@@ -147,11 +147,13 @@ mlir::Type mlir::ocaml::ModuleType::parse(mlir::AsmParser &parser) {
     return {};
   if (parser.parseString(&name))
     return {};
-  if (parser.parseOptionalLBrace()) {
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseLBrace())
+      return {};
     while (true) {
-      llvm::StringRef field;
+      std::string field;
       mlir::Type fldTy;
-      if (parser.parseKeyword(&field) || parser.parseColon() ||
+      if (parser.parseString(&field) || parser.parseColon() ||
           parser.parseType(fldTy)) {
         parser.emitError(parser.getNameLoc(), "expected type list");
         return {};
@@ -160,9 +162,8 @@ mlir::Type mlir::ocaml::ModuleType::parse(mlir::AsmParser &parser) {
       if (parser.parseOptionalComma())
         break;
     }
-    if (parser.parseOptionalRBrace()) {
+    if (parser.parseRBrace())
       return {};
-    }
   }
   if (parser.parseGreater())
     return {};
@@ -462,7 +463,7 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   if (failed(parseCtorAndType()))
     return {};
 
-  while (succeeded(parser.parseOptionalKeyword("|"))) {
+  while (succeeded(parser.parseOptionalVerticalBar())) {
     if (failed(parseCtorAndType()))
       return {};
   }

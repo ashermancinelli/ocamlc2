@@ -1,4 +1,5 @@
 #include "ocamlc2/Parse/MLIRGen3.h"
+#include "ocamlc2/Dialect/OcamlAttrUtils.h"
 #include "ocamlc2/Dialect/OcamlDialect.h"
 #include "ocamlc2/Dialect/OcamlTypeUtils.h"
 #include "ocamlc2/Parse/AST.h"
@@ -164,39 +165,72 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   auto patternNode = node.getChildByFieldName("pattern");
   const auto patternType = unifierType(patternNode);
   auto bodyNode = node.getChildByFieldName("body");
+  InsertionGuard guard(builder);
+  auto *parentScope = variables.getCurScope();
+  auto scope = std::make_unique<VariableScope>(variables);
   if (patternType == unifier.getUnitType()) {
+    auto blockOp = builder.create<mlir::ocaml::BlockOp>(loc(node), builder.getUnitType());
+    auto &block = blockOp.getBody().emplaceBlock();
+    builder.setInsertionPointToEnd(&block);
     return gen(bodyNode);
   }
-  auto parameters = getNamedChildren(node, {"parameter"});
-  if (parameters.empty()) {
-    return genLetBindingValueDefinition(patternNode, bodyNode);
-  }
-  auto maybeFunctionType = mlirType(patternNode);
-  if (failed(maybeFunctionType)) {
+  
+  auto resultType = mlirType(patternNode);
+  if (failed(resultType)) {
     return failure();
   }
-  auto closureType = mlir::dyn_cast<mlir::ocaml::ClosureType>(*maybeFunctionType);
-  if (not closureType) {
-    return error(node) << "Expected function type for let binding";
+  auto identifier = getIdentifierTextFromPattern(patternNode);
+  auto letOp = builder.create<mlir::ocaml::LetOp>(loc(node), *resultType, identifier);
+  if (isRecursive) {
+    letOp->setAttr(mlir::ocaml::getRecursiveAttrName(), builder.getUnitAttr());
   }
-  auto functionType = closureType.getFunctionType();
-  auto nameString = getText(patternNode);
-  return genFunctionBody(nameString, functionType, loc(node), parameters,
-                         bodyNode) |
-         and_then([&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
-           if (isRecursive) {
-             funcOp->setAttr(mlir::ocaml::getRecursiveAttrName(), builder.getUnitAttr());
-           }
-           return findEnvForFunction(funcOp) |
-                  and_then([&](mlir::Value env) -> mlir::FailureOr<mlir::Value> {
-                    auto symbol = funcOp.getSymName();
-                    auto closureType = mlir::ocaml::ClosureType::get(
-                        builder.getContext(), funcOp.getFunctionType());
-                    auto closureOp = builder.create<mlir::ocaml::ClosureOp>(
-                        loc(node), closureType, symbol, env);
-                    return declareVariable(patternNode, closureOp,
-                                           loc(patternNode));
-                  });
+  auto &block = letOp.getBody().emplaceBlock();
+  builder.setInsertionPointToEnd(&block);
+  auto parameters = getNamedChildren(node, {"parameter"});
+  
+  // Create a scope for function parameters
+  if (!parameters.empty()) {
+    DBGS("Adding function arguments for " << identifier << '\n');
+    auto closureType = mlir::cast<mlir::ocaml::ClosureType>(*resultType);
+    assert(closureType);
+    auto functionType = closureType.getFunctionType();
+    for (auto [i, parameter] : llvm::enumerate(parameters)) {
+      auto paramType = mlirType(parameter);
+      if (failed(paramType)) {
+        return failure();
+      }
+      assert(mlir::ocaml::areTypesCoercible(*paramType,
+                                            functionType.getInput(i)) &&
+             "function type's input does not match the mlir type for the "
+             "parameter");
+      const auto l = loc(parameter);
+      auto ba = block.addArgument(*paramType, l);
+      auto res = declareVariable(parameter, ba, l);
+      if(failed(res)) {
+        return failure();
+      }
+    }
+  }
+  
+  // For recursive functions, declare self reference inside the function body
+  if (isRecursive) {
+    auto selfOp =
+        builder.create<mlir::ocaml::SelfOp>(loc(patternNode), letOp.getType());
+    auto res = declareVariable(patternNode, selfOp, loc(patternNode));
+    if (failed(res)) {
+      return failure();
+    }
+  }
+
+  return gen(bodyNode) |
+         and_then([&](auto bodyValue) -> mlir::FailureOr<mlir::Value> {
+           builder.create<mlir::ocaml::YieldOp>(loc(bodyNode), bodyValue);
+           return letOp.getResult();
+         }) |
+         and_then([&](auto result) -> mlir::FailureOr<mlir::Value> {
+           scope.reset();
+           return declareVariable(patternNode, result, loc(patternNode),
+                                  parentScope);
          });
 }
 
@@ -376,6 +410,9 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(const Node node) {
   auto *type = unifierType(node);
   if (type == nullptr) {
+    if (node.getType() == "parameter") {
+      return mlirType(node.getChildByFieldName("pattern"));
+    }
     return error(node) << "Type for node was not inferred at unification-time";
   }
   if (auto convertedType = typeExprToMlirType.lookup(type)) {
@@ -636,14 +673,15 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genGlobalForFreeVariable(
 
 mlir::FailureOr<mlir::Value> MLIRGen3::getVariable(llvm::StringRef name, mlir::Location loc) {
   if (auto value = variables.lookup(name)) {
-    auto isFree = valueIsFreeInCurrentContext(value);
-    if (failed(isFree)) {
-      return failure();
-    }
-    auto [isFreeV, currentFunc] = *isFree;
-    if (isFreeV) {
-      return genGlobalForFreeVariable(value, name, loc);
-    }
+    // TODO: Handle captures after lowering
+    // auto isFree = valueIsFreeInCurrentContext(value);
+    // if (failed(isFree)) {
+    //   return failure();
+    // }
+    // auto [isFreeV, currentFunc] = *isFree;
+    // if (isFreeV) {
+    //   return genGlobalForFreeVariable(value, name, loc);
+    // }
     return value;
   }
   return failure();
@@ -1015,11 +1053,9 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genArrayExpression(const Node node) {
 }
 
 llvm::StringRef MLIRGen3::getIdentifierTextFromPattern(const Node node) {
-  assert(node.getType() == "pattern");
-  auto children = getNamedChildren(node);
-  assert(children.size() == 1);
-  auto child = children[0];
-  return getText(child);
+  auto text = getText(node);
+  DBGS(text << '\n');
+  return text;
 }
 
 llvm::StringRef MLIRGen3::getTextStripQuotes(const Node node) {
@@ -1324,7 +1360,7 @@ llvm::StringRef MLIRGen3::getText(const Node node) {
 }
 
 mlir::FailureOr<mlir::Value>
-MLIRGen3::declareVariable(Node node, mlir::Value value, mlir::Location loc) {
+MLIRGen3::declareVariable(Node node, mlir::Value value, mlir::Location loc, VariableScope *scope) {
   TRACE();
   auto str = getText(node);
   if (node.getType() == "typed_pattern") {
@@ -1332,18 +1368,23 @@ MLIRGen3::declareVariable(Node node, mlir::Value value, mlir::Location loc) {
     str = getText(node);
   }
   DBGS("declaring variable: " << str << ' ' << node.getType() << "\n");
-  return declareVariable(str, value, loc);
+  return declareVariable(str, value, loc, scope);
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(llvm::StringRef name,
                                                        mlir::Value value,
-                                                       mlir::Location loc) {
+                                                       mlir::Location loc,
+                                                       VariableScope *scope) {
   auto savedName = stringArena.save(name);
   DBGS("declaring '" << savedName << "' of type " << value.getType() << "\n");
   if (shouldAddToModuleType(value.getDefiningOp())) {
     getCurrentModuleType().addType(savedName, value.getType());
   }
-  variables.insert(savedName, value);
+  if (scope == nullptr) {
+    variables.insert(savedName, value);
+  } else {
+    variables.insertIntoScope(scope, savedName, value);
+  }
   return value;
 }
 

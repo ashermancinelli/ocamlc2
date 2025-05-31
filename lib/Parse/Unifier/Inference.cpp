@@ -433,7 +433,9 @@ TypeExpr *Unifier::inferLetBindingFunction(Node name, SmallVector<Node> paramete
     detail::Scope scope(this);
     SmallVector<TypeExpr*> types = llvm::map_to_vector(llvm::zip(parameterDescriptors, parameters), [&](auto arg) -> TypeExpr* {
       auto [desc, param] = arg;
-      return declareFunctionParameter(desc, param);
+      auto *type = declareFunctionParameter(desc, param);
+      setType(param, type);
+      return type;
     });
     if (llvm::any_of(types, [](auto *t) { return t == nullptr; })) {
       return std::make_pair(nullptr, types);

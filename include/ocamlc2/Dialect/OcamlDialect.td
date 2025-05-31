@@ -425,64 +425,17 @@ def Ocaml_BlockOp : Ocaml_Op<"block"> {
   }];
 }
 
-def Ocaml_FuncOp : Ocaml_Op<"letf", [
-  AutomaticAllocationScope, FunctionOpInterface //, OpAsmOpInterface
+def Ocaml_LetOp : Ocaml_Op<"let", [
+  AutomaticAllocationScope
 ]> {
   let summary = "OCaml let function-definition";
   let description = "OCaml let function-definition";
   let arguments = (ins
-    StrAttr:$sym_name,
-    TypeAttrOf<FunctionType>:$function_type,
-    OptionalAttr<DictArrayAttr>:$arg_attrs,
-    OptionalAttr<DictArrayAttr>:$res_attrs
+    StrAttr:$sym_name
   );
   let results = (outs AnyOCamlType:$result);
   let regions = (region AnyRegion:$body);
-  let assemblyFormat = "$sym_name `:` type($result) `=` $body attr-dict";
-  let builders = [
-    OpBuilder<(ins "::mlir::StringRef":$name, "::mlir::FunctionType":$type,
-      CArg<"ArrayRef<DictionaryAttr>", "{}">:$argAttrs,
-      CArg<"ArrayRef<DictionaryAttr>", "{}">:$resAttrs)>,
-  ];
-  let extraClassDeclaration = [{
-    Block *getBodyBlock() { return &getBody().front(); }
-    inline bool isExternal() { return false; }
-    static FuncOp create(Location location, StringRef name, FunctionType type,
-                         ArrayRef<NamedAttribute> attrs = {});
-    static FuncOp create(Location location, StringRef name, FunctionType type,
-                         Operation::dialect_attr_range attrs);
-    static FuncOp create(Location location, StringRef name, FunctionType type,
-                         ArrayRef<NamedAttribute> attrs,
-                         ArrayRef<DictionaryAttr> argAttrs);
-
-    //===------------------------------------------------------------------===//
-    // FunctionOpInterface Methods
-    //===------------------------------------------------------------------===//
-
-    /// Returns the region on the current operation that is callable. This may
-    /// return null in the case of an external callable object, e.g. an external
-    /// function.
-    ::mlir::Region *getCallableRegion() { return isExternal() ? nullptr : &getBody(); }
-
-    /// Returns the argument types of this function.
-    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
-
-    /// Returns the result types of this function.
-    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
-
-    //===------------------------------------------------------------------===//
-    // OpAsmOpInterface Methods
-    //===------------------------------------------------------------------===//
-
-    /// Allow the dialect prefix to be omitted.
-    static StringRef getDefaultDialect() { return "func"; }
-
-    //===------------------------------------------------------------------===//
-    // SymbolOpInterface Methods
-    //===------------------------------------------------------------------===//
-
-    bool isDeclaration() { return isExternal(); }
-  }];
+  let assemblyFormat = "$sym_name attr-dict `:` type($result) `=` $body";
 }
 
 def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
@@ -510,6 +463,14 @@ def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
     CallInterfaceCallable getCallableForCallee() { return getClosure(); }
     void setCalleeFromCallable(CallInterfaceCallable callee) { return setOperand(0, cast<Value>(callee)); }
   }];
+}
+
+def Ocaml_SelfOp : Ocaml_Op<"self"> {
+  let summary = "Op for self-references inside recursive let bindings";
+  let description = "Op for self-references inside recursive let bindings";
+  let arguments = (ins);
+  let results = (outs IsaClosureType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 def Ocaml_LoadOp : Ocaml_Op<"load"> {

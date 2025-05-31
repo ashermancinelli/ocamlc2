@@ -95,8 +95,13 @@ private:
                                                         llvm::StringRef name,
                                                         mlir::Location loc);
 
-  mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
-  mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value,
+                                               mlir::Location loc,
+                                               VariableScope *scope = nullptr);
+  mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name,
+                                               mlir::Value value,
+                                               mlir::Location loc,
+                                               VariableScope *scope = nullptr);
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(const Node node);
   mlir::FailureOr<Callee> genConstructorPath(const Node node);
