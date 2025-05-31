@@ -152,6 +152,16 @@ private:
     moduleTypeStack.pop_back();
   }
 
+  inline void pushModule(mlir::ocaml::ModuleOp module) {
+    moduleStack.push_back(module);
+  }
+  inline void popModule() {
+    moduleStack.pop_back();
+  }
+  inline mlir::ocaml::ModuleOp getCurrentModule() const {
+    return moduleStack.back();
+  }
+
   llvm::SmallVector<ts::NodeID> captureIDs;
   llvm::DenseMap<TypeExpr *, mlir::Type> typeExprToMlirType;
   llvm::ScopedHashTable<llvm::StringRef, mlir::Value> variables;
@@ -159,6 +169,7 @@ private:
   mlir::ocaml::OcamlOpBuilder builder;
   Unifier &unifier;
   mlir::OwningOpRef<mlir::ocaml::ModuleOp> module;
+  llvm::SmallVector<mlir::ocaml::ModuleOp> moduleStack;
   ts::Node root;
   friend struct Scope;
 };

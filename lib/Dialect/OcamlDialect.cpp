@@ -150,20 +150,22 @@ mlir::Type mlir::ocaml::ModuleType::parse(mlir::AsmParser &parser) {
   if (succeeded(parser.parseOptionalComma())) {
     if (parser.parseLBrace())
       return {};
-    while (true) {
-      std::string field;
-      mlir::Type fldTy;
-      if (parser.parseString(&field) || parser.parseColon() ||
-          parser.parseType(fldTy)) {
-        parser.emitError(parser.getNameLoc(), "expected type list");
-        return {};
+    if (failed(parser.parseOptionalRBrace())) {
+      while (true) {
+        std::string field;
+        mlir::Type fldTy;
+        if (parser.parseString(&field) || parser.parseColon() ||
+            parser.parseType(fldTy)) {
+          parser.emitError(parser.getNameLoc(), "expected type list");
+          return {};
+        }
+        typeList.emplace_back(field, fldTy);
+        if (parser.parseOptionalComma())
+          break;
       }
-      typeList.emplace_back(field, fldTy);
-      if (parser.parseOptionalComma())
-        break;
+      if (parser.parseRBrace())
+        return {};
     }
-    if (parser.parseRBrace())
-      return {};
   }
   if (parser.parseGreater())
     return {};

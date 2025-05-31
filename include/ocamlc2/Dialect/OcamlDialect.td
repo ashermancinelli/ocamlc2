@@ -411,6 +411,14 @@ def Ocaml_ModuleOp : Ocaml_Op<"module", [
   }];
 }
 
+def Ocaml_ModuleLookupOp : Ocaml_Op<"module.lookup"> {
+  let summary = "OCaml module lookup";
+  let description = "OCaml module lookup";
+  let arguments = (ins StrAttr:$sym_name, StrAttr:$module);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$sym_name `in` $module attr-dict `:` type($result)";
+}
+
 def Ocaml_BlockOp : Ocaml_Op<"block"> {
   let summary = "OCaml block";
   let description = "OCaml block";
@@ -429,13 +437,31 @@ def Ocaml_LetOp : Ocaml_Op<"let", [
   AutomaticAllocationScope
 ]> {
   let summary = "OCaml let function-definition";
-  let description = "OCaml let function-definition";
+  let description = [{
+    The `ocaml.let` operation defines a value or function-like binding.  
+    
+    It is not an MLIR symbol because it would then need to be wrapped in a
+    symbol-table operation, but this op maps one-to-one with the OCaml let
+    construct, so it may not be directly under a module.
+  }];
   let arguments = (ins
     StrAttr:$sym_name
   );
   let results = (outs AnyOCamlType:$result);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = "$sym_name attr-dict `:` type($result) `=` $body";
+}
+
+def Ocaml_ExternalOp : Ocaml_Op<"external"> {
+  let summary = "OCaml external";
+  let description = "OCaml external";
+  let arguments = (ins
+    StrAttr:$sym_name,
+    StrAttr:$bindc_name,
+    TypeAttr:$type
+  );
+  let results = (outs);
+  let assemblyFormat = "$sym_name `=` $bindc_name attr-dict `:` $type";
 }
 
 def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {

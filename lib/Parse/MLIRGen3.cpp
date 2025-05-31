@@ -731,9 +731,9 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genCompilationUnit(const Node node) {
   TRACE();
   VariableScope scope(variables);
   builder.setInsertionPointToStart(module->getBodyBlock());
-  auto programOp = builder.create<mlir::ocaml::ProgramOp>(loc(node));
-  auto &bodyBlock = programOp.getBody().emplaceBlock();
-  builder.setInsertionPointToEnd(&bodyBlock);
+  // auto programOp = builder.create<mlir::ocaml::ProgramOp>(loc(node));
+  // auto &bodyBlock = programOp.getBody().emplaceBlock();
+  // builder.setInsertionPointToEnd(&bodyBlock);
   {
     InsertionGuard guard(builder);
     for (auto child : getNamedChildren(node)) {
@@ -795,15 +795,21 @@ mlir::FailureOr<Callee> MLIRGen3::genBuiltinCallee(const Node node) {
 }
 
 mlir::FailureOr<Callee> MLIRGen3::genCallee(const Node node) {
-  TRACE();
   auto str = getTextFromValuePath(node);
   auto value = getVariable(str, loc(node));
+  DBGS("lookup " << str << " in current context\n");
   return value | or_else([&]() -> mlir::FailureOr<Callee> {
            DBGS("Couldn't find variable "
                 << str << " in current context, looking for symbol\n");
-           auto callee = module->lookupSymbol<mlir::func::FuncOp>(str);
-           if (callee) {
+           if (auto callee = module->lookupSymbol<mlir::func::FuncOp>(str)) {
              return Callee{callee};
+           } else if (auto external = module->lookupSymbol<mlir::ocaml::ExternalOp>(str)) {
+             auto module = getCurrentModule();
+             llvm::StringRef name = module.getName();
+             auto value = builder.create<mlir::ocaml::ModuleLookupOp>(
+                 loc(node), external.getType(), str,
+                 mlir::StringAttr::get(builder.getContext(), name));
+             return Callee{value};
            }
            return failure();
          }) |
@@ -1093,30 +1099,15 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genExternal(const Node node) {
   auto nameStr = getTextFromValuePath(name);
   auto bindcNameStr = getTextStripQuotes(bindcName);
   return mlirType(node) |
-         and_then([&](auto closureType) -> mlir::FailureOr<mlir::func::FuncOp> {
-           InsertionGuard guard(builder);
-           builder.setInsertionPointToStart(module->getBodyBlock());
-           mlir::FunctionType functionType =
-               mlir::cast<mlir::ocaml::ClosureType>(closureType)
-                   .getFunctionType();
-           auto funcOp = builder.create<mlir::func::FuncOp>(loc(node), nameStr,
-                                                            functionType);
-           funcOp.setPrivate();
-           funcOp->setAttr(mlir::ocaml::getExternalFunctionAttrName(), builder.getStringAttr(bindcNameStr));
-           return {funcOp};
-         }) |
-         and_then(
-             [&](mlir::func::FuncOp funcOp) -> mlir::FailureOr<mlir::Value> {
-               return findEnvForFunction(funcOp) |
-                      or_else([&]() -> mlir::FailureOr<mlir::Value> {
-                        return mlir::Value{};
-                      }) |
-                      and_then([&](auto env) -> mlir::FailureOr<mlir::Value> {
-                        auto closureOp = builder.create<mlir::ocaml::ClosureOp>(
-                            loc(node), funcOp, env);
-                        return {closureOp};
-                      });
-             });
+         and_then([&](auto type) -> mlir::FailureOr<mlir::Value> {
+           {
+             InsertionGuard guard(builder);
+             builder.setInsertionPointToStart(module->getBodyBlock());
+             builder.create<mlir::ocaml::ExternalOp>(loc(node), nameStr,
+                                                     bindcNameStr, type);
+           }
+           return mlir::Value{};
+         });
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genPrefixExpression(const Node node) {
@@ -1377,9 +1368,10 @@ mlir::FailureOr<mlir::Value> MLIRGen3::declareVariable(llvm::StringRef name,
                                                        VariableScope *scope) {
   auto savedName = stringArena.save(name);
   DBGS("declaring '" << savedName << "' of type " << value.getType() << "\n");
-  if (shouldAddToModuleType(value.getDefiningOp())) {
-    getCurrentModuleType().addType(savedName, value.getType());
-  }
+  // TODO: handle finalizing the module type later
+  // if (shouldAddToModuleType(value.getDefiningOp())) {
+  //   getCurrentModuleType().addType(savedName, value.getType());
+  // }
   if (scope == nullptr) {
     variables.insert(savedName, value);
   } else {
@@ -1485,6 +1477,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
 mlir::FailureOr<mlir::OwningOpRef<mlir::ocaml::ModuleOp>> MLIRGen3::gen() {
   TRACE();
   module = builder.create<mlir::ocaml::ModuleOp>(loc(root), unifier.getLastModule());
+  pushModule(*module);
   pushModuleType(module->getModuleType());
   module->getBody().emplaceBlock();
   builder.setInsertionPointToStart(module->getBodyBlock());
