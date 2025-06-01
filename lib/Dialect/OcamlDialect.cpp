@@ -410,7 +410,7 @@ mlir::ParseResult mlir::ocaml::GlobalOp::parse(mlir::OpAsmParser &parser,
 }
 
 void mlir::ocaml::GlobalOp::print(mlir::OpAsmPrinter &p) {
-  p << ' ' << getSymName() << " : " << getType();
+  p << ' ' << getIdentifier() << " : " << getType();
 }
 
 void mlir::ocaml::GlobalOp::build(mlir::OpBuilder &builder,

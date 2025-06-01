@@ -445,23 +445,23 @@ def Ocaml_LetOp : Ocaml_Op<"let", [
     construct, so it may not be directly under a module.
   }];
   let arguments = (ins
-    StrAttr:$sym_name
+    StrAttr:$identifier
   );
   let results = (outs AnyOCamlType:$result);
   let regions = (region AnyRegion:$body);
-  let assemblyFormat = "$sym_name attr-dict `:` type($result) `=` $body";
+  let assemblyFormat = "$identifier attr-dict `:` type($result) `=` $body";
 }
 
 def Ocaml_ExternalOp : Ocaml_Op<"external"> {
   let summary = "OCaml external";
   let description = "OCaml external";
   let arguments = (ins
-    StrAttr:$sym_name,
+    StrAttr:$identifier,
     StrAttr:$bindc_name,
     TypeAttr:$type
   );
   let results = (outs);
-  let assemblyFormat = "$sym_name `=` $bindc_name attr-dict `:` $type";
+  let assemblyFormat = "$identifier `=` $bindc_name attr-dict `:` $type";
 }
 
 def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
@@ -675,7 +675,7 @@ def Ocaml_GlobalOp : Ocaml_Op<"global", [Symbol]> {
   }];
 
   let arguments = (ins
-    StrAttr:$sym_name,
+    StrAttr:$identifier,
     SymbolRefAttr:$symref,
     TypeAttr:$type
   );
@@ -702,17 +702,17 @@ def OcamlGlobalOp : TypeConstraint<
 def Ocaml_GlobalLoadOp : Ocaml_Op<"global_load", [Pure]> {
   let summary = "Read from an ocaml.global";
   let description = "Returns the value stored in the given global symbol";
-  let arguments = (ins SymbolRefAttr:$global);
+  let arguments = (ins SymbolRefAttr:$identifier);
   let results   = (outs AnyOCamlType:$result);
-  let assemblyFormat = "$global attr-dict `:` type($result)";
+  let assemblyFormat = "$identifier attr-dict `:` type($result)";
 }
 
 def Ocaml_GlobalStoreOp : Ocaml_Op<"global_store", []> {
   let summary = "Write to an ocaml.global";
   let description = "Stores the operand into the given global symbol";
-  let arguments = (ins AnyOCamlType:$value, SymbolRefAttr:$global);
+  let arguments = (ins AnyOCamlType:$value, SymbolRefAttr:$identifier);
   let results   = (outs);
-  let assemblyFormat = "$value `to` $global attr-dict `:` type($value)";
+  let assemblyFormat = "$value `to` $identifier attr-dict `:` type($value)";
 }
 
 #endif // OCAML_C2_DIALECT_TD

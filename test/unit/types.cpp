@@ -75,6 +75,6 @@ int main() {
 // CHECK: !ocaml.list<i64>
 // CHECK: !ocaml.list<!ocaml.closure<(i64) -> i64>>
 // CHECK: !ocaml.env
-// CHECK: !ocaml.module<"foo", {bar : i64, baz : !ocaml.tuple<i64, i64>, qux : !ocaml.variant<"foo" is "None" | "Some" of i64 | "More" of !ocaml.tuple<i64, i64>>}>
-// CHECK: !ocaml.module<"foo$bar/bax!test", {bar : i64}>
+// CHECK: !ocaml.module<"foo", {"bar" : i64, "baz" : !ocaml.tuple<i64, i64>, "qux" : !ocaml.variant<"foo" is "None" | "Some" of i64 | "More" of !ocaml.tuple<i64, i64>>}>
+// CHECK: !ocaml.module<"foo$bar/bax!test", {"bar" : i64}>
 // CHECK: !ocaml.module<"empty_module", {}>

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-
-echo '(*'
-generate-test-checks.py "$@" | perl -pe 's/^(.*)\/\// */'
-echo ' *)'
+set -o pipefail
+generate-test-checks.py --starts_from_scope=0 "$@" \
+    | perl -pe 's/^(.*)\/\// */' \
+    | perl -ne 'print if $i++ > 6' \
+    | perl -pe 'BEGIN{print "(*";}END{print " *)\n"}'

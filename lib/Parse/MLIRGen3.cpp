@@ -173,7 +173,14 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
     auto blockOp = builder.create<mlir::ocaml::BlockOp>(loc(node), builder.getUnitType());
     auto &block = blockOp.getBody().emplaceBlock();
     builder.setInsertionPointToEnd(&block);
-    return gen(bodyNode);
+    auto bodyValue = gen(bodyNode);
+    if (failed(bodyValue)) {
+      return failure();
+    }
+    // Create a fresh unit value for the yield since bodyValue might be from nested scope
+    auto unitValue = builder.createUnit(loc(bodyNode));
+    builder.create<mlir::ocaml::YieldOp>(loc(bodyNode), unitValue);
+    return blockOp.getResult();
   }
   
   auto resultType = mlirType(patternNode);
@@ -1116,42 +1123,42 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genListExpression(const Node node) {
 
 mlir::FailureOr<mlir::Value> MLIRGen3::genFunExpression(const Node node) {
   TRACE();
-  auto parameters = getNamedChildren(node, {"parameter"});
-  auto body = node.getChildByFieldName("body");
   return mlirFunctionType(node) |
-         and_then([&](auto funType) -> mlir::FailureOr<mlir::FunctionType> {
+         and_then([&](auto funType) -> mlir::FailureOr<mlir::ocaml::ClosureType> {
            if (auto closureType = mlir::dyn_cast<mlir::ocaml::ClosureType>(funType)) {
-             return closureType.getFunctionType();
+             return closureType;
            }
            return error(node)
                   << "Expected function type for fun expression: " << funType;
          }) |
-         and_then([&](auto funType) {
+         and_then([&](auto closureType) -> mlir::FailureOr<mlir::Value> {
            auto anonName = getUniqueName("funexpr");
-           return genFunctionBody(anonName, funType, loc(node), parameters,
-                                  body);
-         }) |
-         and_then([&](Callee callee) -> mlir::FailureOr<mlir::Value> {
-           return std::visit(
-               Overload{[&](mlir::func::FuncOp funcOp)
-                            -> mlir::FailureOr<mlir::Value> {
-                          auto env = findEnvForFunction(funcOp) | or_else([&]() -> mlir::FailureOr<mlir::Value> {
-                            return mlir::Value{};
-                          });
-                          if (failed(env)) {
-                            return failure();
-                          }
-                          auto closure = builder.create<mlir::ocaml::ClosureOp>(loc(node), funcOp, *env);
-                          return {closure};
-                        },
-                        [&](mlir::Value value) -> mlir::FailureOr<mlir::Value> {
-                          return {value};
-                        },
-                        [&](BuiltinBuilder builder) -> mlir::FailureOr<mlir::Value> {
-                          assert(false && "wtf?");
-                          return failure();
-                        }},
-               callee);
+           VariableScope scope(variables);
+           InsertionGuard guard(builder);
+           auto letOp =
+               builder.create<mlir::ocaml::LetOp>(loc(node), closureType, anonName);
+           mlir::Block &bodyBlock = letOp.getBody().emplaceBlock();
+           builder.setInsertionPointToStart(&bodyBlock);
+           auto parameters = getNamedChildren(node, {"parameter"});
+           for (auto [i, parameter] : llvm::enumerate(parameters)) {
+             auto paramType = mlirType(parameter);
+             if (failed(paramType)) {
+               return error(parameter) << "Failed to generate parameter type";
+             }
+             auto parameterName = getIdentifierTextFromPattern(parameter);
+             auto ba = bodyBlock.addArgument(paramType.value(), loc(parameter));
+             auto decl = declareVariable(parameterName, ba, loc(parameter));
+             if (failed(decl)) {
+               return error(parameter) << "Failed to declare parameter";
+             }
+           }
+           auto body = node.getChildByFieldName("body");
+           auto bodyValue = gen(body);
+           if (failed(bodyValue)) {
+             return error(body) << "Failed to generate body";
+           }
+           builder.create<mlir::ocaml::YieldOp>(loc(node), *bodyValue);
+           return {letOp};
          });
 }
 

@@ -79,6 +79,10 @@ class VariableNamer:
     # Generate a substitution name for the given ssa value name.
     def generate_name(self, source_variable_name):
 
+        # Ensure we have at least one scope
+        if len(self.scopes) == 0:
+            self.push_name_scope()
+
         # Compute variable name
         variable_name = self.variable_names.pop(0) if len(self.variable_names) > 0 else ''
         if variable_name == '':
@@ -89,7 +93,7 @@ class VariableNamer:
         scope = len(self.scopes) - 1
         if self.generate_in_parent_scope_left > 0:
             self.generate_in_parent_scope_left -= 1
-            scope = len(self.scopes) - 2
+            scope = max(0, len(self.scopes) - 2)
         assert(scope >= 0)
 
         # Save variable
@@ -166,27 +170,17 @@ def process_line(line_chunks, variable_namer, strict_name_re=False):
         m = SSA_RE.match(chunk)
         ssa_name = m.group(0) if m is not None else ''
 
-        # Check if an existing variable exists for this name.
-        variable = None
-        for scope in variable_namer.scopes:
-            variable = scope.get(ssa_name)
-            if variable is not None:
-                break
-
-        # If one exists, then output the existing name.
-        if variable is not None:
-            output_line += "%[[" + variable + "]]"
+        # Always generate a new variable to avoid conflicts between
+        # same SSA names in different scopes
+        variable = variable_namer.generate_name(ssa_name)
+        if strict_name_re:
+            # Use stricter regexp for the variable name, if requested.
+            # Greedy matching may cause issues with the generic '.*'
+            # regexp when the checks are split across several
+            # lines (e.g. for CHECK-SAME).
+            output_line += "%[[" + variable + ":" + SSA_RE_STR + "]]"
         else:
-            # Otherwise, generate a new variable.
-            variable = variable_namer.generate_name(ssa_name)
-            if strict_name_re:
-                # Use stricter regexp for the variable name, if requested.
-                # Greedy matching may cause issues with the generic '.*'
-                # regexp when the checks are split across several
-                # lines (e.g. for CHECK-SAME).
-                output_line += "%[[" + variable + ":" + SSA_RE_STR + "]]"
-            else:
-                output_line += "%[[" + variable + ":.*]]"
+            output_line += "%[[" + variable + ":.*]]"
 
         # Append the non named group.
         output_line += chunk[len(ssa_name) :]
@@ -381,7 +375,8 @@ def main():
         ssa_split = input_line.split("%")
 
         # If this is a top-level operation use 'CHECK-LABEL', otherwise 'CHECK:'.
-        if len(output_segments[-1]) != 0 or not ssa_split[0]:
+        # Also use 'CHECK:' if the line starts with '%' (empty ssa_split[0] after stripping) to avoid empty labels
+        if len(output_segments[-1]) != 0 or not ssa_split[0].strip():
             output_line = "// " + args.check_prefix + ": "
             # Pad to align with the 'LABEL' statements.
             output_line += " " * len("-LABEL")

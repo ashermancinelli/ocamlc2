@@ -7,6 +7,5 @@ let f lb ub =
         done;;
 
 (*
-RUN: g3 %s --dump-camlir | FileCheck %s
-CHECK-LABEL:   func.func private @f(
+RUN: g3 %s | FileCheck %s.ref
 *)
