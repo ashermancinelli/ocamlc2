@@ -122,6 +122,10 @@ def Ocaml_ModuleType : Ocaml_Type<"Module", "module"> {
   }];
 }
 
+def IsaModuleType : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::ModuleType>($_self)">,
+  "OCaml module">;
+
 def Ocaml_BoxType : Ocaml_Type<"Box", "box"> {
   let summary = "OCaml box";
   let description = "OCaml box";
@@ -374,6 +378,16 @@ def Ocaml_CurryOp : Ocaml_Op<"closure.curry"> {
   ];
 }
 
+def Ocaml_ModuleTypeOp : Ocaml_Op<"module.type", [
+  Symbol
+]> {
+  let summary = "OCaml module type";
+  let description = "OCaml module type";
+  let arguments = (ins SymbolNameAttr:$symbol);
+  let results = (outs IsaModuleType:$result);
+  let assemblyFormat = "$symbol attr-dict `:` type($result)";
+}
+
 def Ocaml_ModuleOp : Ocaml_Op<"module", [
   Symbol,
   SymbolTable,
@@ -386,13 +400,23 @@ def Ocaml_ModuleOp : Ocaml_Op<"module", [
     SymbolNameAttr:$sym_name
   );
   let regions = (region SizedRegion<1>:$body);
-  let results = (outs);
-  let assemblyFormat = "$sym_name attr-dict `:` $body";
+  let results = (outs IsaModuleType:$result);
+  let assemblyFormat = "$sym_name attr-dict `:` type($result) $body";
   let builders = [
+    OpBuilder<(ins "::mlir::StringRef":$name)>,
   ];
   let extraClassDeclaration = [{
     Block *getBodyBlock() { return &getBody().front(); }
+    mlir::ocaml::ModuleType getModuleType() { return mlir::cast<mlir::ocaml::ModuleType>(getResult().getType()); }
   }];
+}
+
+def Ocaml_ModuleLookupOp : Ocaml_Op<"module.lookup"> {
+  let summary = "OCaml module lookup";
+  let description = "OCaml module lookup";
+  let arguments = (ins StrAttr:$sym_name);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$sym_name attr-dict `:` type($result)";
 }
 
 def Ocaml_BlockOp : Ocaml_Op<"block"> {
@@ -409,64 +433,35 @@ def Ocaml_BlockOp : Ocaml_Op<"block"> {
   }];
 }
 
-def Ocaml_FuncOp : Ocaml_Op<"letf", [
-  AutomaticAllocationScope, FunctionOpInterface //, OpAsmOpInterface
+def Ocaml_LetOp : Ocaml_Op<"let", [
+  AutomaticAllocationScope
 ]> {
   let summary = "OCaml let function-definition";
-  let description = "OCaml let function-definition";
+  let description = [{
+    The `ocaml.let` operation defines a value or function-like binding.  
+    
+    It is not an MLIR symbol because it would then need to be wrapped in a
+    symbol-table operation, but this op maps one-to-one with the OCaml let
+    construct, so it may not be directly under a module.
+  }];
   let arguments = (ins
-    StrAttr:$sym_name,
-    TypeAttrOf<FunctionType>:$function_type,
-    OptionalAttr<DictArrayAttr>:$arg_attrs,
-    OptionalAttr<DictArrayAttr>:$res_attrs
+    StrAttr:$identifier
   );
   let results = (outs AnyOCamlType:$result);
   let regions = (region AnyRegion:$body);
-  let assemblyFormat = "$sym_name `:` type($result) `=` $body attr-dict";
-  let builders = [
-    OpBuilder<(ins "::mlir::StringRef":$name, "::mlir::FunctionType":$type,
-      CArg<"ArrayRef<DictionaryAttr>", "{}">:$argAttrs,
-      CArg<"ArrayRef<DictionaryAttr>", "{}">:$resAttrs)>,
-  ];
-  let extraClassDeclaration = [{
-    Block *getBodyBlock() { return &getBody().front(); }
-    inline bool isExternal() { return false; }
-    static FuncOp create(Location location, StringRef name, FunctionType type,
-                         ArrayRef<NamedAttribute> attrs = {});
-    static FuncOp create(Location location, StringRef name, FunctionType type,
-                         Operation::dialect_attr_range attrs);
-    static FuncOp create(Location location, StringRef name, FunctionType type,
-                         ArrayRef<NamedAttribute> attrs,
-                         ArrayRef<DictionaryAttr> argAttrs);
+  let assemblyFormat = "$identifier attr-dict `:` type($result) `=` $body";
+}
 
-    //===------------------------------------------------------------------===//
-    // FunctionOpInterface Methods
-    //===------------------------------------------------------------------===//
-
-    /// Returns the region on the current operation that is callable. This may
-    /// return null in the case of an external callable object, e.g. an external
-    /// function.
-    ::mlir::Region *getCallableRegion() { return isExternal() ? nullptr : &getBody(); }
-
-    /// Returns the argument types of this function.
-    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
-
-    /// Returns the result types of this function.
-    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
-
-    //===------------------------------------------------------------------===//
-    // OpAsmOpInterface Methods
-    //===------------------------------------------------------------------===//
-
-    /// Allow the dialect prefix to be omitted.
-    static StringRef getDefaultDialect() { return "func"; }
-
-    //===------------------------------------------------------------------===//
-    // SymbolOpInterface Methods
-    //===------------------------------------------------------------------===//
-
-    bool isDeclaration() { return isExternal(); }
-  }];
+def Ocaml_ExternalOp : Ocaml_Op<"external"> {
+  let summary = "OCaml external";
+  let description = "OCaml external";
+  let arguments = (ins
+    StrAttr:$identifier,
+    StrAttr:$bindc_name,
+    TypeAttr:$type
+  );
+  let results = (outs);
+  let assemblyFormat = "$identifier `=` $bindc_name attr-dict `:` $type";
 }
 
 def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
@@ -494,6 +489,14 @@ def Ocaml_CallOp : Ocaml_Op<"call", [CallOpInterface]> {
     CallInterfaceCallable getCallableForCallee() { return getClosure(); }
     void setCalleeFromCallable(CallInterfaceCallable callee) { return setOperand(0, cast<Value>(callee)); }
   }];
+}
+
+def Ocaml_SelfOp : Ocaml_Op<"self"> {
+  let summary = "Op for self-references inside recursive let bindings";
+  let description = "Op for self-references inside recursive let bindings";
+  let arguments = (ins);
+  let results = (outs IsaClosureType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 def Ocaml_LoadOp : Ocaml_Op<"load"> {
@@ -672,7 +675,7 @@ def Ocaml_GlobalOp : Ocaml_Op<"global", [Symbol]> {
   }];
 
   let arguments = (ins
-    StrAttr:$sym_name,
+    StrAttr:$identifier,
     SymbolRefAttr:$symref,
     TypeAttr:$type
   );
@@ -699,17 +702,17 @@ def OcamlGlobalOp : TypeConstraint<
 def Ocaml_GlobalLoadOp : Ocaml_Op<"global_load", [Pure]> {
   let summary = "Read from an ocaml.global";
   let description = "Returns the value stored in the given global symbol";
-  let arguments = (ins SymbolRefAttr:$global);
+  let arguments = (ins SymbolRefAttr:$identifier);
   let results   = (outs AnyOCamlType:$result);
-  let assemblyFormat = "$global attr-dict `:` type($result)";
+  let assemblyFormat = "$identifier attr-dict `:` type($result)";
 }
 
 def Ocaml_GlobalStoreOp : Ocaml_Op<"global_store", []> {
   let summary = "Write to an ocaml.global";
   let description = "Stores the operand into the given global symbol";
-  let arguments = (ins AnyOCamlType:$value, SymbolRefAttr:$global);
+  let arguments = (ins AnyOCamlType:$value, SymbolRefAttr:$identifier);
   let results   = (outs);
-  let assemblyFormat = "$value `to` $global attr-dict `:` type($value)";
+  let assemblyFormat = "$value `to` $identifier attr-dict `:` type($value)";
 }
 
 #endif // OCAML_C2_DIALECT_TD

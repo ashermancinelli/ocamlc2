@@ -24,6 +24,7 @@ struct BuiltinBuilder {
 
 struct MLIRGen3;
 using VariableScope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::Value>;
+using ModuleSearchPathScope = llvm::ScopedHashTableScope<llvm::StringRef, mlir::ocaml::ModuleOp>;
 using VariantDeclarations = std::vector<std::pair<std::string, std::optional<mlir::Type>>>;
 using Callee = std::variant<mlir::func::FuncOp, mlir::Value, BuiltinBuilder>;
 
@@ -60,6 +61,9 @@ struct MLIRGen3 {
   inline mlir::ocaml::ModuleOp getModule() const {
     return module.get();
   }
+  inline Unifier &getUnifier() const {
+    return unifier;
+  }
 private:
   mlir::FailureOr<mlir::Value> genLetBinding(const Node node);
   mlir::FailureOr<mlir::Value> genValueDefinition(const Node node);
@@ -84,6 +88,9 @@ private:
   mlir::FailureOr<mlir::Value> genListExpression(const Node node);
   mlir::FailureOr<mlir::Value> genConsExpression(const Node node);
   mlir::FailureOr<mlir::Value> genExternal(const Node node);
+  mlir::FailureOr<mlir::Value> genModuleDefinition(const Node node);
+  mlir::FailureOr<mlir::Value> genModuleStructure(const Node node);
+  mlir::FailureOr<mlir::Value> genModuleBinding(const Node node);
   mlir::FailureOr<mlir::Value> genPrefixExpression(const Node node);
   mlir::FailureOr<mlir::func::FuncOp>
   genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,
@@ -95,9 +102,17 @@ private:
                                                         llvm::StringRef name,
                                                         mlir::Location loc);
 
-  mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value, mlir::Location loc);
-  mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name, mlir::Value value, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> declareVariable(Node node, mlir::Value value,
+                                               mlir::Location loc,
+                                               VariableScope *scope = nullptr);
+  mlir::FailureOr<mlir::Value> declareVariable(llvm::StringRef name,
+                                               mlir::Value value,
+                                               mlir::Location loc,
+                                               VariableScope *scope = nullptr);
+  llvm::SmallVector<mlir::ocaml::ModuleOp> getModuleSearchPath() const;
   mlir::FailureOr<mlir::Value> getVariable(llvm::StringRef name, mlir::Location loc);
+  mlir::FailureOr<mlir::Value> getVariable(SmallVector<llvm::StringRef> path, mlir::Location loc);
+  mlir::FailureOr<mlir::Operation*> getVariableInModule(mlir::ocaml::ModuleOp module, llvm::StringRef name, mlir::Location loc);
   mlir::FailureOr<mlir::Value> getVariable(const Node node);
   mlir::FailureOr<Callee> genConstructorPath(const Node node);
 
@@ -109,12 +124,20 @@ private:
   mlir::FailureOr<mlir::Type> mlirVariantCtorType(ocamlc2::CtorOperator *ctor, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirTypeFromBasicTypeOperator(llvm::StringRef name);
 
+  // If we find a variable at the top-level is shadowing others, we will only export the last use
+  // of the identifier. When we encounter a reused identifier, we need to visit all the uses
+  // of the identifier and mangle their names.
+  mlir::LogicalResult shadowGlobalsIfNeeded(llvm::StringRef identifier);
+
   mlir::FailureOr<std::variant<mlir::ocaml::ProgramOp, mlir::func::FuncOp>>
   getCurrentFuncOrProgram(mlir::Operation *op=nullptr);
+  bool shouldAddToModuleType(mlir::Operation *op);
   mlir::FailureOr<mlir::Value> findEnvForFunction(mlir::func::FuncOp funcOp);
   mlir::FailureOr<mlir::Value> findEnvForFunctionOrNullEnv(mlir::func::FuncOp funcOp);
   llvm::StringRef getText(const Node node);
   llvm::StringRef getTextFromValuePath(Node node);
+  llvm::SmallVector<llvm::StringRef> getTextPathFromValuePath(Node node);
+  llvm::StringRef getIdentifierTextFromPattern(const Node node);
   llvm::StringRef getTextStripQuotes(const Node node);
   inline auto *unifierType(const Node node) {
     return unifier.getInferredType(node);
@@ -129,6 +152,22 @@ private:
   mlir::FailureOr<std::tuple<bool, mlir::func::FuncOp>>
   valueIsFreeInCurrentContext(mlir::Value value);
 
+  llvm::SmallVector<mlir::ocaml::ModuleType> moduleTypeStack;
+  mlir::ocaml::ModuleType getCurrentModuleType() const {
+    return moduleTypeStack.back();
+  }
+  void pushModuleType(mlir::ocaml::ModuleType moduleType) {
+    moduleTypeStack.push_back(moduleType);
+  }
+  void popModuleType() {
+    moduleTypeStack.pop_back();
+  }
+
+  void pushModule(mlir::ocaml::ModuleOp module);
+  mlir::ocaml::ModuleOp popModule();
+  mlir::ocaml::ModuleOp getCurrentModule() const;
+  mlir::ocaml::ModuleOp getRootModule() const;
+
   llvm::SmallVector<ts::NodeID> captureIDs;
   llvm::DenseMap<TypeExpr *, mlir::Type> typeExprToMlirType;
   llvm::ScopedHashTable<llvm::StringRef, mlir::Value> variables;
@@ -136,6 +175,8 @@ private:
   mlir::ocaml::OcamlOpBuilder builder;
   Unifier &unifier;
   mlir::OwningOpRef<mlir::ocaml::ModuleOp> module;
+  llvm::SmallVector<mlir::ocaml::ModuleOp> moduleStack;
+  llvm::SmallVector<mlir::ocaml::ModuleOp> moduleSearchPath;
   ts::Node root;
   friend struct Scope;
 };

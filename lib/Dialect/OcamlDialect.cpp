@@ -55,7 +55,11 @@ struct ModuleTypeStorage : public mlir::TypeStorage {
 
   void setTypeList(llvm::ArrayRef<ModuleType::TypePair> list) { types = list; }
   llvm::ArrayRef<ModuleType::TypePair> getTypeList() const { return types; }
-  void addType(llvm::StringRef ident, mlir::Type type) { types.emplace_back(ident, type); }
+  void addType(llvm::StringRef ident, mlir::Type type) {
+    DBGS("adding type " << ident << " : " << type << " to module type " << name << "\n");
+    types.emplace_back(ident, type);
+  }
+
   FailureOr<mlir::Type> getType(llvm::StringRef ident) const {
     for (auto [i, type] : llvm::enumerate(types)) {
       if (type.first == ident) {
@@ -80,6 +84,7 @@ struct ModuleTypeStorage : public mlir::TypeStorage {
     return failure();
   }
   void finalize() {
+    DBGS("finalizing module type " << name << " with " << types.size() << " types\n");
     assert(!finalized);
     finalized = true;
   }
@@ -107,6 +112,13 @@ namespace {
 static llvm::SmallPtrSet<detail::ModuleTypeStorage const *, 4> moduleTypeVisited;
 }
 
+void mlir::ocaml::ModuleOp::build(mlir::OpBuilder &builder,
+                                  mlir::OperationState &result,
+                                  llvm::StringRef name) {
+  auto moduleType = mlir::ocaml::ModuleType::get(builder.getContext(), name);
+  build(builder, result, moduleType, name);
+}
+
 void mlir::ocaml::ModuleType::print(mlir::AsmPrinter &printer) const {
   printer << "<";
   printer.printString(getName());
@@ -115,7 +127,9 @@ void mlir::ocaml::ModuleType::print(mlir::AsmPrinter &printer) const {
     moduleTypeVisited.insert(uniqueKey());
     auto length = getTypeList().size();
     for (auto [i, type] : llvm::enumerate(getTypeList())) {
-      printer << type.first << " : " << type.second;
+      printer.printString(StringRef(type.first));
+      printer << " : ";
+      printer.printType(type.second);
       if (i < length - 1) {
         printer << ", ";
       }
@@ -133,21 +147,24 @@ mlir::Type mlir::ocaml::ModuleType::parse(mlir::AsmParser &parser) {
     return {};
   if (parser.parseString(&name))
     return {};
-  if (parser.parseOptionalLBrace()) {
-    while (true) {
-      llvm::StringRef field;
-      mlir::Type fldTy;
-      if (parser.parseKeyword(&field) || parser.parseColon() ||
-          parser.parseType(fldTy)) {
-        parser.emitError(parser.getNameLoc(), "expected type list");
-        return {};
-      }
-      typeList.emplace_back(field, fldTy);
-      if (parser.parseOptionalComma())
-        break;
-    }
-    if (parser.parseOptionalRBrace()) {
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseLBrace())
       return {};
+    if (failed(parser.parseOptionalRBrace())) {
+      while (true) {
+        std::string field;
+        mlir::Type fldTy;
+        if (parser.parseString(&field) || parser.parseColon() ||
+            parser.parseType(fldTy)) {
+          parser.emitError(parser.getNameLoc(), "expected type list");
+          return {};
+        }
+        typeList.emplace_back(field, fldTy);
+        if (parser.parseOptionalComma())
+          break;
+      }
+      if (parser.parseRBrace())
+        return {};
     }
   }
   if (parser.parseGreater())
@@ -393,7 +410,7 @@ mlir::ParseResult mlir::ocaml::GlobalOp::parse(mlir::OpAsmParser &parser,
 }
 
 void mlir::ocaml::GlobalOp::print(mlir::OpAsmPrinter &p) {
-  p << ' ' << getSymName() << " : " << getType();
+  p << ' ' << getIdentifier() << " : " << getType();
 }
 
 void mlir::ocaml::GlobalOp::build(mlir::OpBuilder &builder,
@@ -448,7 +465,7 @@ mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   if (failed(parseCtorAndType()))
     return {};
 
-  while (succeeded(parser.parseOptionalKeyword("|"))) {
+  while (succeeded(parser.parseOptionalVerticalBar())) {
     if (failed(parseCtorAndType()))
       return {};
   }

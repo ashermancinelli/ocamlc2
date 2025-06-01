@@ -59,6 +59,10 @@ sub process_file {
             say $cmd;
             my ($tfh, $temp) = tempfile();
             `$cmd >> $temp`;
+            if ($?) {
+                say "Failed to run $cmd";
+                next;
+            }
             if (not -f $ref) {
                 say "Note: no reference file for $file";
                 print `cat $temp`;
