@@ -414,9 +414,9 @@ def Ocaml_ModuleOp : Ocaml_Op<"module", [
 def Ocaml_ModuleLookupOp : Ocaml_Op<"module.lookup"> {
   let summary = "OCaml module lookup";
   let description = "OCaml module lookup";
-  let arguments = (ins StrAttr:$sym_name, StrAttr:$module);
+  let arguments = (ins StrAttr:$sym_name);
   let results = (outs AnyOCamlType:$result);
-  let assemblyFormat = "$sym_name `in` $module attr-dict `:` type($result)";
+  let assemblyFormat = "$sym_name attr-dict `:` type($result)";
 }
 
 def Ocaml_BlockOp : Ocaml_Op<"block"> {

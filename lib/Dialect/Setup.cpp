@@ -14,6 +14,7 @@
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "ocamlc2/Dialect/OcamlPasses.h"
+#include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Transforms/Passes.h>
 
 namespace mlir::ocaml {
@@ -22,6 +23,7 @@ namespace mlir::ocaml {
     mlir::LLVM::registerInlinerInterface(registry);
 
     registry.insert<mlir::scf::SCFDialect>();
+    registry.insert<mlir::cf::ControlFlowDialect>();
     registry.insert<mlir::func::FuncDialect>();
     registry.insert<mlir::arith::ArithDialect>();
     registry.insert<mlir::LLVM::LLVMDialect>();

@@ -1,5 +1,8 @@
-external array_length : 'a array -> int = "caml_array_length"
-external array_get : 'a array -> int -> 'a = "caml_array_get"
+module Array = struct
+  external length : 'a array -> int = "caml_array_length"
+  external get : 'a array -> int -> 'a = "caml_array_get"
+end
+
 external (=) : 'a -> 'a -> bool = "caml_equal"
 external (>) : int -> int -> bool = "caml_int_gt"
 external (>=) : int -> int -> bool = "caml_int_ge"
@@ -9,8 +12,8 @@ external print_newline : unit -> unit = "caml_print_newline"
 
 let find_index item arr =
   let rec aux i =
-    if i >= array_length arr then (None)
-    else if (array_get arr i) = item then Some i
+    if i >= Array.length arr then (None)
+    else if (Array.get arr i) = item then Some i
     else aux (i + 1)
   in
   aux 0
