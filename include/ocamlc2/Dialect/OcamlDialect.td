@@ -285,6 +285,9 @@ def Ocaml_RecordGetOp : Ocaml_Op<"record.get"> {
   let results = (outs AnyOCamlType:$result);
   let assemblyFormat = "$record `,` $field attr-dict `:` type($record) `->` type($result)";
   let hasVerifier = 1;
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$record, "::mlir::StringRef":$field)>,
+  ];
 }
 
 def Ocaml_UndefOp : Ocaml_Op<"undef"> {

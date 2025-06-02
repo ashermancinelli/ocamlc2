@@ -19,7 +19,7 @@
  * CHECK:             ocaml.yield %[[VAL_20:.*]] : !ocaml.list<!ocaml.obox>
  * CHECK:           }
  * CHECK:         }
- * CHECK:         %[[VAL_21:.*]] = ocaml.let "()" : !ocaml.unit = {
+ * CHECK:         %[[VAL_21:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:           %[[VAL_22:.*]] = ocaml.module.lookup "M2.print" : !ocaml.closure<(!ocaml.unit) -> !ocaml.unit>
  * CHECK:           %[[VAL_23:.*]] = ocaml.unit
  * CHECK:           %[[VAL_24:.*]] = ocaml.call %[[VAL_25:.*]](%[[VAL_26:.*]]) : (!ocaml.closure<(!ocaml.unit) -> !ocaml.unit>) : !ocaml.unit -> !ocaml.unit
@@ -81,7 +81,8 @@
  * CHECK:             %[[VAL_104:.*]] = ocaml.unit
  * CHECK:             ocaml.yield %[[VAL_105:.*]] : !ocaml.unit
  * CHECK:           }
- * CHECK:           ocaml.yield %[[VAL_106:.*]] : !ocaml.unit
+ * CHECK:           %[[VAL_106:.*]] = ocaml.unit
+ * CHECK:           ocaml.yield %[[VAL_107:.*]] : !ocaml.unit
  * CHECK:         }
  * CHECK:       }
 

@@ -39,13 +39,14 @@
  * CHECK:           }
  * CHECK:           ocaml.yield %[[VAL_49:.*]] : !ocaml.sbox
  * CHECK:         }
- * CHECK:         %[[VAL_50:.*]] = ocaml.let "()" : !ocaml.unit = {
+ * CHECK:         %[[VAL_50:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:           %[[VAL_51:.*]] = ocaml.module.lookup "print_string" : !ocaml.closure<(!ocaml.sbox) -> !ocaml.unit>
  * CHECK:           %[[VAL_52:.*]] = arith.constant 7 : i64
  * CHECK:           %[[VAL_53:.*]] = ocaml.convert %[[VAL_54:.*]] from i64 to !ocaml.box<i64>
  * CHECK:           %[[VAL_55:.*]] = ocaml.call %[[VAL_56:.*]](%[[VAL_57:.*]]) : (!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.sbox>) : !ocaml.box<i64> -> !ocaml.sbox
  * CHECK:           %[[VAL_58:.*]] = ocaml.call %[[VAL_59:.*]](%[[VAL_60:.*]]) : (!ocaml.closure<(!ocaml.sbox) -> !ocaml.unit>) : !ocaml.sbox -> !ocaml.unit
- * CHECK:           ocaml.yield %[[VAL_61:.*]] : !ocaml.unit
+ * CHECK:           %[[VAL_61:.*]] = ocaml.unit
+ * CHECK:           ocaml.yield %[[VAL_62:.*]] : !ocaml.unit
  * CHECK:         }
  * CHECK:       }
 

@@ -54,7 +54,7 @@
  * CHECK:           }
  * CHECK:           ocaml.yield %[[VAL_64:.*]] : !ocaml.variant<"option" is "None" | "Some" of !ocaml.box<i64>>
  * CHECK:         }
- * CHECK:         %[[VAL_65:.*]] = ocaml.let "()" : !ocaml.unit = {
+ * CHECK:         %[[VAL_65:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:           %[[VAL_66:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:             %[[VAL_67:.*]] = ocaml.let "arr" : !ocaml.array<!ocaml.box<i64>> = {
  * CHECK:               %[[VAL_68:.*]] = arith.constant 1 : i64
@@ -121,7 +121,8 @@
  * CHECK:             %[[VAL_154:.*]] = ocaml.unit
  * CHECK:             ocaml.yield %[[VAL_155:.*]] : !ocaml.unit
  * CHECK:           }
- * CHECK:           ocaml.yield %[[VAL_156:.*]] : !ocaml.unit
+ * CHECK:           %[[VAL_156:.*]] = ocaml.unit
+ * CHECK:           ocaml.yield %[[VAL_157:.*]] : !ocaml.unit
  * CHECK:         }
  * CHECK:       }
 

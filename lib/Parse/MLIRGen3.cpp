@@ -75,6 +75,27 @@ mlir::FailureOr<T> mustBe(mlir::FailureOr<std::variant<T, mlir::func::FuncOp>> r
   return failure();
 }
 
+void MLIRGen3::pushModule(mlir::ocaml::ModuleOp module) {
+  DBGS("Pushing module: " << module.getName() << "\n");
+  moduleStack.push_back(module);
+}
+
+mlir::ocaml::ModuleOp MLIRGen3::popModule() {
+  auto module = moduleStack.pop_back_val();
+  DBGS("Popping module: " << module.getName() << "\n");
+  return module;
+}
+
+mlir::ocaml::ModuleOp MLIRGen3::getCurrentModule() const {
+  TRACE();
+  return moduleStack.back();
+}
+
+mlir::ocaml::ModuleOp MLIRGen3::getRootModule() const {
+  TRACE();
+  return module.get();
+}
+
 bool MLIRGen3::shouldAddToModuleType(mlir::Operation *op) {
   // function block arguments should be skipped
   if (op == nullptr) {
@@ -164,12 +185,11 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genLetBinding(const Node node) {
   TRACE();
   const bool isRecursive = isLetBindingRecursive(node.getCursor());
   auto patternNode = node.getChildByFieldName("pattern");
-  const auto patternType = unifierType(patternNode);
   auto bodyNode = node.getChildByFieldName("body");
   InsertionGuard guard(builder);
   auto *parentScope = variables.getCurScope();
   auto scope = std::make_unique<VariableScope>(variables);
-  if (patternType == unifier.getUnitType()) {
+  if (patternNode.getType() == "unit") {
     auto blockOp = builder.create<mlir::ocaml::BlockOp>(loc(node), builder.getUnitType());
     auto &block = blockOp.getBody().emplaceBlock();
     builder.setInsertionPointToEnd(&block);
@@ -1045,6 +1065,21 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genModuleBinding(const Node node) {
   });
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genFieldGetExpression(const Node node) {
+  TRACE();
+  auto type = mlirType(node);
+  if (failed(type)) {
+    return failure();
+  }
+  auto record = node.getChildByFieldName("record");
+  auto fieldName = node.getChildByFieldName("field");
+  auto fieldNameStr = getText(fieldName);
+  return gen(record) | and_then([&](auto recordValue) -> mlir::FailureOr<mlir::Value> {
+    auto got = builder.create<mlir::ocaml::RecordGetOp>(loc(node), recordValue, fieldNameStr);
+    return {got};
+  });
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genRecordPattern(const Node node) {
   TRACE();
   auto type = mlirType(node);
@@ -1501,6 +1536,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genRecordExpression(node);
   } else if (type == "record_pattern") {
     return genRecordPattern(node);
+  } else if (type == "field_get_expression") {
+    return genFieldGetExpression(node);
   }
   error(node) << "NYI: " << type << " (" << __LINE__ << ')';
   assert(false);
@@ -1530,25 +1567,4 @@ mlir::FailureOr<mlir::OwningOpRef<mlir::ocaml::ModuleOp>> MLIRGen3::gen() {
   popModuleType();
 
   return std::move(module);
-}
-
-void MLIRGen3::pushModule(mlir::ocaml::ModuleOp module) {
-  DBGS("Pushing module: " << module.getName() << "\n");
-  moduleStack.push_back(module);
-}
-
-mlir::ocaml::ModuleOp MLIRGen3::popModule() {
-  auto module = moduleStack.pop_back_val();
-  DBGS("Popping module: " << module.getName() << "\n");
-  return module;
-}
-
-mlir::ocaml::ModuleOp MLIRGen3::getCurrentModule() const {
-  TRACE();
-  return moduleStack.back();
-}
-
-mlir::ocaml::ModuleOp MLIRGen3::getRootModule() const {
-  TRACE();
-  return module.get();
 }

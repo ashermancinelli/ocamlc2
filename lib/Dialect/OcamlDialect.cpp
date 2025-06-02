@@ -496,6 +496,19 @@ void mlir::ocaml::RecordType::print(mlir::AsmPrinter &printer) const {
   printer << ">";
 }
 
+void mlir::ocaml::RecordGetOp::build(mlir::OpBuilder &builder, mlir::OperationState &result, mlir::Value record, llvm::StringRef field) {
+  auto recordType = mlir::cast<mlir::ocaml::RecordType>(record.getType());
+  auto namesAndTypes = recordType.getNamesAndTypes();
+  auto fieldIndex = llvm::find_if(namesAndTypes, [&](auto &&pair) {
+    return pair.first == field;
+  });
+  if (fieldIndex == namesAndTypes.end()) {
+    return;
+  }
+  auto fieldType = fieldIndex->second;
+  build(builder, result, fieldType, record, field);
+}
+
 llvm::LogicalResult mlir::ocaml::RecordGetOp::verify() {
   return mlir::success();
 }
