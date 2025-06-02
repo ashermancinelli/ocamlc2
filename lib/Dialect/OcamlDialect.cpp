@@ -434,11 +434,73 @@ mlir::NamedAttribute mlir::ocaml::getMatchCaseAttr(mlir::MLIRContext *context) {
                               mlir::UnitAttr::get(context));
 }
 
+llvm::SmallVector<std::pair<llvm::StringRef, mlir::Type>> mlir::ocaml::RecordType::getNamesAndTypes() const {
+  llvm::SmallVector<std::pair<llvm::StringRef, mlir::Type>> result;
+  auto names = getFieldNames();
+  auto types = getFieldTypes();
+  for (auto [name, type] : llvm::zip_equal(names, types)) {
+    result.emplace_back(name.getValue(), type);
+  }
+  return result;
+}
+
+mlir::Type mlir::ocaml::RecordType::parse(mlir::AsmParser &parser) {
+  std::string name;
+  llvm::SmallVector<mlir::Type> types;
+  llvm::SmallVector<mlir::StringAttr> names;
+  if (parser.parseLess())
+    return {};
+  if (parser.parseString(&name))
+    return {};
+  if (parser.parseComma())
+    return {};
+  if (parser.parseLBrace())
+    return {};
+  if (failed(parser.parseOptionalRBrace())) {
+    while (true) {
+      std::string fieldName;
+      mlir::Type type;
+      if (parser.parseString(&fieldName))
+        return {};
+      if (parser.parseColonType(type))
+        return {};
+      types.push_back(type);
+      names.push_back(mlir::StringAttr::get(parser.getContext(), fieldName));
+      if (failed(parser.parseOptionalComma()))
+        break;
+    }
+    if (parser.parseRBrace())
+      return {};
+  }
+  if (parser.parseGreater())
+    return {};
+  return parser.getChecked<RecordType>(parser.getContext(), 
+                                       mlir::StringAttr::get(parser.getContext(), name), 
+                                       names, types);
+}
+
+void mlir::ocaml::RecordType::print(mlir::AsmPrinter &printer) const {
+  printer << "<";
+  printer.printString(getNameString());
+  printer << ", {";
+  auto namesAndTypes = getNamesAndTypes();
+  for (auto [i, nameAndType] : llvm::enumerate(namesAndTypes)) {
+    auto [name, type] = nameAndType;
+    printer.printString(name);
+    printer << " : ";
+    printer.printType(type);
+    if (i < namesAndTypes.size() - 1) {
+      printer << ", ";
+    }
+  }
+  printer << ">";
+}
+
 // `variant` `<` $name `is` $ctor `of` $type (`|` $ctor `of` $type)* `>`
 mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   std::string name;
-  mlir::SmallVector<mlir::Type> elements;
   mlir::SmallVector<mlir::StringAttr> ctors;
+  mlir::SmallVector<mlir::Type> elements;
   if (parser.parseLess())
     return {};
   if (parser.parseString(&name))
@@ -562,5 +624,3 @@ void OcamlDialect::initialize() {
       >();
   addInterfaces<OcamlInlinerInterface>();
 }
-
-namespace mlir::ocaml {} // namespace mlir::ocaml

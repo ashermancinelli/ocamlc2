@@ -119,6 +119,7 @@ private:
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirType(ocamlc2::VariantOperator *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirType(const Node node);
+  mlir::FailureOr<mlir::Type> mlirRecordType(ocamlc2::RecordOperator *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirFunctionType(ocamlc2::TypeExpr *type, mlir::Location loc);
   mlir::FailureOr<mlir::Type> mlirFunctionType(const Node node);
   mlir::FailureOr<mlir::Type> mlirVariantCtorType(ocamlc2::CtorOperator *ctor, mlir::Location loc);

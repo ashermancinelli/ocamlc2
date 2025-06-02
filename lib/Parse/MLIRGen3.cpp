@@ -346,6 +346,24 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::VariantOperator *type, m
   return variantType;
 }
 
+mlir::FailureOr<mlir::Type> MLIRGen3::mlirRecordType(ocamlc2::RecordOperator *type, mlir::Location loc) {
+  TRACE();
+  assert(type);
+  auto name = type->getName();
+  auto nameAttr = builder.getStringAttr(name);
+  auto fieldNames = type->getFieldNames();
+  auto fieldNameAttrs = builder.createStringAttrVector(fieldNames);
+  auto fieldTypeExprs = type->getFieldTypes();
+  auto maybeFieldTypes = llvm::map_to_vector(fieldTypeExprs, [this, loc](auto *fieldTypeExpr) { return mlirType(fieldTypeExpr, loc); });
+  if (llvm::any_of(maybeFieldTypes, failed)) {
+    return failure();
+  }
+  llvm::SmallVector<mlir::Type> fieldTypes = llvm::map_to_vector(maybeFieldTypes, [](auto t) { return *t; });
+  auto recordType = mlir::ocaml::RecordType::get(builder.getContext(), nameAttr,
+                                                 fieldNameAttrs, fieldTypes);
+  return recordType;
+}
+
 mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Location loc) {
   DBGS("mlirType: " << *type << "\n");
   type = Unifier::pruneEverything(type);
@@ -355,6 +373,9 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
   } else if (auto *funcOperator = llvm::dyn_cast<ocamlc2::FunctionOperator>(type)) {
     TRACE();
     return mlirFunctionType(funcOperator, loc);
+  } else if (auto *ro = llvm::dyn_cast<ocamlc2::RecordOperator>(type)) {
+    TRACE();
+    return mlirRecordType(ro, loc);
   } else if (auto *vo = llvm::dyn_cast<ocamlc2::VariantOperator>(type)) {
     TRACE();
     return mlirType(vo, loc);

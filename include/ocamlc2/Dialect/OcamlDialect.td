@@ -91,11 +91,37 @@ def Ocaml_VariantType : Ocaml_Type<"Variant", "variant"> {
     }]>,
   ];
   let extraClassDeclaration = [{
-    enum Kind { Variant, Record };
     std::string getNameString() const {
       return name.str();
     }
     static mlir::FailureOr<std::pair<unsigned, mlir::Type>> typeForConstructor(llvm::StringRef name, VariantType type);
+  }];
+}
+
+def Ocaml_RecordType : Ocaml_Type<"Record", "record"> {
+  let summary = "OCaml record";
+  let description = "OCaml record";
+  let parameters = (ins 
+    "::mlir::StringAttr":$name,
+    ArrayRefParameter<"::mlir::StringAttr">:$fieldNames,
+    ArrayRefParameter<"::mlir::Type">:$fieldTypes
+  );
+  let storageClass = "RecordTypeStorage";
+  let storageNamespace = "detail";
+  let hasCustomAssemblyFormat = 1;
+  let builders = [
+    TypeBuilderWithInferredContext<(ins
+      "::mlir::StringAttr":$name,
+      "::llvm::ArrayRef<::mlir::StringAttr>":$fieldNames,
+      "::llvm::ArrayRef<::mlir::Type>":$fieldTypes), [{
+      return $_get(name.getContext(), name, fieldNames, fieldTypes);
+    }]>,
+  ];
+  let extraClassDeclaration = [{
+    std::string getNameString() const {
+      return name.str();
+    }
+    llvm::SmallVector<std::pair<llvm::StringRef, mlir::Type>> getNamesAndTypes() const;
   }];
 }
 

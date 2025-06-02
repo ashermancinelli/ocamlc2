@@ -25,6 +25,7 @@ namespace mlir::ocaml {
 namespace detail {
 struct VariantTypeStorage;
 struct ModuleTypeStorage;
+struct RecordTypeStorage;
 }
 }
 
