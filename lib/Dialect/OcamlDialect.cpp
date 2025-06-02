@@ -496,6 +496,14 @@ void mlir::ocaml::RecordType::print(mlir::AsmPrinter &printer) const {
   printer << ">";
 }
 
+llvm::LogicalResult mlir::ocaml::RecordGetOp::verify() {
+  return mlir::success();
+}
+
+llvm::LogicalResult mlir::ocaml::RecordSetOp::verify() {
+  return mlir::success();
+}
+
 // `variant` `<` $name `is` $ctor `of` $type (`|` $ctor `of` $type)* `>`
 mlir::Type mlir::ocaml::VariantType::parse(mlir::AsmParser &parser) {
   std::string name;

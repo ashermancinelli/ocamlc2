@@ -1,6 +1,5 @@
 (*
 RUN: g3 %s | FileCheck %s.ref
-XFAIL: *
 *)
 
 type ptype = TNormal | TFire | TWater;;

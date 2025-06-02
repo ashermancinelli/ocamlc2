@@ -91,6 +91,7 @@ private:
   mlir::FailureOr<mlir::Value> genModuleDefinition(const Node node);
   mlir::FailureOr<mlir::Value> genModuleStructure(const Node node);
   mlir::FailureOr<mlir::Value> genModuleBinding(const Node node);
+  mlir::FailureOr<mlir::Value> genRecordExpression(const Node node);
   mlir::FailureOr<mlir::Value> genPrefixExpression(const Node node);
   mlir::FailureOr<mlir::func::FuncOp>
   genFunctionBody(llvm::StringRef name, mlir::FunctionType funType,

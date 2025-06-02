@@ -6,7 +6,7 @@
  * CHECK:           %[[VAL_3:.*]] = ocaml.block : !ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>> {
  * CHECK:             %[[VAL_4:.*]] = ocaml.let "result" : !ocaml.ref<!ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>> = {
  * CHECK:               %[[VAL_5:.*]] = ocaml.module.lookup "ref" : !ocaml.closure<(!ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>) -> !ocaml.ref<!ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>>>
- * CHECK:               %[[VAL_6:.*]] = ocaml.list.new : !ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>
+ * CHECK:               %[[VAL_6:.*]] = ocaml.undef : !ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>
  * CHECK:               %[[VAL_7:.*]] = ocaml.call %[[VAL_8:.*]](%[[VAL_9:.*]]) : (!ocaml.closure<(!ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>) -> !ocaml.ref<!ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>>>) : !ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>> -> !ocaml.ref<!ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>>
  * CHECK:               ocaml.yield %[[VAL_10:.*]] : !ocaml.ref<!ocaml.list<!ocaml.closure<(!ocaml.box<i64>) -> !ocaml.box<i64>>>>
  * CHECK:             }

@@ -25,7 +25,7 @@
  * CHECK:           %[[VAL_24:.*]] = ocaml.call %[[VAL_25:.*]](%[[VAL_26:.*]]) : (!ocaml.closure<(!ocaml.unit) -> !ocaml.unit>) : !ocaml.unit -> !ocaml.unit
  * CHECK:           %[[VAL_27:.*]] = ocaml.block : !ocaml.unit {
  * CHECK:             %[[VAL_28:.*]] = ocaml.let "l" : !ocaml.list<!ocaml.box<i64>> = {
- * CHECK:               %[[VAL_29:.*]] = ocaml.list.new : !ocaml.list<!ocaml.box<i64>>
+ * CHECK:               %[[VAL_29:.*]] = ocaml.undef : !ocaml.list<!ocaml.box<i64>>
  * CHECK:               %[[VAL_30:.*]] = arith.constant 1 : i64
  * CHECK:               %[[VAL_31:.*]] = ocaml.convert %[[VAL_32:.*]] from i64 to !ocaml.box<i64>
  * CHECK:               %[[VAL_33:.*]] = ocaml.list.append %[[VAL_34:.*]], %[[VAL_35:.*]] : !ocaml.list<!ocaml.box<i64>>, !ocaml.box<i64> -> !ocaml.list<!ocaml.box<i64>>

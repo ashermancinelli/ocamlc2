@@ -1045,6 +1045,28 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genModuleBinding(const Node node) {
   });
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genRecordExpression(const Node node) {
+  TRACE();
+  auto type = mlirType(node);
+  if (failed(type)) {
+    return failure();
+  }
+  mlir::Value record = builder.create<mlir::ocaml::UndefOp>(loc(node), *type);
+  auto children = getNamedChildren(node, {"field_expression"});
+  llvm::SmallVector<mlir::Value> fields;
+  for (auto child : children) {
+    auto fieldName = child.getNamedChild(0);
+    auto fieldValueNode = child.getNamedChild(1);
+    auto fieldValue = gen(fieldValueNode);
+    if (failed(fieldValue)) {
+      return failure();
+    }
+    auto fieldNameStr = getText(fieldName);
+    record = builder.create<mlir::ocaml::RecordSetOp>(loc(node), record, fieldNameStr, *fieldValue);
+  }
+  return {record};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genModuleStructure(const Node node) {
   TRACE();
   assert(node.getType() == "structure");
@@ -1127,7 +1149,7 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genListExpression(const Node node) {
     return failure();
   }
   auto listType = mlir::cast<mlir::ocaml::ListType>(*type);
-  mlir::Value list = builder.create<mlir::ocaml::ListNewOp>(loc(node), listType);
+  mlir::Value list = builder.create<mlir::ocaml::UndefOp>(loc(node), listType);
   auto elements = getNamedChildren(node);
   for (auto element : elements) {
     auto elementValue = gen(element);
@@ -1452,6 +1474,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genModuleStructure(node);
   } else if (type == "module_type_definition") {
     return mlir::Value(); // not needed in the IR, just for type checking
+  } else if (type == "record_expression") {
+    return genRecordExpression(node);
   }
   error(node) << "NYI: " << type << " (" << __LINE__ << ')';
   assert(false);

@@ -125,6 +125,10 @@ def Ocaml_RecordType : Ocaml_Type<"Record", "record"> {
   }];
 }
 
+def IsaRecordType : TypeConstraint<
+  CPred<"::mlir::isa<::mlir::ocaml::RecordType>($_self)">,
+  "OCaml record">;
+
 def Ocaml_ModuleType : Ocaml_Type<"Module", "module"> {
   let summary = "OCaml module";
   let description = "OCaml module";
@@ -233,7 +237,7 @@ def AnyOCamlType : TypeConstraint<
         "::mlir::ocaml::TupleType, ::mlir::ocaml::VariantType, "
         "::mlir::ocaml::ReferenceType, ::mlir::ocaml::ListType, "
         "::mlir::ocaml::ModuleType, ::mlir::ocaml::ClosureType, "
-        "::mlir::ocaml::ArrayType>($_self)">,
+        "::mlir::ocaml::ArrayType, ::mlir::ocaml::RecordType>($_self)">,
   "OCaml value">;
 
 def AnyOcamlReferenceType : TypeConstraint<
@@ -259,17 +263,36 @@ def IsaEnvType : Type<
   CPred<"::mlir::isa<::mlir::ocaml::EnvType>($_self)">,
   "OCaml environment">;
 
-def Ocaml_ListNewOp : Ocaml_Op<"list.new"> {
-  let summary = "OCaml list new";
-  let description = "OCaml list new";
-  let arguments = (ins);
-  let results = (outs IsaListType:$result);
-  let assemblyFormat = "attr-dict `:` type($result)";
+def Ocaml_RecordSetOp : Ocaml_Op<"record.set"> {
+  let summary = "OCaml record set";
+  let description = "OCaml record set";
+  let arguments = (ins IsaRecordType:$record, StrAttr:$field, AnyOCamlType:$value);
+  let results = (outs IsaRecordType:$result);
+  let assemblyFormat = "$record `,` $field `=` $value attr-dict `:` type($record) `,` type($value) `->` type($result)";
+  let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins), [{
-      return build($_builder, $_state, mlir::ocaml::ListType::get(mlir::ocaml::OpaqueBoxType::get($_builder.getContext())));
+    OpBuilder<(ins "::mlir::Value":$record, "::mlir::StringRef":$field, "::mlir::Value":$value), [{
+      auto recordType = mlir::cast<mlir::ocaml::RecordType>(record.getType());
+      return build($_builder, $_state, recordType, record, field, value);
     }]>,
   ];
+}
+
+def Ocaml_RecordGetOp : Ocaml_Op<"record.get"> {
+  let summary = "OCaml record get";
+  let description = "OCaml record get";
+  let arguments = (ins IsaRecordType:$record, StrAttr:$field);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "$record `,` $field attr-dict `:` type($record) `->` type($result)";
+  let hasVerifier = 1;
+}
+
+def Ocaml_UndefOp : Ocaml_Op<"undef"> {
+  let summary = "OCaml undef";
+  let description = "OCaml undef";
+  let arguments = (ins);
+  let results = (outs AnyOCamlType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 def Ocaml_ListConsOp : Ocaml_Op<"list.cons"> {

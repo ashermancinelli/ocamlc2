@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(g3:*)",
+      "Bash(p3:*)",
+      "Bash(make:*)",
+      "Bash(./build/bin/g3:*)"
+    ],
+    "deny": []
+  }
+}
