@@ -1008,14 +1008,11 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genModuleBinding(const Node node) {
   auto nameText = getText(name);
   DBGS("Got module name: " << nameText << '\n');
   auto signature = node.getChildByFieldName("module_type");
+  DBGS("signature?: " << signature.getSExpr().get() << '\n');
   auto structure = node.getChildByFieldName("body");
   auto moduleParameters = getNamedChildren(node, {"module_parameter"});
   if (not moduleParameters.empty()) {
     return nyi(node) << " functors";
-  }
-  if (not signature.isNull()) {
-    return nyi(node) << " module signature (this might be fine? just need to "
-                        "fix up the module type maybe)";
   }
   assert(!structure.isNull());
   InsertionGuard guard(builder);
@@ -1432,6 +1429,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return genModuleDefinition(node);
   } else if (type == "structure") {
     return genModuleStructure(node);
+  } else if (type == "module_type_definition") {
+    return mlir::Value(); // not needed in the IR, just for type checking
   }
   error(node) << "NYI: " << type << " (" << __LINE__ << ')';
   assert(false);
