@@ -1,0 +1,50 @@
+(*
+
+ * CHECK:       %[[VAL_0:.*]] = ocaml.module @Records2 : !ocaml.module<"Records2", {}> {
+ * CHECK:         %[[VAL_1:.*]] = ocaml.let "c" : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">> = {
+ * CHECK:           %[[VAL_2:.*]] = ocaml.undef : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:           %[[VAL_3:.*]] = ocaml.embox_string "Charmander"
+ * CHECK:           %[[VAL_4:.*]] = ocaml.record.set %[[VAL_5:.*]], "name" = %[[VAL_6:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>, !ocaml.sbox -> !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:           %[[VAL_7:.*]] = arith.constant 39 : i64
+ * CHECK:           %[[VAL_8:.*]] = ocaml.convert %[[VAL_9:.*]] from i64 to !ocaml.box<i64>
+ * CHECK:           %[[VAL_10:.*]] = ocaml.record.set %[[VAL_11:.*]], "hp" = %[[VAL_12:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>, !ocaml.box<i64> -> !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:           %[[VAL_13:.*]] = ocaml.module.lookup "TFire" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">
+ * CHECK:           %[[VAL_14:.*]] = ocaml.record.set %[[VAL_15:.*]], "ptype" = %[[VAL_16:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>, !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater"> -> !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:           ocaml.yield %[[VAL_17:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:         }
+ * CHECK:         %[[VAL_18:.*]] = ocaml.let "x" : !ocaml.sbox = {
+ * CHECK:           %[[VAL_19:.*]] = ocaml.block : !ocaml.sbox {
+ * CHECK:             %[[VAL_20:.*]] = ocaml.pattern_variable : !ocaml.obox
+ * CHECK:             %[[VAL_21:.*]] = ocaml.convert %[[VAL_22:.*]] from !ocaml.obox to !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:             %[[VAL_23:.*]] = ocaml.match %[[VAL_24:.*]] against %[[VAL_25:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:             cf.cond_br %[[VAL_26:.*]], ^bb1, ^bb2
+ * CHECK:           ^bb1:
+ * CHECK:             %[[VAL_27:.*]] = ocaml.embox_string "unknown"
+ * CHECK:             cf.br ^bb5(%[[VAL_28:.*]] : !ocaml.sbox)
+ * CHECK:           ^bb2:
+ * CHECK:             %[[VAL_29:.*]] = ocaml.undef : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox>
+ * CHECK:             %[[VAL_30:.*]] = ocaml.pattern_variable : !ocaml.sbox
+ * CHECK:             %[[VAL_31:.*]] = ocaml.record.set %[[VAL_32:.*]], "name" = %[[VAL_33:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox>, !ocaml.sbox -> !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox>
+ * CHECK:             %[[VAL_34:.*]] = arith.constant 50 : i64
+ * CHECK:             %[[VAL_35:.*]] = ocaml.convert %[[VAL_36:.*]] from i64 to !ocaml.box<i64>
+ * CHECK:             %[[VAL_37:.*]] = ocaml.record.set %[[VAL_38:.*]], "hp" = %[[VAL_39:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox>, !ocaml.box<i64> -> !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox>
+ * CHECK:             %[[VAL_40:.*]] = ocaml.pattern_variable : !ocaml.obox
+ * CHECK:             %[[VAL_41:.*]] = ocaml.record.set %[[VAL_42:.*]], "ptype" = %[[VAL_43:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox>, !ocaml.obox -> !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox>
+ * CHECK:             %[[VAL_44:.*]] = ocaml.convert %[[VAL_45:.*]] from !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.obox> to !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:             %[[VAL_46:.*]] = ocaml.match %[[VAL_47:.*]] against %[[VAL_48:.*]] : !ocaml.record<"ocaml.record", {"hp" : !ocaml.box<i64>, "name" : !ocaml.sbox, "ptype" : !ocaml.variant<"ptype" is "TNormal" | "TFire" | "TWater">>
+ * CHECK:             cf.cond_br %[[VAL_49:.*]], ^bb3, ^bb4
+ * CHECK:           ^bb3:
+ * CHECK:             cf.br ^bb5(%[[VAL_50:.*]] : !ocaml.sbox)
+ * CHECK:           ^bb4:
+ * CHECK:             %[[VAL_51:.*]] = arith.constant false
+ * CHECK:             cf.assert %[[VAL_52:.*]], "No match found"
+ * CHECK:             %[[VAL_53:.*]] = ocaml.convert %[[VAL_54:.*]] from i1 to !ocaml.sbox
+ * CHECK:             cf.br ^bb5(%[[VAL_55:.*]] : !ocaml.sbox)
+ * CHECK:           ^bb5(%[[VAL_56:.*]]: !ocaml.sbox):
+ * CHECK:             ocaml.yield %[[VAL_57:.*]] : !ocaml.sbox
+ * CHECK:           }
+ * CHECK:           ocaml.yield %[[VAL_58:.*]] : !ocaml.sbox
+ * CHECK:         }
+ * CHECK:       }
+
+ *)

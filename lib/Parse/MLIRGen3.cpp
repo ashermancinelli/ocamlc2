@@ -1045,6 +1045,29 @@ mlir::FailureOr<mlir::Value> MLIRGen3::genModuleBinding(const Node node) {
   });
 }
 
+mlir::FailureOr<mlir::Value> MLIRGen3::genRecordPattern(const Node node) {
+  TRACE();
+  auto type = mlirType(node);
+  if (failed(type)) {
+    return failure();
+  }
+  mlir::Value record = builder.create<mlir::ocaml::UndefOp>(loc(node), *type);
+  auto patterns = getNamedChildren(node, {"field_pattern"});
+  for (auto pattern : patterns) {
+    auto location = loc(pattern);
+    auto fieldType = mlirType(pattern);
+    if (failed(fieldType)) {
+      return failure();
+    }
+    auto fieldName = pattern.getNamedChild(0);
+    auto fieldValueNode = toOptional(pattern.getNamedChild(1));
+    auto fieldNameStr = getText(fieldName);
+    auto fieldValue = fieldValueNode ? gen(*fieldValueNode) : builder.createPatternVariable(location, *fieldType);
+    record = builder.create<mlir::ocaml::RecordSetOp>(location, record, fieldNameStr, *fieldValue);
+  }
+  return {record};
+}
+
 mlir::FailureOr<mlir::Value> MLIRGen3::genRecordExpression(const Node node) {
   TRACE();
   auto type = mlirType(node);
@@ -1476,6 +1499,8 @@ mlir::FailureOr<mlir::Value> MLIRGen3::gen(const Node node) {
     return mlir::Value(); // not needed in the IR, just for type checking
   } else if (type == "record_expression") {
     return genRecordExpression(node);
+  } else if (type == "record_pattern") {
+    return genRecordPattern(node);
   }
   error(node) << "NYI: " << type << " (" << __LINE__ << ')';
   assert(false);

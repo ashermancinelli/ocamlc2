@@ -1444,7 +1444,11 @@ TypeExpr* Unifier::inferRecordPattern(Cursor ast) {
   }
   auto children = getNamedChildren(node);
   auto fieldPatterns = llvm::map_to_vector(children, [&](Node n) {
-    return inferFieldPattern(n);
+    auto fieldAndType = inferFieldPattern(n);
+    if (succeeded(fieldAndType)) {
+      setType(n, fieldAndType->second);
+    }
+    return fieldAndType;
   });
   RNULL_IF(llvm::any_of(fieldPatterns, [](auto &&p) {
     return failed(p);
