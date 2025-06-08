@@ -218,6 +218,7 @@ def Ocaml_ClosureType : Ocaml_Type<"Closure", "closure"> {
     TypeBuilderWithInferredContext<(ins "::mlir::FunctionType":$functionType), [{
       return $_get(functionType.getContext(), functionType);
     }]>,
+    TypeBuilderWithInferredContext<(ins "::mlir::FunctionType":$functionType, "::llvm::ArrayRef<::mlir::StringRef>":$labels)>,
   ];
   let extraClassDeclaration = [{
   }];

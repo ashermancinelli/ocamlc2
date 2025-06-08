@@ -11,5 +11,6 @@ llvm::StringRef getEnvironmentAttrName();
 llvm::StringRef getEnvironmentIsForFunctionAttrName();
 llvm::StringRef getOcamlAttributePrefix();
 llvm::StringRef getOcamlFunctorAttrName();
+llvm::StringRef getOcamlLabelsAttrName();
 
 }

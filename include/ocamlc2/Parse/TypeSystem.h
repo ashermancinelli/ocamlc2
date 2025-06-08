@@ -238,6 +238,9 @@ struct FunctionOperator : public TypeOperator {
       std::copy(descs.begin(), descs.end(), std::back_inserter(parameterDescriptors));
     }
   }
+  inline llvm::ArrayRef<ParameterDescriptor> getParameterDescriptors() const {
+    return parameterDescriptors;
+  }
   llvm::raw_ostream &decl(llvm::raw_ostream &os) const;
   llvm::SmallVector<ParameterDescriptor> parameterDescriptors;
   static inline bool classof(const TypeExpr *expr) { return (expr->getKind() & Kind::Function) == Kind::Function; }

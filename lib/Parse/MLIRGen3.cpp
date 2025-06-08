@@ -289,9 +289,10 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(ocamlc2::TypeExpr *type, 
   if (type == nullptr) {
     return error(loc) << "Type for node was not inferred during type inference";
   }
-  if (const auto *to = llvm::dyn_cast<ocamlc2::FunctionOperator>(type)) {
-    DBGS("Function type: " << *to << '\n');
-    const auto typeOperatorArgs = to->getArgs();
+  if (const auto *fo = llvm::dyn_cast<ocamlc2::FunctionOperator>(type)) {
+    DBGS("Function type: " << *fo << '\n');
+    const auto typeOperatorArgs = fo->getArgs();
+    const auto descriptors = fo->getParameterDescriptors();
     auto args = llvm::drop_end(typeOperatorArgs);
     auto argTypes = llvm::map_to_vector(args, [this, loc](auto *arg) { return mlirType(arg, loc); });
     if (llvm::any_of(argTypes, failed)) {
@@ -302,9 +303,10 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirFunctionType(ocamlc2::TypeExpr *type, 
     llvm::append_range(successfulArgTypes, mappedTypes);
     return mlirType(typeOperatorArgs.back(), loc) |
            and_then([&](auto returnType) -> mlir::FailureOr<mlir::Type> {
+             auto labels = llvm::map_to_vector(descriptors, [](const auto &desc) { return desc.label.value_or(""); });
              auto functionType = mlir::FunctionType::get(builder.getContext(),
                                                           successfulArgTypes, {returnType});
-             return mlir::ocaml::ClosureType::get(functionType);
+             return mlir::ocaml::ClosureType::get(functionType, labels);
            });
   }
   return error(loc) << "Could get MLIR type from unified function type: "
@@ -442,6 +444,16 @@ mlir::FailureOr<mlir::Type> MLIRGen3::mlirType(ocamlc2::TypeExpr *type, mlir::Lo
         return failure();
       }
       return mlir::ocaml::ReferenceType::get(*elementType);
+    } else if (name == "option") {
+      assert(args.size() == 1 && "option type must have exactly one argument");
+      auto elementType = mlirType(args.front(), loc);
+      if (failed(elementType)) {
+        return failure();
+      }
+      return mlir::ocaml::VariantType::get(
+          builder.getContext(), builder.getStringAttr("option"),
+          builder.createStringAttrVector({"Some", "None"}),
+          {*elementType, builder.getUnitType()});
     }
 
     error(loc) << "Unknown type operator: " << SSWRAP(*type);

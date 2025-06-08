@@ -289,6 +289,15 @@ mlir::StringAttr mlir::ocaml::EnvOp::getFor() const {
   return mlir::cast<mlir::StringAttr>((*this)->getAttr(mlir::ocaml::getEnvironmentIsForFunctionAttrName()));
 }
 
+mlir::ocaml::ClosureType mlir::ocaml::ClosureType::get(mlir::FunctionType functionType, llvm::ArrayRef<llvm::StringRef> labels) {
+  auto context = functionType.getContext();
+  auto stringAttrs = llvm::map_to_vector(labels, [&](auto label) -> mlir::Attribute {
+    return mlir::StringAttr::get(context, label);
+  });
+  auto arrayAttr = mlir::ArrayAttr::get(context, stringAttrs);
+  return mlir::ocaml::ClosureType::get(context, functionType, arrayAttr);
+}
+
 void mlir::ocaml::ClosureOp::build(mlir::OpBuilder &builder,
                                    mlir::OperationState &result,
                                    mlir::func::FuncOp funcOp, mlir::Value env) {
